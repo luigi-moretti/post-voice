@@ -1571,7 +1571,9 @@ npx jest --listTests
 composer run lint -- --version
 ```
 
-Expected: `npm install` and `composer install` complete. `npx tsc --noEmit` succeeds with no files to check yet (the `features/` tree is empty — an empty `include` glob is not an error). `npx jest --listTests` prints an empty list without crashing (proves `jest.config.js` and the setup file resolve). `composer run lint -- --version` prints a PHPCS version (proves WPCS installed and the ruleset parses).
+Expected: `npm install` and `composer install` complete. `npx jest --listTests` prints an empty list without crashing (proves `jest.config.js` and the setup file resolve). `composer run lint -- --version` prints a PHPCS version (proves WPCS installed and the ruleset parses). `composer run lint` itself must exit 0 — CI gates on it (Task 23), so a red lint here is a red build later; note that PHPCS must be scoped to `.php` files only, since JavaScript is ESLint's job in this project.
+
+`npx tsc --noEmit` is expected to FAIL at this point with `TS18003: No inputs were found in config file` — `tsconfig.json` includes `features/`, which is still empty. This is real TypeScript behavior, not a misconfiguration, and it resolves itself the moment the first task adds a file under `features/`. Do not "fix" it by weakening `tsconfig.json`.
 
 This is the gate for every later task: if any of these five commands fails here, no other task's verification steps can be trusted.
 
