@@ -396,9 +396,14 @@ export class PocketTtsEngine {
           // The worker picks the bundle's default voice itself; remember it so
           // callers never have to name one.
           this.defaultVoice = defaultVoice ?? null;
+        } else if ( type === 'bundle_loaded' ) {
+          // `sampleRate` rides on `bundle_loaded`, never on `loaded` — reading it
+          // off the wrong message leaves the hardcoded default in place forever,
+          // which would silently mis-scale RTF and produce wrong-pitch MP3s if a
+          // bundle ever shipped at something other than 24kHz.
+          if ( sampleRate ) this.sampleRate = sampleRate;
         } else if ( type === 'loaded' ) {
           this.ready = true;
-          if ( sampleRate ) this.sampleRate = sampleRate;
           this.worker?.removeEventListener( 'message', onMessage );
           resolve();
         } else if ( type === 'error' ) {
@@ -422,6 +427,7 @@ export class PocketTtsEngine {
         if ( e.data.type === 'voices_loaded' ) {
           this.defaultVoice = e.data.defaultVoice ?? this.defaultVoice;
         } else if ( e.data.type === 'bundle_loaded' ) {
+          if ( e.data.sampleRate ) this.sampleRate = e.data.sampleRate;
           this.worker?.removeEventListener( 'message', onMessage );
           resolve();
         } else if ( e.data.type === 'error' ) {
@@ -1397,15 +1403,19 @@ function NarrationPanel() {
       }
 
       const { rtf } = await engineRef.current.calibrate();
-      const eta = estimateEtaSeconds( rtf, estimateAudioDurationSeconds( text.length ) );
+      // rtf === 0 means the warm-up produced no measurable audio. Treat that as
+      // "unmeasured", not "instant" — otherwise a broken calibration looks like a
+      // blazing-fast device and every guard below silently stops firing.
+      const eta =
+        rtf > 0 ? estimateEtaSeconds( rtf, estimateAudioDurationSeconds( text.length ) ) : null;
       setEtaSeconds( eta );
 
-      if ( requiresLongTextConfirmation( eta ) ) {
+      if ( eta !== null && requiresLongTextConfirmation( eta ) ) {
         setState( 'confirming-long-text' );
         return;
       }
 
-      if ( shouldWarnSlowDevice( rtf ) ) {
+      if ( rtf > 0 && shouldWarnSlowDevice( rtf ) ) {
         createErrorNotice(
           __( 'This device is slower than usual for narration — it may take a while.', 'post-voice' ),
           { type: 'snackbar' }
