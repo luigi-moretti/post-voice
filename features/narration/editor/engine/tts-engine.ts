@@ -33,12 +33,19 @@ export class PocketTtsEngine {
     await new Promise<void>( ( resolve, reject ) => {
       if ( ! this.worker ) return reject( new Error( 'Worker not created' ) );
       const onMessage = ( e: MessageEvent ) => {
-        const { type, sampleRate, error } = e.data;
+        const { type, sampleRate, error, defaultVoice } = e.data;
         if ( type === 'voices_loaded' ) {
-          this.defaultVoice = e.data.defaultVoice ?? this.defaultVoice;
+          // The worker picks the bundle's default voice itself; remember it so
+          // callers never have to name one.
+          this.defaultVoice = defaultVoice ?? null;
+        } else if ( type === 'bundle_loaded' ) {
+          // `sampleRate` rides on `bundle_loaded`, never on `loaded` — reading it
+          // off the wrong message leaves the hardcoded default in place forever,
+          // which would silently mis-scale RTF and produce wrong-pitch MP3s if a
+          // bundle ever shipped at something other than 24kHz.
+          if ( sampleRate ) this.sampleRate = sampleRate;
         } else if ( type === 'loaded' ) {
           this.ready = true;
-          if ( sampleRate ) this.sampleRate = sampleRate;
           this.worker?.removeEventListener( 'message', onMessage );
           resolve();
         } else if ( type === 'error' ) {
@@ -62,6 +69,7 @@ export class PocketTtsEngine {
         if ( e.data.type === 'voices_loaded' ) {
           this.defaultVoice = e.data.defaultVoice ?? this.defaultVoice;
         } else if ( e.data.type === 'bundle_loaded' ) {
+          if ( e.data.sampleRate ) this.sampleRate = e.data.sampleRate;
           this.worker?.removeEventListener( 'message', onMessage );
           resolve();
         } else if ( e.data.type === 'error' ) {
