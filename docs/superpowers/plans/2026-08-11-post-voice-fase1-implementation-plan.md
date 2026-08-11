@@ -2803,6 +2803,7 @@ git commit -m "feat: wire the pill player to real DOM + prefers-reduced-motion"
 **Files:**
 - Create: `.wp-env.json`
 - Create: `e2e/mu-plugins/coop-coep-headers.php`
+- Modify: `package.json`, `package-lock.json` (add the `@wordpress/env` devDependency)
 
 **Interfaces:**
 - Produces: a local WP instance for E2E, with COOP/COEP response headers so `self.crossOriginIsolated` is true by default (needed for the happy-path E2E test in Task 19; the fallback test in Task 19 explicitly strips these headers for its one scenario).
@@ -2835,7 +2836,13 @@ add_action( 'send_headers', static function (): void {
 
 - [ ] **Step 3: Manual verification**
 
-`wp-env` is already a devDependency (added in Task 11). The first `start` pulls WordPress, MySQL and PHP images and can take several minutes; that is normal, not a hang.
+Install `wp-env` first — Task 11's scaffold predates this requirement, so it is not yet in `node_modules`:
+
+```bash
+npm install --save-dev @wordpress/env@^10.0.0
+```
+
+The first `start` pulls WordPress, MySQL and PHP images and can take several minutes; that is normal, not a hang.
 
 ```bash
 npx wp-env start
@@ -2849,7 +2856,7 @@ Expected: both `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embed
 - [ ] **Step 4: Commit**
 
 ```bash
-git add .wp-env.json e2e/mu-plugins/coop-coep-headers.php
+git add .wp-env.json e2e/mu-plugins/coop-coep-headers.php package.json package-lock.json
 git commit -m "chore: wp-env config with COOP/COEP headers for E2E"
 ```
 
