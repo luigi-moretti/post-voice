@@ -288,12 +288,14 @@ function bundleDir(language) {
 Replace with:
 
 ```js
-import { MODEL_BASE_URL } from '../model-source.js';
+import { MODEL_BASE_URL } from '../model-source';
 
 function bundleDir(language) {
     return `${MODEL_BASE_URL}${language}`;
 }
 ```
+
+The import is **extensionless on purpose**. `model-source` is a `.ts` file; `@wordpress/scripts`' webpack config sets `resolve.extensions` to include `.ts` but leaves `resolve.extensionAlias` undefined, so a `'../model-source.js'` specifier would look for a literal `model-source.js` and fail to resolve at build time.
 
 No other line changes — `MODEL_STEMS`, `LANGUAGE_BUNDLES`, the tokenizer/voice-loading/generation pipeline are already correct as copied.
 
