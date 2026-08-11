@@ -1284,6 +1284,17 @@ function NarrationPanel() {
 
   const cancelGeneration = useCallback( () => {
     abortRef.current?.abort();
+    // Tear the worker down rather than reusing it. The worker cancels
+    // cooperatively via a single `isGenerating` flag: posting `stop` clears it,
+    // but the in-flight pipeline only notices at its next loop check. A new
+    // `generate` arriving inside that window sets the flag back to true, the old
+    // pipeline never breaks, and both pipelines stream `audio_chunk` messages
+    // into the same listener — producing spliced garbage audio. Disposing is the
+    // only fix available without modifying the vendored worker. Cost is an ONNX
+    // session re-init on the next generation; the model files themselves come
+    // from the HTTP cache (pinned, immutable URLs), so there is no re-download.
+    engineRef.current?.dispose();
+    engineRef.current = null;
     setState( 'idle' );
   }, [] );
 
@@ -2720,6 +2731,22 @@ test.describe( 'Post Voice — narration generation', () => {
     await page.getByRole( 'button', { name: 'Generate audio' } ).click();
     await page.getByRole( 'button', { name: 'Cancel' } ).click();
     await expect( page.getByRole( 'button', { name: 'Generate audio' } ) ).toBeVisible();
+  } );
+
+  test( 'cancelling and immediately regenerating produces one clean audio file', async ( { admin, page } ) => {
+    // Regression guard for a worker-level race: the vendored worker cancels via a
+    // single shared `isGenerating` flag, so a regeneration started before the
+    // cancelled pipeline noticed the flag used to leave two pipelines streaming
+    // chunks into the same listener. The panel now disposes the worker on cancel.
+    await admin.createNewPost( { title: 'Cancel then regenerate', content: 'Text to narrate twice in a row.' } );
+    await page.getByRole( 'button', { name: 'Narration' } ).click();
+    await page.getByRole( 'button', { name: 'Generate audio' } ).click();
+    await page.getByRole( 'button', { name: 'Cancel' } ).click();
+    await page.getByRole( 'button', { name: 'Generate audio' } ).click();
+
+    await expect( page.getByRole( 'button', { name: 'Save narration' } ) ).toBeVisible( { timeout: 180_000 } );
+    // Exactly one preview player — not one per surviving pipeline.
+    await expect( page.locator( '.post-voice-panel audio' ) ).toHaveCount( 1 );
   } );
 } );
 ```
