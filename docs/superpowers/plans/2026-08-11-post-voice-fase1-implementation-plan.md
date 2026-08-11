@@ -368,12 +368,13 @@ export interface GenerateOptions {
   signal?: AbortSignal;
 }
 
+import { computeRtf } from '../rtf-calibration';
+
 export interface CalibrationResult {
   rtf: number;
 }
 
 const CALIBRATION_TEXT = 'Isto é um teste rápido de calibração de desempenho.';
-const AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH = 15;
 
 export class PocketTtsEngine {
   private worker: Worker | null = null;
@@ -435,10 +436,13 @@ export class PocketTtsEngine {
 
   async calibrate(): Promise<CalibrationResult> {
     const start = performance.now();
-    await this.generate( CALIBRATION_TEXT, {} );
+    const audio = await this.generate( CALIBRATION_TEXT, {} );
     const elapsedMs = performance.now() - start;
-    const estimatedDurationSec = CALIBRATION_TEXT.length / AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH;
-    return { rtf: elapsedMs / 1000 / estimatedDurationSec };
+    // Measure the audio we actually produced rather than guessing its length
+    // from character count — the samples are right here, and a guess would bias
+    // every ETA derived from this RTF.
+    const audioDurationSec = audio.length / this.sampleRate;
+    return { rtf: computeRtf( audioDurationSec, elapsedMs ) };
   }
 
   generate( text: string, options: GenerateOptions ): Promise<Float32Array> {
@@ -841,11 +845,30 @@ describe( 'computeRtf', () => {
   it( 'returns 0 for non-positive elapsed time', () => {
     expect( computeRtf( 2, 0 ) ).toBe( 0 );
   } );
+  it( 'returns 0 for a zero-length warm-up instead of Infinity', () => {
+    // Infinity here would collapse to NaN downstream and silently disable the
+    // long-text confirmation prompt.
+    expect( computeRtf( 0, 1000 ) ).toBe( 0 );
+  } );
+} );
+
+describe( 'degenerate inputs never defeat the confirmation gate', () => {
+  it( 'a failed warm-up plus an empty post does not produce NaN', () => {
+    const rtf = computeRtf( 0, 1000 );
+    const eta = estimateEtaSeconds( rtf, estimateAudioDurationSeconds( 0 ) );
+    expect( Number.isNaN( eta ) ).toBe( false );
+    expect( requiresLongTextConfirmation( eta ) ).toBe( false );
+  } );
+
+  it( 'returns zero duration for empty text and zero ETA for a zero rtf', () => {
+    expect( estimateAudioDurationSeconds( 0 ) ).toBe( 0 );
+    expect( estimateEtaSeconds( 0, 100 ) ).toBe( 0 );
+  } );
 } );
 
 describe( 'estimateAudioDurationSeconds', () => {
-  it( 'scales with text length', () => {
-    expect( estimateAudioDurationSeconds( 150 ) ).toBe( 10 );
+  it( 'scales with text length at roughly a 150 wpm narration pace', () => {
+    expect( estimateAudioDurationSeconds( 125 ) ).toBe( 10 );
   } );
 } );
 
@@ -880,10 +903,21 @@ Expected: FAIL — module not found.
 ```ts
 export const SLOW_RTF_WARNING_THRESHOLD = 3; // RTF > 3x real-time triggers a non-blocking warning
 export const LONG_TEXT_CONFIRMATION_ETA_SECONDS = 120; // ETA above this asks for explicit confirmation before generating
-const AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH = 15; // rough heuristic; refined per-device by the real measured RTF
+
+/**
+ * Derived from a ~150 wpm narration pace at ~5 characters per word:
+ * 150 * 5 / 60 = 12.5 characters per second. Only used to guess how long a post
+ * will take *before* synthesising it; the per-device RTF measured from the real
+ * warm-up audio is what actually scales the estimate.
+ */
+const AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH = 12.5;
 
 export function computeRtf( warmupAudioDurationSec: number, warmupElapsedMs: number ): number {
-  if ( warmupElapsedMs <= 0 ) return 0;
+  // Both guards matter. A zero-length warm-up (failed synthesis returning an
+  // empty buffer) would otherwise yield Infinity, and Infinity * 0 duration is
+  // NaN — and `NaN > 120` is false, silently disabling the confirmation prompt
+  // in exactly the broken state it exists to catch.
+  if ( warmupElapsedMs <= 0 || warmupAudioDurationSec <= 0 ) return 0;
   return warmupElapsedMs / 1000 / warmupAudioDurationSec;
 }
 
