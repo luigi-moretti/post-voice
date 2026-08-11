@@ -1,0 +1,126 @@
+export interface GenerateOptions {
+  voice: string;
+  signal?: AbortSignal;
+}
+
+export interface CalibrationResult {
+  rtf: number;
+}
+
+const CALIBRATION_TEXT = 'Isto é um teste rápido de calibração de desempenho.';
+const AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH = 15;
+
+export class PocketTtsEngine {
+  private worker: Worker | null = null;
+  private ready = false;
+  public sampleRate = 24000;
+
+  async load( language: string ): Promise<void> {
+    this.worker = new Worker(
+      new URL( './pocket-tts.worker.js', import.meta.url ),
+      { type: 'module' }
+    );
+
+    await new Promise<void>( ( resolve, reject ) => {
+      if ( ! this.worker ) return reject( new Error( 'Worker not created' ) );
+      const onMessage = ( e: MessageEvent ) => {
+        const { type, sampleRate, error } = e.data;
+        if ( type === 'loaded' ) {
+          this.ready = true;
+          if ( sampleRate ) this.sampleRate = sampleRate;
+          this.worker?.removeEventListener( 'message', onMessage );
+          resolve();
+        } else if ( type === 'error' ) {
+          this.worker?.removeEventListener( 'message', onMessage );
+          reject( new Error( error ) );
+        }
+      };
+      this.worker.addEventListener( 'message', onMessage );
+      this.worker.postMessage( { type: 'load' } );
+    } );
+
+    if ( language !== 'english_2026-04' ) {
+      await this.setLanguage( language );
+    }
+  }
+
+  private setLanguage( language: string ): Promise<void> {
+    return new Promise( ( resolve, reject ) => {
+      if ( ! this.worker ) return reject( new Error( 'Engine not loaded' ) );
+      const onMessage = ( e: MessageEvent ) => {
+        if ( e.data.type === 'bundle_loaded' ) {
+          this.worker?.removeEventListener( 'message', onMessage );
+          resolve();
+        } else if ( e.data.type === 'error' ) {
+          this.worker?.removeEventListener( 'message', onMessage );
+          reject( new Error( e.data.error ) );
+        }
+      };
+      this.worker.addEventListener( 'message', onMessage );
+      this.worker.postMessage( { type: 'set_language', data: { language } } );
+    } );
+  }
+
+  async calibrate(): Promise<CalibrationResult> {
+    const start = performance.now();
+    await this.generate( CALIBRATION_TEXT, { voice: 'default' } );
+    const elapsedMs = performance.now() - start;
+    const estimatedDurationSec = CALIBRATION_TEXT.length / AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH;
+    return { rtf: elapsedMs / 1000 / estimatedDurationSec };
+  }
+
+  generate( text: string, options: GenerateOptions ): Promise<Float32Array> {
+    return new Promise( ( resolve, reject ) => {
+      if ( ! this.worker || ! this.ready ) {
+        return reject( new Error( 'Engine not loaded' ) );
+      }
+
+      const chunks: Float32Array[] = [];
+
+      const cleanup = () => {
+        this.worker?.removeEventListener( 'message', onMessage );
+        options.signal?.removeEventListener( 'abort', onAbort );
+      };
+
+      const onAbort = () => {
+        this.worker?.postMessage( { type: 'stop' } );
+        cleanup();
+        reject( new DOMException( 'Generation cancelled', 'AbortError' ) );
+      };
+      options.signal?.addEventListener( 'abort', onAbort, { once: true } );
+
+      const onMessage = ( e: MessageEvent ) => {
+        const { type, data, error } = e.data;
+        if ( type === 'audio_chunk' ) {
+          chunks.push( new Float32Array( data ) );
+        } else if ( type === 'stream_ended' ) {
+          cleanup();
+          resolve( concatFloat32( chunks ) );
+        } else if ( type === 'error' ) {
+          cleanup();
+          reject( new Error( error ) );
+        }
+      };
+
+      this.worker.addEventListener( 'message', onMessage );
+      this.worker.postMessage( { type: 'generate', data: { text, voice: options.voice } } );
+    } );
+  }
+
+  dispose(): void {
+    this.worker?.terminate();
+    this.worker = null;
+    this.ready = false;
+  }
+}
+
+function concatFloat32( chunks: Float32Array[] ): Float32Array {
+  const total = chunks.reduce( ( sum, c ) => sum + c.length, 0 );
+  const out = new Float32Array( total );
+  let offset = 0;
+  for ( const chunk of chunks ) {
+    out.set( chunk, offset );
+    offset += chunk.length;
+  }
+  return out;
+}
