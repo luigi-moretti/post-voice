@@ -1,0 +1,95 @@
+<h2>Disposição da aba "Narração" no editor</h2>
+<p class="subtitle">Sidebar do Gutenberg é estreita (~280px). Mostrando o estado inicial (antes de gerar) de 3 direções de layout — qual organização faz mais sentido?</p>
+
+<style>
+  .wp-mock { width: 260px; margin: 0 auto; border: 1px solid #ddd; border-radius: 4px; background: #fff; color: #1e1e1e; font-family: -apple-system, "Segoe UI", sans-serif; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .wp-mock-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #ddd; background: #fff; }
+  .wp-mock-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .wp-mock-icon { width: 16px; height: 16px; border-radius: 3px; background: #3858e9; display: inline-block; }
+  .wp-mock-close { color: #757575; font-size: 16px; }
+  .wp-mock-body { padding: 14px 12px; font-size: 12.5px; }
+  .wp-field-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #757575; margin-bottom: 4px; font-weight: 600; }
+  .wp-select { width: 100%; padding: 6px 8px; border: 1px solid #949494; border-radius: 3px; background: #fff; font-size: 13px; margin-bottom: 12px; }
+  .wp-btn-primary { width: 100%; background: #3858e9; color: #fff; border: none; padding: 8px; border-radius: 3px; font-size: 13px; font-weight: 500; text-align: center; margin-bottom: 8px; }
+  .wp-btn-secondary { width: 100%; background: #fff; color: #3858e9; border: 1px solid #3858e9; padding: 7px; border-radius: 3px; font-size: 13px; text-align: center; margin-bottom: 8px; }
+  .wp-hint { color: #757575; font-size: 11.5px; line-height: 1.4; }
+  .wp-divider { border-top: 1px solid #eee; margin: 12px 0; }
+  .wp-stepper { display: flex; gap: 4px; margin-bottom: 14px; }
+  .wp-step { flex: 1; text-align: center; font-size: 10px; padding: 4px 2px; border-radius: 3px; background: #f0f0f1; color: #757575; }
+  .wp-step.active { background: #3858e9; color: #fff; font-weight: 600; }
+  .wp-status-card { background: #f6f7f7; border: 1px solid #e0e0e0; border-radius: 4px; padding: 10px; margin-bottom: 12px; font-size: 12px; color: #757575; text-align: center; }
+  .card h3 { text-align: center; }
+  .card p { text-align: center; }
+</style>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-field-label">Idioma</div>
+          <div class="wp-select">Português (Brasil) ▾</div>
+          <div class="wp-btn-primary">🎙 Gerar áudio</div>
+          <div class="wp-hint">O modelo (~190MB) é baixado na primeira geração e fica salvo no seu navegador.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Tudo visível</h3>
+      <p>Idioma + botão de gerar sempre juntos na tela. Mínimo de cliques, mínimo de estado escondido.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-stepper">
+            <div class="wp-step active">1. Configurar</div>
+            <div class="wp-step">2. Gerar</div>
+            <div class="wp-step">3. Revisar</div>
+          </div>
+          <div class="wp-field-label">Idioma</div>
+          <div class="wp-select">Português (Brasil) ▾</div>
+          <div class="wp-btn-primary">Continuar →</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Passo a passo</h3>
+      <p>Um passo visível por vez (configurar → gerar → revisar). Guia quem usa pela 1ª vez, esconde o resto.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-status-card">🔇 Nenhum áudio gerado ainda</div>
+          <div class="wp-divider"></div>
+          <div class="wp-field-label">Idioma</div>
+          <div class="wp-select">Português (Brasil) ▾</div>
+          <div class="wp-btn-primary">🎙 Gerar áudio</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Card de status + ação</h3>
+      <p>Card no topo sempre mostra o estado atual da narração (existe? desatualizada?); controles de ação ficam embaixo.</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">A mesma escolha deve funcionar pros estados seguintes (gerando, preview, salvo, erro) — próxima tela mostra como cada direção se comporta gerando áudio.</p>

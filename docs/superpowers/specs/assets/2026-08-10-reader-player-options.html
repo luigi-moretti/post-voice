@@ -1,0 +1,147 @@
+<h2>Player do leitor — sticky/mobile-first</h2>
+<p class="subtitle">Simulando viewport de celular (~375px), que é a prioridade declarada. Controles: play/pause, stop, velocidade, fechar. Qual direção funciona melhor?</p>
+
+<style>
+  .phone { width: 300px; margin: 0 auto; border: 8px solid #1e1e1e; border-radius: 28px; overflow: hidden; background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.2); position: relative; }
+  .phone-screen { height: 460px; overflow: hidden; position: relative; font-family: -apple-system, "Segoe UI", sans-serif; }
+  .post-mock { padding: 16px; color: #1e1e1e; }
+  .post-mock h1 { font-size: 17px; margin-bottom: 8px; line-height: 1.3; }
+  .post-mock .meta { font-size: 11px; color: #757575; margin-bottom: 14px; }
+  .post-mock p { font-size: 12.5px; line-height: 1.6; color: #333; margin-bottom: 10px; }
+  .post-mock .line { height: 9px; background: #eee; border-radius: 4px; margin-bottom: 7px; }
+  .post-mock .line.short { width: 60%; }
+
+  /* Option A: full-width bottom bar */
+  .bar-a { position: absolute; left: 0; right: 0; bottom: 0; background: #1e1e1e; color: #fff; padding: 10px 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 -4px 12px rgba(0,0,0,.15); }
+  .bar-a .play { width: 34px; height: 34px; border-radius: 50%; background: #3858e9; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .bar-a .stop { font-size: 14px; opacity: .8; flex-shrink:0; }
+  .bar-a .progress { flex: 1; height: 4px; background: rgba(255,255,255,.25); border-radius: 2px; position: relative; }
+  .bar-a .progress::after { content:''; position:absolute; left:0; top:0; height:100%; width:38%; background:#3858e9; border-radius:2px; }
+  .bar-a .speed { font-size: 10px; background: rgba(255,255,255,.15); padding: 4px 7px; border-radius: 10px; flex-shrink:0; }
+  .bar-a .close { font-size: 14px; opacity: .7; flex-shrink:0; }
+
+  /* Option B: floating pill bottom-right */
+  .bar-b { position: absolute; right: 14px; bottom: 16px; left: 14px; background: #1e1e1e; color: #fff; padding: 8px 10px; border-radius: 16px; display: flex; align-items: center; gap: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+  .bar-b .play { width: 30px; height: 30px; border-radius: 50%; background: #3858e9; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; }
+  .bar-b .progress { flex: 1; height: 4px; background: rgba(255,255,255,.25); border-radius: 2px; position: relative; }
+  .bar-b .progress::after { content:''; position:absolute; left:0; top:0; height:100%; width:38%; background:#3858e9; border-radius:2px; }
+  .bar-b .speed { font-size: 9px; background: rgba(255,255,255,.15); padding: 3px 6px; border-radius: 10px; flex-shrink:0; }
+  .bar-b .close { font-size: 12px; opacity: .7; flex-shrink:0; }
+
+  /* Option C: inline card at top, condenses to sticky mini on scroll */
+  .card-c { background: #f6f7f7; border: 1px solid #e0e0e0; border-radius: 10px; padding: 10px; margin-bottom: 14px; display:flex; align-items:center; gap: 10px; }
+  .card-c .play { width: 32px; height: 32px; border-radius: 50%; background: #3858e9; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .card-c .info { flex: 1; }
+  .card-c .info .label { font-size: 10px; color: #757575; text-transform: uppercase; letter-spacing:.4px; }
+  .card-c .progress { height: 4px; background: #e0e0e0; border-radius: 2px; margin-top: 4px; position: relative; }
+  .card-c .progress::after { content:''; position:absolute; left:0; top:0; height:100%; width:38%; background:#3858e9; border-radius:2px; }
+  .card-c .speed { font-size: 10px; background: #e9e9e9; padding: 4px 7px; border-radius: 10px; flex-shrink:0; }
+
+  .mini-c { position: absolute; left: 0; right: 0; bottom: 0; background: #1e1e1e; color: #fff; padding: 8px 12px; display: flex; align-items: center; gap: 9px; box-shadow: 0 -4px 12px rgba(0,0,0,.15); }
+  .mini-c .play { width: 26px; height: 26px; border-radius: 50%; background: #3858e9; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:10px; }
+  .mini-c .progress { flex: 1; height: 3px; background: rgba(255,255,255,.25); border-radius: 2px; position: relative; }
+  .mini-c .progress::after { content:''; position:absolute; left:0; top:0; height:100%; width:60%; background:#3858e9; border-radius:2px; }
+  .mini-c .speed { font-size: 9px; opacity:.85; flex-shrink:0; }
+  .mini-c .close { font-size: 12px; opacity: .7; flex-shrink:0; }
+  .scroll-tag { position:absolute; top:8px; right:8px; background:#fff3cd; color:#7a4b00; font-size:9px; padding:2px 6px; border-radius:8px; }
+
+  .col-title { text-align:center; font-size: 12px; font-weight:600; color:#757575; margin-bottom:8px; text-transform:uppercase; letter-spacing:.5px; }
+</style>
+
+<div class="split" style="grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+
+  <div>
+    <div class="col-title">A — Barra fixa full-width</div>
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="post-mock">
+          <h1>Como a BYD virou líder global em elétricos</h1>
+          <div class="meta">8 ago 2026 · 6 min de leitura</div>
+          <p>A fabricante chinesa acelerou investimentos e hoje...</p>
+          <div class="line"></div><div class="line"></div><div class="line short"></div>
+          <div class="line"></div><div class="line"></div>
+        </div>
+        <div class="bar-a">
+          <div class="play">▶</div>
+          <div class="stop">⏹</div>
+          <div class="progress"></div>
+          <div class="speed">1×</div>
+          <div class="close">✕</div>
+        </div>
+      </div>
+    </div>
+    <p class="subtitle" style="text-align:center; margin-top:8px;">Padrão de app de música/podcast. Ocupa a largura toda, sempre alcançável com o polegar.</p>
+  </div>
+
+  <div>
+    <div class="col-title">B — Pílula flutuante</div>
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="post-mock">
+          <h1>Como a BYD virou líder global em elétricos</h1>
+          <div class="meta">8 ago 2026 · 6 min de leitura</div>
+          <p>A fabricante chinesa acelerou investimentos e hoje...</p>
+          <div class="line"></div><div class="line"></div><div class="line short"></div>
+          <div class="line"></div><div class="line"></div>
+        </div>
+        <div class="bar-b">
+          <div class="play">▶</div>
+          <div class="progress"></div>
+          <div class="speed">1×</div>
+          <div class="close">✕</div>
+        </div>
+      </div>
+    </div>
+    <p class="subtitle" style="text-align:center; margin-top:8px;">Menor, com margem das bordas. Não cobre a largura toda, sensação mais leve — mas polegar alcança pior perto da borda.</p>
+  </div>
+
+  <div>
+    <div class="col-title">C — Inline no topo → mini ao rolar</div>
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="scroll-tag">rolando ↓</div>
+        <div class="post-mock" style="padding-top:26px;">
+          <div class="line" style="width:40%; height:6px; margin-bottom:12px;"></div>
+          <p>...continuando o texto do post, o player original já saiu da tela...</p>
+          <div class="line"></div><div class="line"></div><div class="line short"></div>
+          <div class="line"></div><div class="line"></div><div class="line"></div>
+        </div>
+        <div class="mini-c">
+          <div class="play">▶</div>
+          <div class="progress"></div>
+          <div class="speed">1×</div>
+          <div class="close">✕</div>
+        </div>
+      </div>
+    </div>
+    <p class="subtitle" style="text-align:center; margin-top:8px;">No topo do post nasce como card inline (grande, ver abaixo); só vira mini-barra fixa depois que o original sai da tela rolando.</p>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top: 2rem; max-width: 340px; margin-left:auto; margin-right:auto;">
+  <div class="col-title">C — estado inicial (antes de rolar)</div>
+  <div class="card-c">
+    <div class="play">▶</div>
+    <div class="info">
+      <div class="label">Ouvir este post — 6:42</div>
+      <div class="progress"></div>
+    </div>
+    <div class="speed">1×</div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:1.5rem;">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>Barra fixa full-width</h3><p>Simples, robusto, sempre no mesmo lugar</p></div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>Pílula flutuante</h3><p>Leve, não cobre a borda toda</p></div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content"><h3>Inline → mini ao rolar</h3><p>Mais integrado ao conteúdo, 2 estados pra construir</p></div>
+  </div>
+</div>

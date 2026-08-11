@@ -1,0 +1,100 @@
+<h2>Configurações → Narração (customização do player) — exploração Fase 3</h2>
+<p class="subtitle">Tela de admin (não é mais a sidebar estreita do editor) — largura normal de página de Configurações do WP. Qual organização funciona melhor pra "escolher cor e ver o resultado"?</p>
+
+<style>
+  .admin-mock { border: 1px solid #ddd; border-radius: 4px; background: #f0f0f1; font-family: -apple-system, "Segoe UI", sans-serif; color: #1e1e1e; overflow: hidden; }
+  .admin-mock-title { background: #fff; padding: 14px 20px; border-bottom: 1px solid #ddd; font-size: 15px; font-weight: 600; }
+  .admin-body { padding: 18px 20px; }
+  .field-row { margin-bottom: 14px; }
+  .field-label { font-size: 12.5px; font-weight: 600; color: #1e1e1e; margin-bottom: 4px; display: block; }
+  .field-hint { font-size: 11px; color: #757575; margin-top: 2px; }
+  .color-row { display: flex; align-items: center; gap: 8px; }
+  .color-swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid #949494; flex-shrink: 0; }
+  .color-hex { font-size: 12px; color: #757575; font-family: monospace; }
+  .wp-select-sm { padding: 5px 8px; border: 1px solid #949494; border-radius: 3px; font-size: 12.5px; background: #fff; }
+  .save-btn { background: #2271b1; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; margin-top: 6px; }
+  .reset-link { color: #b32d2e; font-size: 12px; margin-left: 10px; }
+
+  /* live preview of the actual reader-facing player */
+  .player-preview { background: var(--pv-bg, #1e1e1e); color: var(--pv-text, #fff); border-radius: var(--pv-radius, 10px); padding: 10px 14px; display: flex; align-items: center; gap: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+  .player-preview .p-btn { width: 30px; height: 30px; border-radius: 50%; background: var(--pv-accent, #3858e9); display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; color: #fff; }
+  .player-preview .p-bar { flex: 1; height: 5px; background: rgba(255,255,255,.25); border-radius: 3px; position: relative; }
+  .player-preview .p-bar::after { content:''; position:absolute; left:0; top:0; height:100%; width:40%; background: var(--pv-accent, #3858e9); border-radius: 3px; }
+  .player-preview .p-time { font-size: 11px; opacity: .8; }
+  .player-preview .p-speed { font-size: 11px; background: rgba(255,255,255,.15); padding: 3px 7px; border-radius: 10px; }
+  .preview-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #757575; margin-bottom: 8px; font-weight: 600; }
+</style>
+
+<div class="cards" style="grid-template-columns: 1fr 1fr;">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="admin-mock">
+        <div class="admin-mock-title">🎙 Narração</div>
+        <div class="admin-body" style="display:flex; gap:20px;">
+          <div style="flex:1;">
+            <div class="field-row">
+              <label class="field-label">Cor de destaque (botão, progresso)</label>
+              <div class="color-row"><div class="color-swatch" style="background:#3858e9"></div><span class="color-hex">#3858E9</span></div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Cor de fundo do player</label>
+              <div class="color-row"><div class="color-swatch" style="background:#1e1e1e"></div><span class="color-hex">#1E1E1E</span></div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Borda arredondada</label>
+              <select class="wp-select-sm"><option>Padrão (10px)</option></select>
+            </div>
+            <button class="save-btn">Salvar alterações</button>
+            <a class="reset-link" href="#">Restaurar padrão</a>
+          </div>
+          <div style="flex:1;">
+            <div class="preview-label">Preview ao vivo</div>
+            <div class="player-preview">
+              <div class="p-btn">▶</div>
+              <div class="p-bar"></div>
+              <span class="p-time">1:24</span>
+              <span class="p-speed">1×</span>
+            </div>
+            <p class="field-hint" style="margin-top:10px;">Atualiza a cada mudança, antes de salvar.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Split com preview fixo ao lado</h3>
+      <p>Controles à esquerda, player de verdade renderizado à direita, atualiza em tempo real. Zero trial-and-error (mudar→salvar→ver no post→repetir).</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="admin-mock">
+        <div class="admin-mock-title">🎙 Narração</div>
+        <div class="admin-body">
+          <div class="preview-label">Preview ao vivo</div>
+          <div class="player-preview" style="margin-bottom:16px;">
+            <div class="p-btn">▶</div>
+            <div class="p-bar"></div>
+            <span class="p-time">1:24</span>
+            <span class="p-speed">1×</span>
+          </div>
+          <table style="width:100%; border-collapse: collapse;">
+            <tr><td style="padding:8px 0; font-size:12.5px; font-weight:600; width:45%;">Cor de destaque</td><td><div class="color-row"><div class="color-swatch" style="background:#3858e9"></div><span class="color-hex">#3858E9</span></div></td></tr>
+            <tr><td style="padding:8px 0; font-size:12.5px; font-weight:600;">Cor de fundo</td><td><div class="color-row"><div class="color-swatch" style="background:#1e1e1e"></div><span class="color-hex">#1E1E1E</span></div></td></tr>
+            <tr><td style="padding:8px 0; font-size:12.5px; font-weight:600;">Borda arredondada</td><td><select class="wp-select-sm"><option>Padrão (10px)</option></select></td></tr>
+          </table>
+          <button class="save-btn">Salvar alterações</button>
+          <a class="reset-link" href="#">Restaurar padrão</a>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Preview no topo, campos em tabela abaixo</h3>
+      <p>Layout de settings page clássico do WP (`do_settings_sections` padrão). Preview ainda ao vivo, mas separado dos campos, não lado a lado.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem;">As duas têm preview ao vivo (não-negociável — sem isso é tentativa-e-erro). Diferença é só a disposição espacial.</p>
