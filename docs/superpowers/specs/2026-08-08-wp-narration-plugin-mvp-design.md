@@ -303,6 +303,7 @@ Isso substitui a linha antiga "bloqueia se WASM não suportado" por um degradê 
 | Cenário | Comportamento |
 |---|---|
 | WASM realmente ausente (raro) | Aba mostra aviso, botão "Gerar" fica desabilitado (feature-detect antes de deixar tentar) |
+| Contexto não-seguro (site em HTTP puro) | `crypto.subtle` e AudioWorklet não existem fora de secure context — painel bloqueia a geração com "precisa de HTTPS (ou localhost)". Achado na revisão da Task 5: sem isso o hash de fonte lança e a detecção de desatualizado quebra. |
 | WASM ok, mas sem `crossOriginIsolated` (headers COOP/COEP ausentes) | Cai pra build single-thread do ONNX Runtime — mais lento, mas funciona. Não bloqueia. |
 | Storage insuficiente (`navigator.storage.estimate()`) | Avisa *antes* de baixar o modelo, não depois de gastar banda |
 | Dispositivo lento (RTF medido na calibração ruim, ou ETA alto pra texto longo) | Aviso com tempo estimado + pede confirmação pra textos longos; nunca bloqueia — não existe fallback de servidor |

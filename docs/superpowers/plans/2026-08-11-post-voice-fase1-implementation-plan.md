@@ -1189,11 +1189,12 @@ git commit -m "feat: REST client for saving narration"
 
 Glue-tier React UI, no Jest unit test — verified by the E2E suite (Tasks 19–20), matching the spec's own coverage tiering ("componentes React do painel" listed explicitly as E2E-only).
 
-Three behaviours here are load-bearing for the spec's approved UI (see "UI/UX do painel 'Narração' (aprovado)") and for two mandatory E2E scenarios — do not drop them while simplifying:
+Four behaviours here are load-bearing for the spec's approved UI (see "UI/UX do painel 'Narração' (aprovado)") and for two mandatory E2E scenarios — do not drop them while simplifying:
 
 1. **Storage pre-check before the model downloads.** `navigator.storage.estimate()` runs *before* `engine.load()`, and a failing check aborts with a visible error instead of spending ~190MB of the author's bandwidth. This is the implementation the "insufficient storage" E2E scenario asserts against.
 2. **Stale badge.** The panel recomputes the current text's hash on every render and compares it to the saved `_narration_source_hash` meta; a mismatch shows "may be out of date". Non-blocking, never auto-regenerates (spec: "Fluxo de dados" step 7).
 3. **Existing-audio state.** When the post already has narration, the panel shows the generation date, the badge, and an inline `<audio>` player, with the primary button reading "Generate again" (spec's approved Option C mockup).
+4. **Secure-context guard.** `crypto.subtle` (used for the source hash) exists only in a secure context, and so does AudioWorklet. On a plain-HTTP WordPress site — common for local installs and small self-hosted sites — generation must fail immediately with a clear message rather than throwing an unhandled rejection partway through. The reference demo does the same check before initialising audio.
 
 - [ ] **Step 1: Implement the panel**
 
@@ -1323,6 +1324,20 @@ function NarrationPanel() {
       const text = extractNarratableText( blocks );
       if ( ! text ) {
         throw new Error( __( 'No readable text found in this post.', 'post-voice' ) );
+      }
+
+      // `crypto.subtle` only exists in a secure context. On a plain-HTTP site it
+      // is undefined, so hashing throws and staleness detection breaks. Check up
+      // front rather than failing mid-generation after the model has downloaded.
+      // The same requirement gates AudioWorklet and cross-origin isolation, so
+      // this one check covers the whole feature.
+      if ( ! window.isSecureContext || ! window.crypto?.subtle ) {
+        throw new Error(
+          __(
+            'Narration needs a secure connection. Load the editor over HTTPS (or localhost) and try again.',
+            'post-voice'
+          )
+        );
       }
 
       // Check storage BEFORE downloading ~190MB of model, not after.
