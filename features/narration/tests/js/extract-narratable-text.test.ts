@@ -52,4 +52,37 @@ describe( 'extractNarratableText', () => {
     ];
     expect( extractNarratableText( blocks ) ).toBe( 'spaced out' );
   } );
+
+  it( 'decodes HTML entities so the engine never reads them aloud literally', () => {
+    // WordPress escapes every & in saved content, and wptexturize() rewrites
+    // straight quotes as &#8217; — so this is the common case, not an edge case.
+    const blocks = [
+      {
+        name: 'core/paragraph',
+        attributes: { content: 'Tom &amp; Jerry&#8217;s caf&eacute; &hellip; 9&#8211;5' },
+        innerBlocks: [],
+      },
+    ];
+    expect( extractNarratableText( blocks ) ).toBe( 'Tom & Jerry’s caf&eacute; … 9–5' );
+  } );
+
+  it( 'strips tags before decoding, so escaped markup is not deleted as a tag', () => {
+    const blocks = [
+      {
+        name: 'core/paragraph',
+        attributes: { content: 'Use the &lt;strong&gt; tag' },
+        innerBlocks: [],
+      },
+    ];
+    expect( extractNarratableText( blocks ) ).toBe( 'Use the <strong> tag' );
+  } );
+
+  it( 'coerces non-string content instead of dropping the block', () => {
+    // WordPress can hand back a RichTextData instance rather than a plain string.
+    const richTextLike = { toString: () => 'From RichTextData' };
+    const blocks = [
+      { name: 'core/paragraph', attributes: { content: richTextLike }, innerBlocks: [] },
+    ];
+    expect( extractNarratableText( blocks ) ).toBe( 'From RichTextData' );
+  } );
 } );
