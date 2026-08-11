@@ -11,7 +11,7 @@
 **Repo location:** New, separate repository at `/home/luigi/Documentos/projects/post-voice/` (repo root == plugin folder, matches the spec's architecture tree). The `pocket-tts` repo (where this plan and the spec live) stays reference-only — it is never the plugin's codebase, per the spec's Contexto section. All file paths below are relative to that new repo root unless stated otherwise.
 
 **Source material ported from `pocket-tts` (reference repo):**
-- `inference-worker.js` → vendored into `features/narration/editor/engine/pocket-tts.worker.js` with one targeted diff (Task 2).
+- `inference-worker.js` → vendored into `features/narration/editor/engine/pocket-tts.worker.js` with one targeted diff (Task 2), together with the `sentencepiece.js` tokenizer it dynamically imports.
 - `float32ToWavBlob()` math (`onnx-streaming.js`) → reused as the Float32→Int16 conversion inside `mp3-encoder.ts` (Task 6), MP3 instead of WAV per the spec's "Formato de áudio salvo" decision.
 
 ## Global Constraints
@@ -102,7 +102,8 @@ post-voice/
 │   │   ├── model-source.ts
 │   │   └── engine/
 │   │       ├── tts-engine.ts
-│   │       └── pocket-tts.worker.js
+│   │       ├── pocket-tts.worker.js
+│   │       └── sentencepiece.js   (vendored, ~3.9MB)
 │   ├── frontend/
 │   │   ├── player.ts
 │   │   └── player-state.ts
@@ -299,17 +300,42 @@ The import is **extensionless on purpose**. `model-source` is a `.ts` file; `@wo
 
 No other line changes — `MODEL_STEMS`, `LANGUAGE_BUNDLES`, the tokenizer/voice-loading/generation pipeline are already correct as copied.
 
-- [ ] **Step 3: Manual smoke check**
+- [ ] **Step 3: Vendor the tokenizer the worker depends on**
+
+The worker dynamically imports a SentencePiece tokenizer:
+
+```js
+const spModule = await import("./sentencepiece.js?v=3");
+```
+
+That file is not part of the worker — it must be vendored alongside it, or the worker throws at bundle-load time and no audio is ever produced.
+
+```bash
+cp /home/luigi/Documentos/projects/test/pocket-tts/sentencepiece.js \
+   features/narration/editor/engine/sentencepiece.js
+```
+
+Then drop the cache-busting query string from the import, since webpack treats `?v=3` as a resource query rather than part of the filename:
+
+```js
+const spModule = await import("./sentencepiece.js");
+```
+
+Two notes on what NOT to do:
+- `sentencepiece.js` is ~3.9MB and already patched for browser/worker use (the `fs`/`Buffer` shims are inlined at the top of the file). Copy it verbatim — same discipline as the worker itself.
+- The reference repo also contains `sentencepiece-browser.js`. Nothing imports it; it is a superseded standalone shim. Do **not** vendor it.
+
+- [ ] **Step 4: Manual smoke check**
 
 This file has no automated unit tests (glue-tier, per Global Constraints). Verify it loads syntactically:
 
 Run: `node --check features/narration/editor/engine/pocket-tts.worker.js`
 Expected: no output (valid syntax). Full behavioral verification happens in Task 3's manual check and the Task 19 E2E happy-path scenario.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add features/narration/editor/engine/pocket-tts.worker.js
+git add features/narration/editor/engine/pocket-tts.worker.js features/narration/editor/engine/sentencepiece.js
 git commit -m "feat: vendor Pocket TTS inference worker, point at pinned model mirror"
 ```
 
