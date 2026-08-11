@@ -29,7 +29,7 @@
 - Every user-facing string goes through `__()`/`_x()` from the first commit; `.pot` generated in CI (spec: "i18n").
 - Dependency audit thresholds (spec: "Auditoria de dependências"): `npm audit --omit=dev` → 0 critical/0 high; full `npm audit` → 1 critical/5 high/10 moderate; `composer audit` → 0 critical/0 high. CI always uses `npm ci`/`composer install`, never bare `install`.
 - Model source: our own Hugging Face mirror, pinned to a commit SHA, never `KevinAHM/pocket-tts-onnx` directly and never `resolve/main` (spec: "Pin de versão do modelo").
-- **One manual, non-automatable input this whole plan needs from you:** your Hugging Face username/org, to create the mirror repo under (Task 1). Nothing else in this plan requires manual decisions — everything else is fully specified.
+- **One manual, non-automatable step this whole plan needs from you:** running Task 1's `hf upload` yourself (needs your own HF login) and pasting the resulting commit SHA into `model-source.ts`. Namespace is already known — `luigi-moretti`. Nothing else in this plan requires manual decisions — everything else is fully specified.
 
 ---
 
@@ -111,11 +111,12 @@ This mirror exists so the plugin has a version-pinned, self-controlled source fo
 
 Save to `docs/mirror-readme-template.md`.
 
+Namespace confirmed (`hf auth whoami`): **`luigi-moretti`**. CLI installed via the official install script (`curl -LsSf https://hf.co/cli/install.sh | bash`), so commands below use the current `hf` entry point, not the older `huggingface-cli` (same tool, renamed — `huggingface-cli` still works as an alias but `hf` is the maintained one going forward).
+
 - [ ] **Step 2: Download only the 5 supported language folders from upstream**
 
 ```bash
-pip install -U "huggingface_hub[cli]"
-huggingface-cli download KevinAHM/pocket-tts-onnx \
+hf download KevinAHM/pocket-tts-onnx \
   --include "english_2026-04/*" "german/*" "italian/*" "portuguese/*" "spanish/*" \
   --local-dir ./pocket-tts-onnx-mirror-src
 ```
@@ -123,14 +124,14 @@ huggingface-cli download KevinAHM/pocket-tts-onnx \
 - [ ] **Step 3: Create your mirror repo and upload**
 
 ```bash
-huggingface-cli login   # your own HF token
-huggingface-cli repo create pocket-tts-onnx-mirror --type model -y
+hf auth login   # already done — skip if `hf auth whoami` already shows luigi-moretti
+hf repo create luigi-moretti/pocket-tts-onnx-mirror --type model -y
 cp docs/mirror-readme-template.md ./pocket-tts-onnx-mirror-src/README.md
-huggingface-cli upload <YOUR_HF_NAMESPACE>/pocket-tts-onnx-mirror ./pocket-tts-onnx-mirror-src . \
+hf upload luigi-moretti/pocket-tts-onnx-mirror ./pocket-tts-onnx-mirror-src . \
   --commit-message "Initial mirror: 5 supported language bundles from KevinAHM/pocket-tts-onnx"
 ```
 
-Replace `<YOUR_HF_NAMESPACE>` with your actual Hugging Face username or org. The upload command prints the resulting commit SHA — copy it (or open the repo's "Files and versions" tab on huggingface.co and copy the SHA of the latest commit).
+The upload command prints the resulting commit SHA — copy it (or open the repo's "Files and versions" tab on huggingface.co and copy the SHA of the latest commit).
 
 - [ ] **Step 4: Write `model-source.ts` with the real pinned SHA**
 
@@ -139,7 +140,7 @@ Replace `<YOUR_HF_NAMESPACE>` with your actual Hugging Face username or org. The
 // directly and never `resolve/main` — see "Pin de versão do modelo" in the Fase 1 spec.
 // Bumping this is a deliberate action: new PR, smoke test all 5 languages + E2E, then merge.
 export const MODEL_BASE_URL =
-  'https://huggingface.co/<YOUR_HF_NAMESPACE>/pocket-tts-onnx-mirror/resolve/<COMMIT_SHA_FROM_STEP_3>/';
+  'https://huggingface.co/luigi-moretti/pocket-tts-onnx-mirror/resolve/<COMMIT_SHA_FROM_STEP_3>/';
 
 export const SUPPORTED_LANGUAGES = [
   'english_2026-04',
@@ -2869,7 +2870,7 @@ git commit -m "chore: i18n scaffold + wordpress.org-format readme.txt"
 **Spec coverage** — every named decision in the spec maps to a task:
 Nome/slug → Global Constraints + Task 1/11. Contrato REST → Task 13. Formato de áudio → Task 7. Capability `upload_files` → Task 13. Post types → Task 13/14/15/16 all scope to `post`. Auto-draft guard (client + server) → Task 10 (disabled button) + Task 13 (409). `post_parent`/symmetric cleanup → Task 14. WP/PHP mínimos → Task 11 plugin header + `phpcs.xml.dist`/`phpstan.neon`. Player UI/UX (pílula) → Task 16 (markup) + Task 17 (behavior). A11y enforcement → Task 11 (`jsx-a11y` via `@wordpress/eslint-plugin`) + Task 20 (axe/keyboard/reduced-motion E2E). E2E scenarios → Tasks 19–20 (all 8). Pin de versão do modelo → Task 1. Auditoria de dependências → Task 21. Multisite/no-JS-fallback/preview-discard-silently → no code needed, already true by construction (client-side cache, server-rendered `<audio>`, in-memory blob never persisted before confirm) — correctly not turned into tasks.
 
-**Placeholder scan** — the only literal placeholder tokens left in any file are `<YOUR_HF_NAMESPACE>` and `<COMMIT_SHA_FROM_STEP_3>` inside Task 1, and both are explicitly called out as required manual replacements before that task's own commit step — not unresolved design gaps.
+**Placeholder scan** — the only literal placeholder token left in any file is `<COMMIT_SHA_FROM_STEP_3>` inside Task 1 (namespace is already resolved to `luigi-moretti`), explicitly called out as a required manual replacement before that task's own commit step — not an unresolved design gap.
 
 **Type/interface consistency** — checked across tasks: `PocketTtsEngine.generate()` signature in Task 3 matches every call site in Task 10. `encodeMp3(float32Audio, sampleRate)` in Task 7 matches its call in Task 10. `Post_Voice_Post_Meta::save(int, int, string, string)` signature in Task 12 matches every call site in Tasks 13, 14, 15, 16 tests. REST response shape (`attachment_id`, `url`, `generated_at`, `language`) in Task 13 matches `SaveNarrationResponse` in Task 9. `data-role` attribute values (`play`/`rate`/`close`/`live`) match exactly between Task 16 (PHP-rendered markup) and Task 17 (TS selectors) and Task 20 (E2E locators).
 
