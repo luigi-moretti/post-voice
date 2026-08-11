@@ -33,13 +33,50 @@
 
 ---
 
+## Execution Order
+
+**Task numbers below are stable identifiers, not the running order.** Execute in the sequence in this table — it is dependency-correct. Task 11 builds the toolchain (`package.json`, `jest.config.js`, `tsconfig.json`, `webpack.config.js`, `composer.json`) that every other task's verification commands invoke, so it runs first; the numbering stayed put so task IDs remain stable across the plan's cross-references.
+
+| Order | Task | Why here |
+|---|---|---|
+| 1 | **11** — tooling scaffold + bootstrap | Everything else runs `npm run test:unit` / `npx tsc` / `composer run test`. Nothing can be verified before this exists. |
+| 2 | **1** — model mirror + `model-source.ts` | Needs Jest (Task 11). Blocks the worker. |
+| 3 | **2** — vendor the worker | Imports `MODEL_BASE_URL`. |
+| 4 | **3** — `tts-engine.ts` | Wraps the worker. |
+| 5 | **4** — `extract-narratable-text.ts` | Pure, independent. |
+| 6 | **5** — `source-hash.ts` | Pure, independent. |
+| 7 | **6** — `rtf-calibration.ts` | Pure, independent. |
+| 8 | **25** — `storage-check.ts` | Pure, independent. New task (closes the storage-precheck gap Task 19 tests for). |
+| 9 | **7** — `mp3-encoder.ts` | Pure, independent. |
+| 10 | **8** — `player-state.ts` | Pure, independent. |
+| 11 | **9** — `narration-api.ts` | Needs the REST contract to be settled (it is — Global Constraints). |
+| 12 | **12** — `class-post-meta.php` | First PHP class; appends its own bootstrap wiring. |
+| 13 | **13** — `class-rest-api.php` | Consumes post meta. |
+| 14 | **14** — `class-attachment-cleanup.php` | Consumes post meta. |
+| 15 | **15** — `class-assets.php` | Needs build output names pinned (Task 11's `webpack.config.js`). |
+| 16 | **16** — `class-frontend-render.php` | Consumes post meta. |
+| 17 | **10** — `index.tsx` editor panel | Consumes nearly every TS module above. |
+| 18 | **17** — `player.ts` | Consumes `player-state.ts` + Task 16's markup. |
+| 19 | **18** — `.wp-env.json` + COOP/COEP | Needed before any E2E run. |
+| 20 | **19** — E2E core scenarios | Needs the full stack built. |
+| 21 | **20** — E2E accessibility | Needs the full stack built. |
+| 22 | **21** — audit scripts | Independent tooling. |
+| 23 | **22** — PHP coverage gate | Needs the PHPUnit suite to exist. |
+| 24 | **23** — CI workflow | Wires up everything above. |
+| 25 | **24** — i18n + `readme.txt` | Needs the panel's strings to exist. |
+
+**Incremental bootstrap wiring:** `post-voice.php` (Task 11) ships with constants only — no `require_once` of feature classes. Each PHP task (12, 13, 14, 15, 16) appends its own `require_once` line and its own registration call as part of that task. A bootstrap that requires files which don't exist yet is a fatal error the moment PHPUnit's bootstrap loads the plugin, which is exactly what Task 12's test run does.
+
+---
+
 ## File Structure
 
 ```
 post-voice/
 ├── post-voice.php
 ├── composer.json, composer.lock, phpcs.xml.dist, phpstan.neon, phpunit.xml.dist
-├── package.json, tsconfig.json, .eslintrc.js, .prettierrc.js, jest.config.js
+├── package.json, tsconfig.json, webpack.config.js, .eslintrc.js, .prettierrc.js, jest.config.js
+├── test/jest.setup.js
 ├── .wp-env.json
 ├── .github/workflows/ci.yml
 ├── scripts/
@@ -60,6 +97,7 @@ post-voice/
 │   │   ├── extract-narratable-text.ts
 │   │   ├── source-hash.ts
 │   │   ├── rtf-calibration.ts
+│   │   ├── storage-check.ts
 │   │   ├── mp3-encoder.ts
 │   │   ├── model-source.ts
 │   │   └── engine/
@@ -73,6 +111,7 @@ post-voice/
 │       └── js/
 ├── e2e/
 │   ├── mu-plugins/coop-coep-headers.php (mapped via .wp-env.json)
+│   ├── fixtures/sample.mp3
 │   ├── narration.spec.ts
 │   ├── narration-fallbacks.spec.ts
 │   └── narration-a11y.spec.ts
@@ -545,22 +584,13 @@ git commit -m "feat: extract narratable text from eligible block types"
 **Files:**
 - Create: `features/narration/editor/source-hash.ts`
 - Test: `features/narration/tests/js/source-hash.test.ts`
-- Create: `test/jest.setup.js` (Web Crypto polyfill for the Jest/jsdom environment)
 
 **Interfaces:**
-- Produces: `computeSourceHash(text: string): Promise<string>` (64-char lowercase hex SHA-256) — consumed by the React panel (Task 9) and compared against the `_narration_source_hash` meta (Task 6/PHP) to detect staleness.
+- Produces: `computeSourceHash(text: string): Promise<string>` (64-char lowercase hex SHA-256) — consumed by the editor panel (Task 10) and compared against the `_narration_source_hash` meta (Task 12) to detect staleness.
 
-- [ ] **Step 1: Write the Jest setup file (Node's Web Crypto polyfill)**
+The Web Crypto polyfill this needs (`test/jest.setup.js`) already exists — Task 11 created it.
 
-```js
-// test/jest.setup.js
-const { webcrypto } = require( 'node:crypto' );
-if ( ! globalThis.crypto ) {
-  globalThis.crypto = webcrypto;
-}
-```
-
-- [ ] **Step 2: Write the failing tests**
+- [ ] **Step 1: Write the failing tests**
 
 ```ts
 import { computeSourceHash } from '../../editor/source-hash';
@@ -585,12 +615,12 @@ describe( 'computeSourceHash', () => {
 } );
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [ ] **Step 2: Run tests to verify they fail**
 
 Run: `npm run test:unit -- source-hash`
 Expected: FAIL — module not found.
 
-- [ ] **Step 4: Implement**
+- [ ] **Step 3: Implement**
 
 ```ts
 export async function computeSourceHash( text: string ): Promise<string> {
@@ -603,15 +633,15 @@ export async function computeSourceHash( text: string ): Promise<string> {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npm run test:unit -- source-hash`
 Expected: PASS (3/3).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add features/narration/editor/source-hash.ts features/narration/tests/js/source-hash.test.ts test/jest.setup.js
+git add features/narration/editor/source-hash.ts features/narration/tests/js/source-hash.test.ts
 git commit -m "feat: SHA-256 source-hash for staleness detection"
 ```
 
@@ -987,10 +1017,16 @@ git commit -m "feat: REST client for saving narration"
 - Create: `features/narration/editor/index.tsx`
 
 **Interfaces:**
-- Consumes: `PocketTtsEngine` (Task 3), `SUPPORTED_LANGUAGES` (Task 1), `extractNarratableText` (Task 4), `computeSourceHash` (Task 5), `estimateAudioDurationSeconds`/`estimateEtaSeconds`/`requiresLongTextConfirmation`/`shouldWarnSlowDevice` (Task 6), `encodeMp3` (Task 7), `saveNarration` (Task 9).
+- Consumes: `PocketTtsEngine` (Task 3), `SUPPORTED_LANGUAGES` (Task 1), `extractNarratableText` (Task 4), `computeSourceHash` (Task 5), `estimateAudioDurationSeconds`/`estimateEtaSeconds`/`requiresLongTextConfirmation`/`shouldWarnSlowDevice` (Task 6), `hasEnoughStorage`/`formatBytes`/`LANGUAGE_BUNDLE_BYTES` (Task 25), `encodeMp3` (Task 7), `saveNarration` (Task 9).
 - Produces: registers the `PluginSidebar` named `post-voice-panel`, rendering `.post-voice-panel` (targeted by the a11y E2E test in Task 20).
 
 Glue-tier React UI, no Jest unit test — verified by the E2E suite (Tasks 19–20), matching the spec's own coverage tiering ("componentes React do painel" listed explicitly as E2E-only).
+
+Three behaviours here are load-bearing for the spec's approved UI (see "UI/UX do painel 'Narração' (aprovado)") and for two mandatory E2E scenarios — do not drop them while simplifying:
+
+1. **Storage pre-check before the model downloads.** `navigator.storage.estimate()` runs *before* `engine.load()`, and a failing check aborts with a visible error instead of spending ~190MB of the author's bandwidth. This is the implementation the "insufficient storage" E2E scenario asserts against.
+2. **Stale badge.** The panel recomputes the current text's hash on every render and compares it to the saved `_narration_source_hash` meta; a mismatch shows "may be out of date". Non-blocking, never auto-regenerates (spec: "Fluxo de dados" step 7).
+3. **Existing-audio state.** When the post already has narration, the panel shows the generation date, the badge, and an inline `<audio>` player, with the primary button reading "Generate again" (spec's approved Option C mockup).
 
 - [ ] **Step 1: Implement the panel**
 
@@ -998,8 +1034,10 @@ Glue-tier React UI, no Jest unit test — verified by the E2E suite (Tasks 19–
 import { registerPlugin } from '@wordpress/plugins';
 import { PluginSidebar, PluginSidebarMoreMenuItem } from '@wordpress/editor';
 import { useSelect, useDispatch } from '@wordpress/data';
-import { useState, useRef, useCallback } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { useState, useRef, useEffect, useCallback } from '@wordpress/element';
+import { __, sprintf } from '@wordpress/i18n';
+import apiFetch from '@wordpress/api-fetch';
+import { dateI18n } from '@wordpress/date';
 import { store as noticesStore } from '@wordpress/notices';
 
 import { PocketTtsEngine } from './engine/tts-engine';
@@ -1012,47 +1050,105 @@ import {
   requiresLongTextConfirmation,
   shouldWarnSlowDevice,
 } from './rtf-calibration';
+import { hasEnoughStorage, formatBytes, LANGUAGE_BUNDLE_BYTES } from './storage-check';
 import { encodeMp3 } from './mp3-encoder';
 import { saveNarration } from './narration-api';
 
 type PanelState = 'idle' | 'calibrating' | 'confirming-long-text' | 'generating' | 'saving' | 'error';
 
-function NarrationPanel() {
-  const [ state, setState ] = useState<PanelState>( 'idle' );
-  const [ language, setLanguage ] = useState<string>( 'portuguese' );
-  const [ etaSeconds, setEtaSeconds ] = useState<number | null>( null );
-  const [ previewBlob, setPreviewBlob ] = useState<Blob | null>( null );
-  const [ error, setError ] = useState<string | null>( null );
-  const abortRef = useRef<AbortController | null>( null );
-  const engineRef = useRef<PocketTtsEngine | null>( null );
+interface ExistingNarration {
+  url: string;
+  generatedAt: string;
+}
 
-  const { postId, blocks, postStatus } = useSelect( ( select ) => {
+function NarrationPanel() {
+  const [ state, setState ] = useState< PanelState >( 'idle' );
+  const [ language, setLanguage ] = useState< string >( 'portuguese' );
+  const [ etaSeconds, setEtaSeconds ] = useState< number | null >( null );
+  const [ previewUrl, setPreviewUrl ] = useState< string | null >( null );
+  const [ error, setError ] = useState< string | null >( null );
+  const [ existing, setExisting ] = useState< ExistingNarration | null >( null );
+  const [ isStale, setIsStale ] = useState( false );
+
+  const previewBlobRef = useRef< Blob | null >( null );
+  const abortRef = useRef< AbortController | null >( null );
+  const engineRef = useRef< PocketTtsEngine | null >( null );
+
+  const { postId, blocks, postStatus, meta } = useSelect( ( select ) => {
     const editor = select( 'core/editor' ) as any;
     return {
       postId: editor.getCurrentPostId(),
       blocks: ( select( 'core/block-editor' ) as any ).getBlocks(),
       postStatus: editor.getEditedPostAttribute( 'status' ),
+      meta: editor.getEditedPostAttribute( 'meta' ) || {},
     };
   }, [] );
 
-  const savedHash = useSelect(
-    ( select ) => ( select( 'core/editor' ) as any ).getEditedPostAttribute( 'meta' )?._narration_source_hash,
-    []
-  );
-
   const { createErrorNotice } = useDispatch( noticesStore );
 
-  const runGeneration = useCallback( async ( text: string ) => {
-    setState( 'generating' );
-    abortRef.current = new AbortController();
-    const audio = await engineRef.current!.generate( text, {
-      voice: 'default',
-      signal: abortRef.current.signal,
+  const attachmentId = meta._narration_attachment_id as number | undefined;
+  const savedHash = meta._narration_source_hash as string | undefined;
+
+  // Load the existing attachment's URL and date so the panel can show a real
+  // inline player instead of just claiming audio exists.
+  useEffect( () => {
+    let cancelled = false;
+    if ( ! attachmentId ) {
+      setExisting( null );
+      return;
+    }
+    apiFetch( { path: `/wp/v2/media/${ attachmentId }` } )
+      .then( ( media: any ) => {
+        if ( ! cancelled ) {
+          setExisting( { url: media.source_url, generatedAt: media.date_gmt } );
+        }
+      } )
+      .catch( () => {
+        // Attachment vanished (deleted straight from the Media Library). The
+        // delete_attachment hook clears the meta server-side; nothing to show here.
+        if ( ! cancelled ) setExisting( null );
+      } );
+    return () => {
+      cancelled = true;
+    };
+  }, [ attachmentId ] );
+
+  // Recompute the current text hash and compare against what was saved.
+  useEffect( () => {
+    let cancelled = false;
+    if ( ! savedHash ) {
+      setIsStale( false );
+      return;
+    }
+    computeSourceHash( extractNarratableText( blocks ) ).then( ( currentHash ) => {
+      if ( ! cancelled ) setIsStale( currentHash !== savedHash );
     } );
-    const mp3 = encodeMp3( audio, engineRef.current!.sampleRate );
-    setPreviewBlob( mp3 );
-    setState( 'idle' );
+    return () => {
+      cancelled = true;
+    };
+  }, [ blocks, savedHash ] );
+
+  const setPreview = useCallback( ( blob: Blob | null ) => {
+    setPreviewUrl( ( previous ) => {
+      if ( previous ) URL.revokeObjectURL( previous );
+      return blob ? URL.createObjectURL( blob ) : null;
+    } );
+    previewBlobRef.current = blob;
   }, [] );
+
+  const runGeneration = useCallback(
+    async ( text: string ) => {
+      setState( 'generating' );
+      abortRef.current = new AbortController();
+      const audio = await engineRef.current!.generate( text, {
+        voice: 'default',
+        signal: abortRef.current.signal,
+      } );
+      setPreview( encodeMp3( audio, engineRef.current!.sampleRate ) );
+      setState( 'idle' );
+    },
+    [ setPreview ]
+  );
 
   const startGeneration = useCallback( async () => {
     setError( null );
@@ -1063,14 +1159,30 @@ function NarrationPanel() {
         throw new Error( __( 'No readable text found in this post.', 'post-voice' ) );
       }
 
+      // Check storage BEFORE downloading ~190MB of model, not after.
+      if ( ! engineRef.current && navigator.storage?.estimate ) {
+        const estimate = await navigator.storage.estimate();
+        if ( ! hasEnoughStorage( estimate ) ) {
+          throw new Error(
+            sprintf(
+              /* translators: %s: required free storage, e.g. "285 MB". */
+              __(
+                'Not enough free storage to download the voice model. About %s of free space is needed.',
+                'post-voice'
+              ),
+              formatBytes( LANGUAGE_BUNDLE_BYTES * 1.5 )
+            )
+          );
+        }
+      }
+
       if ( ! engineRef.current ) {
         engineRef.current = new PocketTtsEngine();
         await engineRef.current.load( language );
       }
 
       const { rtf } = await engineRef.current.calibrate();
-      const estimatedDuration = estimateAudioDurationSeconds( text.length );
-      const eta = estimateEtaSeconds( rtf, estimatedDuration );
+      const eta = estimateEtaSeconds( rtf, estimateAudioDurationSeconds( text.length ) );
       setEtaSeconds( eta );
 
       if ( requiresLongTextConfirmation( eta ) ) {
@@ -1087,10 +1199,14 @@ function NarrationPanel() {
 
       await runGeneration( text );
     } catch ( err ) {
+      if ( ( err as Error ).name === 'AbortError' ) {
+        setState( 'idle' );
+        return;
+      }
       setState( 'error' );
       setError( ( err as Error ).message );
     }
-  }, [ blocks, language, runGeneration ] );
+  }, [ blocks, language, runGeneration, createErrorNotice ] );
 
   const cancelGeneration = useCallback( () => {
     abortRef.current?.abort();
@@ -1098,21 +1214,24 @@ function NarrationPanel() {
   }, [] );
 
   const confirmSave = useCallback( async () => {
-    if ( ! previewBlob ) return;
+    const blob = previewBlobRef.current;
+    if ( ! blob ) return;
     setState( 'saving' );
     try {
-      const text = extractNarratableText( blocks );
-      const sourceHash = await computeSourceHash( text );
-      await saveNarration( postId, previewBlob, language, sourceHash );
-      setPreviewBlob( null );
+      const sourceHash = await computeSourceHash( extractNarratableText( blocks ) );
+      const saved = await saveNarration( postId, blob, language, sourceHash );
+      setPreview( null );
+      setExisting( { url: saved.url, generatedAt: saved.generated_at } );
+      setIsStale( false );
       setState( 'idle' );
     } catch ( err ) {
       setState( 'error' );
       setError( ( err as Error ).message );
     }
-  }, [ previewBlob, blocks, language, postId ] );
+  }, [ blocks, language, postId, setPreview ] );
 
   const isAutoDraft = postStatus === 'auto-draft';
+  const isBusy = state !== 'idle' && state !== 'error';
 
   return (
     <>
@@ -1123,25 +1242,51 @@ function NarrationPanel() {
         <div className="post-voice-panel">
           { error && <p role="alert">{ error }</p> }
 
-          { isAutoDraft && (
-            <p>{ __( 'Save the post first to generate narration.', 'post-voice' ) }</p>
+          { isAutoDraft && <p>{ __( 'Save the post first to generate narration.', 'post-voice' ) }</p> }
+
+          { existing && ! previewUrl && (
+            <div className="post-voice-panel__status">
+              <p>
+                { sprintf(
+                  /* translators: %s: date the narration audio was generated. */
+                  __( 'Generated on %s', 'post-voice' ),
+                  dateI18n( 'F j, Y', existing.generatedAt )
+                ) }
+              </p>
+              <p className="post-voice-panel__badge">
+                { isStale
+                  ? __( 'May be out of date — the post text changed since this was generated.', 'post-voice' )
+                  : __( 'Up to date', 'post-voice' ) }
+              </p>
+              <audio controls src={ existing.url } />
+            </div>
+          ) }
+
+          { ! existing && ! previewUrl && ! isAutoDraft && (
+            <p>{ __( 'No audio generated yet.', 'post-voice' ) }</p>
           ) }
 
           <select
             value={ language }
             onChange={ ( e ) => setLanguage( e.target.value ) }
-            disabled={ state !== 'idle' }
+            disabled={ isBusy }
             aria-label={ __( 'Narration language', 'post-voice' ) }
           >
             { SUPPORTED_LANGUAGES.map( ( lang ) => (
-              <option key={ lang } value={ lang }>{ lang }</option>
+              <option key={ lang } value={ lang }>
+                { lang }
+              </option>
             ) ) }
           </select>
 
           { state === 'confirming-long-text' && (
             <div>
               <p>
-                { __( 'This text is long — estimated time:', 'post-voice' ) } { Math.round( etaSeconds ?? 0 ) }s
+                { sprintf(
+                  /* translators: %d: estimated generation time in seconds. */
+                  __( 'This text is long — estimated time: %d seconds.', 'post-voice' ),
+                  Math.round( etaSeconds ?? 0 )
+                ) }
               </p>
               <button onClick={ () => runGeneration( extractNarratableText( blocks ) ) }>
                 { __( 'Generate anyway', 'post-voice' ) }
@@ -1157,16 +1302,18 @@ function NarrationPanel() {
             </div>
           ) }
 
-          { previewBlob && state === 'idle' && (
+          { previewUrl && ! isBusy && (
             <div>
-              <audio controls src={ URL.createObjectURL( previewBlob ) } />
+              <audio controls src={ previewUrl } />
               <button onClick={ confirmSave }>{ __( 'Save narration', 'post-voice' ) }</button>
             </div>
           ) }
 
-          { state === 'idle' && ! previewBlob && (
+          { ! previewUrl && ! isBusy && (
             <button onClick={ startGeneration } disabled={ isAutoDraft }>
-              { savedHash ? __( 'Generate again', 'post-voice' ) : __( 'Generate audio', 'post-voice' ) }
+              { existing
+                ? __( 'Generate again', 'post-voice' )
+                : __( 'Generate audio', 'post-voice' ) }
             </button>
           ) }
         </div>
@@ -1181,7 +1328,7 @@ registerPlugin( 'post-voice', { render: NarrationPanel, icon: 'microphone' } );
 - [ ] **Step 2: Manual smoke check**
 
 Run: `npx tsc --noEmit`
-Expected: no errors referencing `index.tsx`. Full behavioral verification happens in Task 19–20's E2E suite.
+Expected: no errors referencing `index.tsx`. Full behavioral verification happens in Tasks 19–20's E2E suite, which exercises the storage pre-check, the stale badge, and the existing-audio state directly.
 
 - [ ] **Step 3: Commit**
 
@@ -1189,6 +1336,7 @@ Expected: no errors referencing `index.tsx`. Full behavioral verification happen
 git add features/narration/editor/index.tsx
 git commit -m "feat: Narration editor panel (PluginSidebar)"
 ```
+
 
 ---
 
@@ -1228,23 +1376,10 @@ define( 'POST_VOICE_VERSION', '0.1.0' );
 define( 'POST_VOICE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'POST_VOICE_URL', plugin_dir_url( __FILE__ ) );
 
-require_once POST_VOICE_PATH . 'features/narration/php/class-post-meta.php';
-require_once POST_VOICE_PATH . 'features/narration/php/class-rest-api.php';
-require_once POST_VOICE_PATH . 'features/narration/php/class-assets.php';
-require_once POST_VOICE_PATH . 'features/narration/php/class-attachment-cleanup.php';
-require_once POST_VOICE_PATH . 'features/narration/php/class-frontend-render.php';
-
-add_action( 'plugins_loaded', static function (): void {
-    Post_Voice_Post_Meta::register();
-    Post_Voice_Assets::register();
-    Post_Voice_Attachment_Cleanup::register();
-    Post_Voice_Frontend_Render::register();
-} );
-
-add_action( 'rest_api_init', [ 'Post_Voice_Rest_Api', 'register_routes' ] );
-```
-
-(This references classes created in Tasks 12–16 — the file won't be include-error-free until those land, which is fine: PHP only parses/executes `require_once` when the plugin is actually loaded, and none of this task's own verification steps activate the plugin yet.)
+// Feature classes are required and registered incrementally — Tasks 12-16 each
+// append their own `require_once` + registration below as they land. Requiring a
+// file that does not exist yet is a fatal error the moment PHPUnit's bootstrap
+// loads this plugin, so this list only ever names files already committed.
 
 - [ ] **Step 2: `package.json`**
 
@@ -1255,8 +1390,8 @@ add_action( 'rest_api_init', [ 'Post_Voice_Rest_Api', 'register_routes' ] );
   "private": true,
   "license": "GPL-2.0-or-later",
   "scripts": {
-    "build": "wp-scripts build features/narration/editor/index.tsx features/narration/frontend/player.ts --output-path=build",
-    "start": "wp-scripts start features/narration/editor/index.tsx features/narration/frontend/player.ts --output-path=build",
+    "build": "wp-scripts build",
+    "start": "wp-scripts start",
     "lint:js": "wp-scripts lint-js",
     "format": "wp-scripts format",
     "test:unit": "wp-scripts test-unit-js",
@@ -1274,7 +1409,30 @@ add_action( 'rest_api_init', [ 'Post_Voice_Rest_Api', 'register_routes' ] );
 }
 ```
 
-- [ ] **Step 3: `tsconfig.json`**
+- [ ] **Step 3: `webpack.config.js` — pin the two entry names**
+
+`wp-scripts build` with default config derives output filenames from entry basenames, which would emit `index.js`/`player.js`. The PHP enqueue in Task 15 expects `narration-editor.js` and `narration-player.js`, so the entry names are pinned explicitly here rather than left to a default the PHP would have to guess at.
+
+```js
+const defaultConfig = require( '@wordpress/scripts/config/webpack.config' );
+const path = require( 'path' );
+
+module.exports = {
+  ...defaultConfig,
+  entry: {
+    'narration-editor': path.resolve( __dirname, 'features/narration/editor/index.tsx' ),
+    'narration-player': path.resolve( __dirname, 'features/narration/frontend/player.ts' ),
+  },
+  output: {
+    ...defaultConfig.output,
+    path: path.resolve( __dirname, 'build' ),
+  },
+};
+```
+
+Verify after a real build (later, once entry files exist) that `build/` contains exactly `narration-editor.js`, `narration-editor.asset.php`, `narration-player.js`, `narration-player.asset.php`.
+
+- [ ] **Step 4: `tsconfig.json`**
 
 ```json
 {
@@ -1292,7 +1450,7 @@ add_action( 'rest_api_init', [ 'Post_Voice_Rest_Api', 'register_routes' ] );
 }
 ```
 
-- [ ] **Step 4: `.eslintrc.js` / `.prettierrc.js` (uses `@wordpress/eslint-plugin`'s recommended config, which already bundles `eslint-plugin-jsx-a11y` — spec: "A11y — enforcement automatizado em CI")**
+- [ ] **Step 5: `.eslintrc.js` / `.prettierrc.js` (uses `@wordpress/eslint-plugin`'s recommended config, which already bundles `eslint-plugin-jsx-a11y` — spec: "A11y — enforcement automatizado em CI")**
 
 ```js
 // .eslintrc.js
@@ -1309,7 +1467,19 @@ module.exports = {
 module.exports = require( '@wordpress/scripts/config/.prettierrc.js' );
 ```
 
-- [ ] **Step 5: `jest.config.js` — per-folder coverage gate at 80% for the pure functions**
+- [ ] **Step 6: `test/jest.setup.js` — Web Crypto polyfill for the jsdom environment**
+
+`crypto.subtle` is not exposed in Jest's jsdom environment by default; `source-hash.ts` (Task 5) needs it. Created here rather than in Task 5 because `jest.config.js` references it in the very next step — a config pointing at a missing setup file fails every test run, including tasks that land before Task 5.
+
+```js
+// test/jest.setup.js
+const { webcrypto } = require( 'node:crypto' );
+if ( ! globalThis.crypto ) {
+  globalThis.crypto = webcrypto;
+}
+```
+
+- [ ] **Step 7: `jest.config.js` — coverage gate at 80% for the pure-function tier**
 
 ```js
 const defaultConfig = require( '@wordpress/scripts/config/jest-unit.config' );
@@ -1321,6 +1491,7 @@ module.exports = {
     'features/narration/editor/extract-narratable-text.ts',
     'features/narration/editor/source-hash.ts',
     'features/narration/editor/rtf-calibration.ts',
+    'features/narration/editor/storage-check.ts',
     'features/narration/editor/mp3-encoder.ts',
     'features/narration/editor/model-source.ts',
     'features/narration/frontend/player-state.ts',
@@ -1331,7 +1502,7 @@ module.exports = {
 };
 ```
 
-- [ ] **Step 6: `composer.json` (dev-only — no runtime PHP deps, per spec's audit rationale) + `phpcs.xml.dist` + `phpstan.neon`**
+- [ ] **Step 8: `composer.json` (dev-only — no runtime PHP deps, per spec's audit rationale) + `phpcs.xml.dist` + `phpstan.neon`**
 
 ```json
 {
@@ -1390,18 +1561,23 @@ parameters:
         - build
 ```
 
-- [ ] **Step 7: Install and verify tooling boots**
+- [ ] **Step 9: Install and verify the toolchain actually boots**
 
 ```bash
 npm install
 composer install
-npx tsc --noEmit   # expect errors here until Tasks 3-10 exist — that's fine at this point
+npx tsc --noEmit
+npx jest --listTests
+composer run lint -- --version
 ```
 
-- [ ] **Step 8: Commit**
+Expected: `npm install` and `composer install` complete. `npx tsc --noEmit` succeeds with no files to check yet (the `features/` tree is empty — an empty `include` glob is not an error). `npx jest --listTests` prints an empty list without crashing (proves `jest.config.js` and the setup file resolve). `composer run lint -- --version` prints a PHPCS version (proves WPCS installed and the ruleset parses).
+
+This is the gate for every later task: if any of these five commands fails here, no other task's verification steps can be trusted.
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git init
 git add -A
 git commit -m "chore: plugin bootstrap + build/lint/test tooling scaffold"
 ```
@@ -1413,6 +1589,7 @@ git commit -m "chore: plugin bootstrap + build/lint/test tooling scaffold"
 **Files:**
 - Create: `features/narration/php/class-post-meta.php`
 - Create: `tests/php/bootstrap.php`, `phpunit.xml.dist`
+- Modify: `post-voice.php` (append this feature's `require_once` + `Post_Voice_Post_Meta::register()`)
 - Test: `features/narration/tests/php/test-post-meta.php`
 
 **Interfaces:**
@@ -1547,15 +1724,27 @@ class Post_Voice_Post_Meta {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 5: Wire the class into `post-voice.php`**
+
+Append to `post-voice.php`, below the constants. Until this lands, `Post_Voice_Post_Meta` is undefined the moment PHPUnit's bootstrap loads the plugin, so this must happen before the tests can pass.
+
+```php
+require_once POST_VOICE_PATH . 'features/narration/php/class-post-meta.php';
+
+add_action( 'plugins_loaded', static function (): void {
+    Post_Voice_Post_Meta::register();
+} );
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
 
 Run: `WP_PHPUNIT__DIR=vendor/wp-phpunit/wp-phpunit composer run test -- --filter Test_Post_Voice_Post_Meta`
 Expected: PASS (3/3).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add tests/php/bootstrap.php phpunit.xml.dist features/narration/php/class-post-meta.php features/narration/tests/php/test-post-meta.php
+git add post-voice.php tests/php/bootstrap.php phpunit.xml.dist features/narration/php/class-post-meta.php features/narration/tests/php/test-post-meta.php
 git commit -m "feat: narration post meta (attachment id, language, source hash)"
 ```
 
@@ -1566,6 +1755,7 @@ git commit -m "feat: narration post meta (attachment id, language, source hash)"
 **Files:**
 - Create: `features/narration/php/class-rest-api.php`
 - Create: `features/narration/tests/php/fixtures/sample.mp3` (tiny silent MP3 fixture)
+- Modify: `post-voice.php` (append this feature's `require_once` + the `rest_api_init` hook)
 - Test: `features/narration/tests/php/test-rest-api.php`
 
 **Interfaces:**
@@ -1769,7 +1959,44 @@ class Post_Voice_Rest_Api {
 
         $previous_attachment_id = Post_Voice_Post_Meta::get_attachment_id( $post_id );
 
-        $attachment_id = media_handle_upload( 'audio', $post_id );
+        // Deliberately NOT media_handle_upload(): that reads the $_FILES
+        // superglobal, which a REST request's file params never populate. This
+        // is the path WP core's own attachments controller takes —
+        // wp_handle_upload() on the file array from the request, then an
+        // explicit wp_insert_attachment().
+        $upload = wp_handle_upload(
+            $files['audio'],
+            [
+                'test_form' => false,
+                'mimes'     => [ 'mp3' => 'audio/mpeg' ],
+            ]
+        );
+
+        if ( isset( $upload['error'] ) ) {
+            return new WP_Error(
+                'post_voice_upload_failed',
+                $upload['error'],
+                [ 'status' => 500 ]
+            );
+        }
+
+        $attachment_id = wp_insert_attachment(
+            [
+                'post_mime_type' => $upload['type'],
+                'post_title'     => sprintf(
+                    /* translators: %s: title of the post being narrated. */
+                    __( 'Narration — %s', 'post-voice' ),
+                    get_the_title( $post_id )
+                ),
+                'post_content'   => '',
+                'post_status'    => 'inherit',
+                'post_parent'    => $post_id,
+            ],
+            $upload['file'],
+            $post_id,
+            true
+        );
+
         if ( is_wp_error( $attachment_id ) ) {
             return new WP_Error(
                 'post_voice_upload_failed',
@@ -1777,6 +2004,11 @@ class Post_Voice_Rest_Api {
                 [ 'status' => 500 ]
             );
         }
+
+        wp_update_attachment_metadata(
+            $attachment_id,
+            wp_generate_attachment_metadata( $attachment_id, $upload['file'] )
+        );
 
         if ( $previous_attachment_id && $previous_attachment_id !== $attachment_id ) {
             wp_delete_attachment( $previous_attachment_id, true );
@@ -1794,15 +2026,25 @@ class Post_Voice_Rest_Api {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 5: Wire the class into `post-voice.php`**
+
+Append to `post-voice.php`, below the constants. Until this lands, `Post_Voice_Rest_Api` is undefined the moment PHPUnit's bootstrap loads the plugin, so this must happen before the tests can pass.
+
+```php
+require_once POST_VOICE_PATH . 'features/narration/php/class-rest-api.php';
+
+add_action( 'rest_api_init', [ 'Post_Voice_Rest_Api', 'register_routes' ] );
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
 
 Run: `WP_PHPUNIT__DIR=vendor/wp-phpunit/wp-phpunit composer run test -- --filter Test_Post_Voice_Rest_Api`
 Expected: PASS (5/5).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add features/narration/php/class-rest-api.php features/narration/tests/php/test-rest-api.php features/narration/tests/php/fixtures/sample.mp3
+git add post-voice.php features/narration/php/class-rest-api.php features/narration/tests/php/test-rest-api.php features/narration/tests/php/fixtures/sample.mp3
 git commit -m "feat: narration REST endpoint (upsert audio attachment)"
 ```
 
@@ -1812,6 +2054,7 @@ git commit -m "feat: narration REST endpoint (upsert audio attachment)"
 
 **Files:**
 - Create: `features/narration/php/class-attachment-cleanup.php`
+- Modify: `post-voice.php` (append this feature's `require_once` + `Post_Voice_Attachment_Cleanup::register()`)
 - Test: `features/narration/tests/php/test-attachment-cleanup.php`
 
 **Interfaces:**
@@ -1913,15 +2156,27 @@ class Post_Voice_Attachment_Cleanup {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 4: Wire the class into `post-voice.php`**
+
+Append to `post-voice.php`, below the constants. Until this lands, `Post_Voice_Attachment_Cleanup` is undefined the moment PHPUnit's bootstrap loads the plugin, so this must happen before the tests can pass.
+
+```php
+require_once POST_VOICE_PATH . 'features/narration/php/class-attachment-cleanup.php';
+
+add_action( 'plugins_loaded', static function (): void {
+    Post_Voice_Attachment_Cleanup::register();
+} );
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
 
 Run: `WP_PHPUNIT__DIR=vendor/wp-phpunit/wp-phpunit composer run test -- --filter Test_Post_Voice_Attachment_Cleanup`
 Expected: PASS (3/3).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add features/narration/php/class-attachment-cleanup.php features/narration/tests/php/test-attachment-cleanup.php
+git add post-voice.php features/narration/php/class-attachment-cleanup.php features/narration/tests/php/test-attachment-cleanup.php
 git commit -m "feat: symmetric post/attachment cleanup hooks"
 ```
 
@@ -1931,14 +2186,16 @@ git commit -m "feat: symmetric post/attachment cleanup hooks"
 
 **Files:**
 - Create: `features/narration/php/class-assets.php`
-- Create: `features/narration/tests/php/fixtures/build/narration-editor.asset.php` (minimal fixture asset manifest for the editor-enqueue test)
+- Modify: `post-voice.php` (append this feature's `require_once` + `Post_Voice_Assets::register()`)
 - Test: `features/narration/tests/php/test-assets.php`
+
+Enqueued handles resolve to `build/narration-editor.js` and `build/narration-player.js` — the exact entry names pinned in Task 11's `webpack.config.js`. If those two names ever change, both files change together.
 
 **Interfaces:**
 - Consumes: `POST_VOICE_PATH`, `POST_VOICE_URL`, `POST_VOICE_VERSION` (Task 11), `Post_Voice_Post_Meta::get_attachment_id()` (Task 12).
 - Produces: `register()`, `enqueue_editor_assets()`, `enqueue_frontend_assets()`.
 
-- [ ] **Step 1: Write the failing tests (frontend enqueue only — deterministic in `WP_UnitTestCase`; editor enqueue is smoke-checked manually in Step 4 since it depends on `get_current_screen()` admin context that's brittle to fabricate reliably in unit tests)**
+- [ ] **Step 1: Write the failing tests (frontend enqueue only — deterministic in `WP_UnitTestCase`; editor enqueue is smoke-checked manually in Step 5 since it depends on `get_current_screen()` admin context that's brittle to fabricate reliably in unit tests)**
 
 ```php
 <?php
@@ -2043,17 +2300,29 @@ class Post_Voice_Assets {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass, then manually smoke-check editor enqueue**
+- [ ] **Step 4: Wire the class into `post-voice.php`**
+
+Append to `post-voice.php`, below the constants. Until this lands, `Post_Voice_Assets` is undefined the moment PHPUnit's bootstrap loads the plugin, so this must happen before the tests can pass.
+
+```php
+require_once POST_VOICE_PATH . 'features/narration/php/class-assets.php';
+
+add_action( 'plugins_loaded', static function (): void {
+    Post_Voice_Assets::register();
+} );
+```
+
+- [ ] **Step 5: Run tests to verify they pass, then manually smoke-check editor enqueue**
 
 Run: `WP_PHPUNIT__DIR=vendor/wp-phpunit/wp-phpunit composer run test -- --filter Test_Post_Voice_Assets`
 Expected: PASS (2/2).
 
 Editor-enqueue manual check happens once Task 21 (`.wp-env.json`) and a real `npm run build` exist — deferred there, tracked as part of Task 19's happy-path E2E test opening the editor and confirming the panel renders (which can't happen unless the script actually enqueued).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add features/narration/php/class-assets.php features/narration/tests/php/test-assets.php
+git add post-voice.php features/narration/php/class-assets.php features/narration/tests/php/test-assets.php
 git commit -m "feat: conditional editor/frontend asset enqueue"
 ```
 
@@ -2063,6 +2332,7 @@ git commit -m "feat: conditional editor/frontend asset enqueue"
 
 **Files:**
 - Create: `features/narration/php/class-frontend-render.php`
+- Modify: `post-voice.php` (append this feature's `require_once` + `Post_Voice_Frontend_Render::register()`)
 - Test: `features/narration/tests/php/test-frontend-render.php`
 
 **Interfaces:**
@@ -2164,15 +2434,27 @@ class Post_Voice_Frontend_Render {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 4: Wire the class into `post-voice.php`**
+
+Append to `post-voice.php`, below the constants. Until this lands, `Post_Voice_Frontend_Render` is undefined the moment PHPUnit's bootstrap loads the plugin, so this must happen before the tests can pass.
+
+```php
+require_once POST_VOICE_PATH . 'features/narration/php/class-frontend-render.php';
+
+add_action( 'plugins_loaded', static function (): void {
+    Post_Voice_Frontend_Render::register();
+} );
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
 
 Run: `WP_PHPUNIT__DIR=vendor/wp-phpunit/wp-phpunit composer run test -- --filter Test_Post_Voice_Frontend_Render`
 Expected: PASS (2/2).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add features/narration/php/class-frontend-render.php features/narration/tests/php/test-frontend-render.php
+git add post-voice.php features/narration/php/class-frontend-render.php features/narration/tests/php/test-frontend-render.php
 git commit -m "feat: server-rendered narration player markup (no-JS fallback)"
 ```
 
@@ -2408,7 +2690,7 @@ npm run test:e2e -- narration.spec.ts narration-fallbacks.spec.ts
 npx wp-env stop
 ```
 
-Expected: PASS (5/5). If the storage-warning test fails, the panel's error path (Task 10) needs a `navigator.storage.estimate()` pre-check wired in before calling `engine.load()` — this test is what proves that check actually runs, not just that the function exists.
+Expected: PASS (5/5). The storage-warning test asserts against the pre-check Task 10 runs before `engine.load()`, backed by `hasEnoughStorage()` from Task 25 — this scenario is what proves the check actually runs on the real path, not merely that the function exists.
 
 - [ ] **Step 4: Commit**
 
@@ -2423,15 +2705,19 @@ git commit -m "test: E2E happy path, regenerate, cancel, isolation fallback, sto
 
 **Files:**
 - Create: `e2e/narration-a11y.spec.ts`
+- Create: `e2e/fixtures/sample.mp3` (copy of the PHPUnit fixture — `cp features/narration/tests/php/fixtures/sample.mp3 e2e/fixtures/sample.mp3`)
 
 **Interfaces:**
 - Consumes: `@axe-core/playwright`, the DOM contracts from Task 16 (frontend markup) and Task 17 (player wiring).
+
+The three frontend tests need a post that already has narration attached; a bare `createPost()` renders no player at all (Task 16 returns the content untouched when `_narration_attachment_id` is absent). The `createPostWithNarration` helper below builds that state. It relies on the three meta keys being `show_in_rest` — which Task 12 registered them as.
 
 Covers the remaining 3 of the 8 mandatory E2E scenarios: axe zero serious/critical violations (editor + frontend), full keyboard navigation, `prefers-reduced-motion`.
 
 - [ ] **Step 1: Write the test file**
 
 ```ts
+import path from 'node:path';
 import { test, expect } from '@wordpress/e2e-test-utils-playwright';
 import AxeBuilder from '@axe-core/playwright';
 
@@ -2444,8 +2730,40 @@ test( 'editor panel has zero serious/critical accessibility violations', async (
   expect( blocking ).toEqual( [] );
 } );
 
+/**
+ * The three frontend tests below need a post that ALREADY has narration —
+ * Task 16 renders no player markup for a post without an attachment, so a
+ * plain createPost() would leave nothing to assert against. This helper
+ * publishes a post, uploads a real audio file, and writes the narration meta
+ * through the REST API, producing exactly the state the frontend renderer
+ * expects.
+ */
+async function createPostWithNarration( requestUtils, title ) {
+  const post = await requestUtils.createPost( { title, status: 'publish' } );
+  const media = await requestUtils.uploadMedia(
+    path.join( __dirname, 'fixtures', 'sample.mp3' )
+  );
+  await requestUtils.rest( {
+    method: 'POST',
+    path: `/wp/v2/media/${ media.id }`,
+    data: { post: post.id },
+  } );
+  await requestUtils.rest( {
+    method: 'POST',
+    path: `/wp/v2/posts/${ post.id }`,
+    data: {
+      meta: {
+        _narration_attachment_id: media.id,
+        _narration_language: 'portuguese',
+        _narration_source_hash: 'a'.repeat( 64 ),
+      },
+    },
+  } );
+  return post;
+}
+
 test( 'frontend player has zero serious/critical accessibility violations', async ( { page, requestUtils } ) => {
-  const post = await requestUtils.createPost( { title: 'A11y frontend', status: 'publish' } );
+  const post = await createPostWithNarration( requestUtils, 'A11y frontend' );
   await page.goto( `/?p=${ post.id }` );
 
   const results = await new AxeBuilder( { page } ).include( '.post-voice-player' ).analyze();
@@ -2454,7 +2772,7 @@ test( 'frontend player has zero serious/critical accessibility violations', asyn
 } );
 
 test( 'player controls are fully operable by keyboard', async ( { page, requestUtils } ) => {
-  const post = await requestUtils.createPost( { title: 'Keyboard nav', status: 'publish' } );
+  const post = await createPostWithNarration( requestUtils, 'Keyboard nav' );
   await page.goto( `/?p=${ post.id }` );
 
   const playButton = page.locator( '[data-role="play"]' );
@@ -2475,7 +2793,7 @@ test( 'player controls are fully operable by keyboard', async ( { page, requestU
 
 test( 'respects prefers-reduced-motion', async ( { page, requestUtils } ) => {
   await page.emulateMedia( { reducedMotion: 'reduce' } );
-  const post = await requestUtils.createPost( { title: 'Reduced motion', status: 'publish' } );
+  const post = await createPostWithNarration( requestUtils, 'Reduced motion' );
   await page.goto( `/?p=${ post.id }` );
 
   await expect( page.locator( '.post-voice-player' ) ).toHaveClass( /post-voice-player--no-motion/ );
@@ -2501,7 +2819,7 @@ Expected: PASS (4/4).
 - [ ] **Step 4: Commit**
 
 ```bash
-git add e2e/narration-a11y.spec.ts
+git add e2e/narration-a11y.spec.ts e2e/fixtures/sample.mp3
 git commit -m "test: E2E accessibility — axe, keyboard nav, reduced motion"
 ```
 
@@ -2865,6 +3183,110 @@ git commit -m "chore: i18n scaffold + wordpress.org-format readme.txt"
 
 ---
 
+### Task 25: `storage-check.ts` — pure storage pre-check math
+
+**Files:**
+- Create: `features/narration/editor/storage-check.ts`
+- Test: `features/narration/tests/js/storage-check.test.ts`
+
+**Interfaces:**
+- Produces: `LANGUAGE_BUNDLE_BYTES`, `STORAGE_HEADROOM_MULTIPLIER`, `hasEnoughStorage(estimate, bundleBytes?)`, `formatBytes(bytes)` — consumed by the editor panel (Task 10), which must run this check *before* triggering the ~190MB model download (spec: "Requisitos de hardware e calibração", item 1: "Pré-checagem rápida, antes de baixar o modelo").
+
+Pure function tier, ≥80% coverage. This module exists because the mandatory E2E scenario "insufficient storage" (Global Constraints) had no implementation to test against.
+
+- [ ] **Step 1: Write the failing tests**
+
+```ts
+import { formatBytes, hasEnoughStorage, LANGUAGE_BUNDLE_BYTES } from '../../editor/storage-check';
+
+const MB = 1024 * 1024;
+
+describe( 'hasEnoughStorage', () => {
+  it( 'accepts a quota with generous free space', () => {
+    expect( hasEnoughStorage( { quota: 2000 * MB, usage: 100 * MB } ) ).toBe( true );
+  } );
+
+  it( 'rejects when free space is below the bundle plus headroom', () => {
+    expect( hasEnoughStorage( { quota: 250 * MB, usage: 50 * MB } ) ).toBe( false );
+  } );
+
+  it( 'requires headroom above the raw bundle size, not just the bundle', () => {
+    // Exactly one bundle free is not enough — the headroom multiplier is 1.5.
+    expect( hasEnoughStorage( { quota: LANGUAGE_BUNDLE_BYTES, usage: 0 } ) ).toBe( false );
+  } );
+
+  it( 'treats missing quota/usage fields as no available space', () => {
+    expect( hasEnoughStorage( {} ) ).toBe( false );
+  } );
+} );
+
+describe( 'formatBytes', () => {
+  it( 'formats megabyte-scale values', () => {
+    expect( formatBytes( 190 * MB ) ).toBe( '190 MB' );
+  } );
+
+  it( 'formats gigabyte-scale values', () => {
+    expect( formatBytes( 2 * 1024 * MB ) ).toBe( '2.0 GB' );
+  } );
+} );
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `npm run test:unit -- storage-check`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+```ts
+/** Approximate on-disk size of one language bundle (5 .onnx files + tokenizer + voices). */
+export const LANGUAGE_BUNDLE_BYTES = 190 * 1024 * 1024;
+
+/**
+ * Require half a bundle of slack on top of the bundle itself — the browser also
+ * needs room for its own HTTP cache and the decode buffers during inference.
+ * Checking for the exact bundle size would let a download start that cannot finish.
+ */
+export const STORAGE_HEADROOM_MULTIPLIER = 1.5;
+
+export interface StorageEstimateLike {
+  quota?: number;
+  usage?: number;
+}
+
+export function hasEnoughStorage(
+  estimate: StorageEstimateLike,
+  bundleBytes: number = LANGUAGE_BUNDLE_BYTES
+): boolean {
+  const quota = estimate.quota ?? 0;
+  const usage = estimate.usage ?? 0;
+  return quota - usage >= bundleBytes * STORAGE_HEADROOM_MULTIPLIER;
+}
+
+export function formatBytes( bytes: number ): string {
+  const MB = 1024 * 1024;
+  const GB = 1024 * MB;
+  if ( bytes >= GB ) {
+    return `${ ( bytes / GB ).toFixed( 1 ) } GB`;
+  }
+  return `${ Math.round( bytes / MB ) } MB`;
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `npm run test:unit -- storage-check`
+Expected: PASS (6/6).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add features/narration/editor/storage-check.ts features/narration/tests/js/storage-check.test.ts
+git commit -m "feat: storage pre-check before model download"
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage** — every named decision in the spec maps to a task:
@@ -2875,6 +3297,20 @@ Nome/slug → Global Constraints + Task 1/11. Contrato REST → Task 13. Formato
 **Type/interface consistency** — checked across tasks: `PocketTtsEngine.generate()` signature in Task 3 matches every call site in Task 10. `encodeMp3(float32Audio, sampleRate)` in Task 7 matches its call in Task 10. `Post_Voice_Post_Meta::save(int, int, string, string)` signature in Task 12 matches every call site in Tasks 13, 14, 15, 16 tests. REST response shape (`attachment_id`, `url`, `generated_at`, `language`) in Task 13 matches `SaveNarrationResponse` in Task 9. `data-role` attribute values (`play`/`rate`/`close`/`live`) match exactly between Task 16 (PHP-rendered markup) and Task 17 (TS selectors) and Task 20 (E2E locators).
 
 **One process note carried over from the spec, not a code gap:** Task 1 is the single manual, non-agent-executable step in this plan (creating your own Hugging Face mirror repo) — flagged there and in Global Constraints so it isn't missed when work starts.
+
+### Revision 2026-08-11 — pre-execution conflict scan
+
+A dependency and correctness scan before dispatching Task 1 found nine defects in the first draft of this plan. All are fixed above; recorded here so the reasoning isn't lost:
+
+1. **Task ordering** — Tasks 1, 4–8 ran `npm run test:unit` and Tasks 3, 9, 10, 17 ran `npx tsc` before Task 11 created `package.json`/`jest.config.js`/`tsconfig.json`. Fixed by the **Execution Order** section: Task 11 runs first, task IDs stay stable.
+2. **Fatal bootstrap** — Task 11's `post-voice.php` `require_once`'d five class files created in Tasks 12–16; Task 12's PHPUnit bootstrap loads the plugin, so those tests could never run. Fixed: bootstrap ships constants only, each PHP task appends its own require + registration (new "Wire the class into `post-voice.php`" step in Tasks 12–16).
+3. **REST upload never worked** — Task 13 called `media_handle_upload()`, which reads `$_FILES`; REST file params never populate that superglobal. Replaced with `wp_handle_upload()` + `wp_insert_attachment()`, the path WP core's own attachments controller takes.
+4. **Build output name mismatch** — `wp-scripts build` would emit `index.js`/`player.js` while Task 15's PHP enqueued `narration-editor.js`/`narration-player.js`. Fixed with an explicit `webpack.config.js` pinning both entry names.
+5. **A11y E2E tested nothing** — three frontend tests created posts with no narration, so Task 16 rendered no player and the locators could never match. Fixed with a `createPostWithNarration` helper plus an `e2e/fixtures/sample.mp3`.
+6. **Storage pre-check was fictional** — Task 19 asserted against a `navigator.storage.estimate()` check that no task implemented, and the plan hand-waved "if it fails, wire it in". Fixed: new **Task 25** (`storage-check.ts`, pure + tested) and a real pre-check in Task 10 that runs before `engine.load()`.
+7. **Stale badge missing** — the spec requires comparing the current text hash against `_narration_source_hash`; Task 10 never did. Now implemented.
+8. **Existing-audio state missing** — the approved Option C mockup requires generation date + badge + inline player; Task 10 rendered a bare button. Now implemented.
+9. **Dead fixture reference** — Task 15 listed `tests/php/fixtures/build/narration-editor.asset.php`, used by no step. Removed.
 
 ---
 
