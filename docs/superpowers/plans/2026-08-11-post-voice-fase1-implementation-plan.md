@@ -1640,6 +1640,7 @@ define( 'POST_VOICE_URL', plugin_dir_url( __FILE__ ) );
     "@axe-core/playwright": "^4.10.0",
     "@playwright/test": "^1.48.0",
     "@wordpress/e2e-test-utils-playwright": "^1.16.0",
+    "@wordpress/env": "^10.0.0",
     "@types/jest": "^29.5.0",
     "typescript": "^5.6.0"
   }
@@ -1837,7 +1838,29 @@ git commit -m "chore: plugin bootstrap + build/lint/test tooling scaffold"
 
 Exposes the 3 meta keys via `register_post_meta( ..., show_in_rest: true )` so the editor panel (Task 10) can read existing narration state straight from the post's own REST payload (`wp.data`) — no separate GET endpoint needed, matching "Backend só orquestra" and closing an otherwise-undiscussed gap (how does the panel know about existing audio on reopen) using an existing WP mechanism instead of new surface area.
 
-- [ ] **Step 1: Write the PHPUnit bootstrap (wp-phpunit based, no full wp-env needed for unit tests)**
+**Database prerequisite.** `WP_UnitTestCase` needs a real MySQL — WordPress's test suite creates and drops tables, so there is no in-memory shortcut. `wp-env` (a devDependency, used for E2E in Task 18) provisions one and exposes a dedicated **tests** database, so reuse it rather than standing up a second MySQL:
+
+```bash
+npx wp-env start                       # first run pulls images; takes a few minutes
+npx wp-env install-path                # prints where wp-env keeps its files
+docker ps --format '{{.Names}}\t{{.Ports}}' | grep tests-mysql
+```
+
+The tests MySQL is published on a host port (wp-env maps container 3306 to an ephemeral host port — read the actual value from that `docker ps` output; it is not fixed). Export the standard WordPress test variables to point at it, and keep them in one place so CI and local agree:
+
+```bash
+export WP_TESTS_DB_NAME=tests-wordpress
+export WP_TESTS_DB_USER=root
+export WP_TESTS_DB_PASSWORD=password
+export WP_TESTS_DB_HOST=127.0.0.1:<PORT_FROM_DOCKER_PS>
+export WP_PHPUNIT__DIR=vendor/wp-phpunit/wp-phpunit
+```
+
+`root`/`password` are wp-env's documented defaults for its MySQL service, not secrets — they are local-only containers. Do **not** point these at the non-tests database (`wordpress`), which backs the E2E site; the WordPress test bootstrap **drops and recreates all tables**, so aiming it at the wrong database destroys the E2E fixture data.
+
+If `npx wp-env start` fails because Docker is not running, that is a genuine blocker, not something to work around by mocking the database — report it.
+
+- [ ] **Step 1: Write the PHPUnit bootstrap (wp-phpunit based, driven by the wp-env tests database)**
 
 ```php
 <?php
@@ -2812,9 +2835,12 @@ add_action( 'send_headers', static function (): void {
 
 - [ ] **Step 3: Manual verification**
 
+`wp-env` is already a devDependency (added in Task 11). The first `start` pulls WordPress, MySQL and PHP images and can take several minutes; that is normal, not a hang.
+
 ```bash
 npx wp-env start
 curl -sI http://localhost:8888/ | grep -i cross-origin
+docker ps --format '{{.Names}}\t{{.Ports}}'
 npx wp-env stop
 ```
 
