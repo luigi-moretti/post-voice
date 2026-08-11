@@ -34,12 +34,16 @@ The plugin pins its model URL to a specific commit of *this* repository rather t
 
 ## Attribution and license
 
-Model weights are licensed **CC-BY-4.0** and derive from:
+Everything in this repository is licensed **CC-BY-4.0** (Creative Commons Attribution 4.0 International), inherited from both upstream sources:
 
-- [`kyutai/pocket-tts`](https://huggingface.co/kyutai/pocket-tts) — the original Pocket TTS model.
-- [`KevinAHM/pocket-tts-onnx`](https://huggingface.co/KevinAHM/pocket-tts-onnx) — the ONNX export (export tooling itself is Apache-2.0 and is *not* mirrored here; it is offline conversion code that never runs in a browser).
+- [`kyutai/pocket-tts`](https://huggingface.co/kyutai/pocket-tts) — the original Pocket TTS model. Declared `cc-by-4.0`.
+- [`KevinAHM/pocket-tts-onnx`](https://huggingface.co/KevinAHM/pocket-tts-onnx) — the ONNX export these files come from. Declared `cc-by-4.0`, and its bundled `LICENSE` is the Attribution 4.0 text.
+
+The offline Python conversion tooling in the upstream export repo is not mirrored here — it never runs in a browser and is of no use to the plugin.
 
 `voices.bin` is generated from the upstream bundles by the `export_voice_bins.py` script that ships with the Pocket TTS web demo; it is not distributed upstream.
+
+**A note on a licensing discrepancy found upstream:** the Pocket TTS web demo Space distributes a file named `ONNX-LICENSE` containing the Creative Commons Attribution-**NonCommercial** 4.0 text. That text conflicts with the Space's own README metadata (`license: cc-by-4.0`), with `kyutai/pocket-tts`, and with `KevinAHM/pocket-tts-onnx` — all three of which declare plain CC-BY-4.0, and the export repo's own `LICENSE` file contains the Attribution 4.0 text. This mirror therefore carries the Attribution 4.0 license that the actual model sources declare, and does not redistribute the NonCommercial file.
 
 ## Acceptable use
 
