@@ -150,36 +150,65 @@ This mirror exists so the plugin has a version-pinned, self-controlled source fo
 
 Save to `docs/mirror-readme-template.md`.
 
-Namespace confirmed (`hf auth whoami`): **`luigi-moretti`**. CLI installed via the official install script (`curl -LsSf https://hf.co/cli/install.sh | bash`), so commands below use the current `hf` entry point, not the older `huggingface-cli` (same tool, renamed — `huggingface-cli` still works as an alias but `hf` is the maintained one going forward).
+Namespace confirmed (`hf auth whoami`): **`luigi-moretti`**. CLI installed via the official install script (`curl -LsSf https://hf.co/cli/install.sh | bash`), so commands below use the current `hf` entry point, not the older `huggingface-cli` (same tool, renamed).
 
-- [ ] **Step 2: Download only the 5 supported language folders from upstream**
+**Mirror source is the local `pocket-tts` reference checkout, not a fresh download from upstream.** Verified against the upstream repo's file listing on 2026-08-11, which changed this step materially:
+
+- Upstream stores bundles under `onnx/<language>/`, not `<language>/` at the repo root.
+- Upstream ships **both** fp32 and int8 variants of all five models (13 files/language). The worker loads only the `_int8.onnx` set (`MODEL_STEMS` in `pocket-tts.worker.js`), so mirroring upstream verbatim would roughly double the mirror for files that are never fetched.
+- Upstream has **no `voices.bin`**. That file is generated locally by `scripts/export_voice_bins.py`, and the worker needs it: without it `predefinedVoiceRecords` stays empty, `defaultVoice` is null, and generation dies with "Voice conditioning cache missing".
+
+The local checkout at `/home/luigi/Documentos/projects/test/pocket-tts/onnx/` already contains exactly the right shape — int8 models only, plus `voices.bin` — at 190MB per language, 950MB total for the five.
+
+- [ ] **Step 2: Verify the local bundles are complete before uploading**
 
 ```bash
-hf download KevinAHM/pocket-tts-onnx \
-  --include "english_2026-04/*" "german/*" "italian/*" "portuguese/*" "spanish/*" \
-  --local-dir ./pocket-tts-onnx-mirror-src
+SRC=/home/luigi/Documentos/projects/test/pocket-tts/onnx
+for lang in english_2026-04 german italian portuguese spanish; do
+  echo "== $lang =="
+  ls "$SRC/$lang" | sort
+done
 ```
 
-- [ ] **Step 3: Create your mirror repo and upload**
+Expected, for every one of the five: `bos_before_voice.npy`, `bundle.json`, `flow_lm_flow_int8.onnx`, `flow_lm_main_int8.onnx`, `mimi_decoder_int8.onnx`, `mimi_encoder_int8.onnx`, `text_conditioner_int8.onnx`, `tokenizer.model`, `voices.bin` — nine files, ~190MB. A language missing `voices.bin` cannot produce audio; stop and regenerate it with `scripts/export_voice_bins.py` before continuing.
+
+- [ ] **Step 3: Stage the mirror and upload**
 
 ```bash
-hf auth login   # already done — skip if `hf auth whoami` already shows luigi-moretti
+STAGE=~/post-voice-mirror-stage
+SRC=/home/luigi/Documentos/projects/test/pocket-tts/onnx
+mkdir -p "$STAGE"
+for lang in english_2026-04 german italian portuguese spanish; do
+  cp -r "$SRC/$lang" "$STAGE/$lang"
+done
+cp docs/mirror-readme-template.md "$STAGE/README.md"
+
 hf repo create luigi-moretti/pocket-tts-onnx-mirror --type model -y
-cp docs/mirror-readme-template.md ./pocket-tts-onnx-mirror-src/README.md
-hf upload luigi-moretti/pocket-tts-onnx-mirror ./pocket-tts-onnx-mirror-src . \
-  --commit-message "Initial mirror: 5 supported language bundles from KevinAHM/pocket-tts-onnx"
+hf upload luigi-moretti/pocket-tts-onnx-mirror "$STAGE" . \
+  --commit-message "Initial mirror: 5 supported language bundles (int8 + voices.bin)"
 ```
 
-The upload command prints the resulting commit SHA — copy it (or open the repo's "Files and versions" tab on huggingface.co and copy the SHA of the latest commit).
+This publishes ~950MB to a public repo and can take a long time on a home connection; run it detached rather than blocking on it.
 
-- [ ] **Step 4: Write `model-source.ts` with the real pinned SHA**
+Note the layout deliberately flattens `onnx/<lang>/` to `<lang>/` at the mirror root, because `MODEL_BASE_URL` already ends in a slash and the worker appends `<language>/<file>` directly.
+
+- [ ] **Step 4: Capture the pinned commit SHA**
+
+```bash
+curl -s https://huggingface.co/api/models/luigi-moretti/pocket-tts-onnx-mirror | \
+  python3 -c "import json,sys; print(json.load(sys.stdin)['sha'])"
+```
+
+That SHA is what `model-source.ts` pins. Do not use `main`.
+
+- [ ] **Step 5: Write `model-source.ts` with the real pinned SHA**
 
 ```ts
 // Pinned to our own Hugging Face mirror, never upstream `KevinAHM/pocket-tts-onnx`
 // directly and never `resolve/main` — see "Pin de versão do modelo" in the Fase 1 spec.
 // Bumping this is a deliberate action: new PR, smoke test all 5 languages + E2E, then merge.
 export const MODEL_BASE_URL =
-  'https://huggingface.co/luigi-moretti/pocket-tts-onnx-mirror/resolve/<COMMIT_SHA_FROM_STEP_3>/';
+  'https://huggingface.co/luigi-moretti/pocket-tts-onnx-mirror/resolve/<COMMIT_SHA_FROM_STEP_4>/';
 
 export const SUPPORTED_LANGUAGES = [
   'english_2026-04',
@@ -192,9 +221,9 @@ export const SUPPORTED_LANGUAGES = [
 export type SupportedLanguage = ( typeof SUPPORTED_LANGUAGES )[ number ];
 ```
 
-Replace both placeholders with the real namespace and SHA from Step 3 before committing — this file must never contain a literal placeholder token in the committed version.
+Replace `<COMMIT_SHA_FROM_STEP_4>` with the real SHA captured in Step 4 before committing — this file must never contain a literal placeholder token in the committed version. The namespace is already resolved.
 
-- [ ] **Step 5: Write the test**
+- [ ] **Step 6: Write the test**
 
 ```ts
 import { MODEL_BASE_URL, SUPPORTED_LANGUAGES } from '../../editor/model-source';
@@ -214,12 +243,12 @@ describe( 'model-source', () => {
 } );
 ```
 
-- [ ] **Step 6: Run the test**
+- [ ] **Step 7: Run the test**
 
 Run: `npm run test:unit -- model-source`
-Expected: PASS (2/2). If it fails on the SHA regex, double-check Step 4's replacement.
+Expected: PASS (2/2). If it fails on the SHA regex, double-check Step 5's replacement.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add docs/mirror-readme-template.md features/narration/editor/model-source.ts features/narration/tests/js/model-source.test.ts
@@ -3294,7 +3323,7 @@ git commit -m "feat: storage pre-check before model download"
 **Spec coverage** — every named decision in the spec maps to a task:
 Nome/slug → Global Constraints + Task 1/11. Contrato REST → Task 13. Formato de áudio → Task 7. Capability `upload_files` → Task 13. Post types → Task 13/14/15/16 all scope to `post`. Auto-draft guard (client + server) → Task 10 (disabled button) + Task 13 (409). `post_parent`/symmetric cleanup → Task 14. WP/PHP mínimos → Task 11 plugin header + `phpcs.xml.dist`/`phpstan.neon`. Player UI/UX (pílula) → Task 16 (markup) + Task 17 (behavior). A11y enforcement → Task 11 (`jsx-a11y` via `@wordpress/eslint-plugin`) + Task 20 (axe/keyboard/reduced-motion E2E). E2E scenarios → Tasks 19–20 (all 8). Pin de versão do modelo → Task 1. Auditoria de dependências → Task 21. Multisite/no-JS-fallback/preview-discard-silently → no code needed, already true by construction (client-side cache, server-rendered `<audio>`, in-memory blob never persisted before confirm) — correctly not turned into tasks.
 
-**Placeholder scan** — the only literal placeholder token left in any file is `<COMMIT_SHA_FROM_STEP_3>` inside Task 1 (namespace is already resolved to `luigi-moretti`), explicitly called out as a required manual replacement before that task's own commit step — not an unresolved design gap.
+**Placeholder scan** — the only literal placeholder token left in any file is `<COMMIT_SHA_FROM_STEP_4>` inside Task 1 (namespace is already resolved to `luigi-moretti`), explicitly called out as a required manual replacement before that task's own commit step — not an unresolved design gap.
 
 **Type/interface consistency** — checked across tasks: `PocketTtsEngine.generate()` signature in Task 3 matches every call site in Task 10. `encodeMp3(float32Audio, sampleRate)` in Task 7 matches its call in Task 10. `Post_Voice_Post_Meta::save(int, int, string, string)` signature in Task 12 matches every call site in Tasks 13, 14, 15, 16 tests. REST response shape (`attachment_id`, `url`, `generated_at`, `language`) in Task 13 matches `SaveNarrationResponse` in Task 9. `data-role` attribute values (`play`/`rate`/`close`/`live`) match exactly between Task 16 (PHP-rendered markup) and Task 17 (TS selectors) and Task 20 (E2E locators).
 
