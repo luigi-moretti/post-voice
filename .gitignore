@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+build/
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
+
+# Model mirror staging (Task 1 — large binaries, never committed)
+pocket-tts-onnx-mirror-src/
+
+# Agent scratch (SDD ledger, briefs, review packages)
+.superpowers/
+
+# Local env
+.wp-env.override.json
+*.log
+.DS_Store
