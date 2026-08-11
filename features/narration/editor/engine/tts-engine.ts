@@ -1,7 +1,13 @@
+import { computeRtf } from '../rtf-calibration';
+
 export interface GenerateOptions {
-  /** Voice name from the loaded bundle's `predefined_voices`. Omit to use the
-   * bundle's own default voice. Passing a name that isn't in
-   * `predefined_voices` makes the worker throw. */
+  /**
+   * Predefined voice name. Omit to use whatever voice the loaded bundle
+   * reports as its default. Do NOT pass a made-up name like 'default' —
+   * the worker throws `Unknown built-in voice` for anything not in the
+   * bundle's `predefined_voices` list (which is: alba, azelma, cosette,
+   * eponine, fantine, javert, jean, marius).
+   */
   voice?: string;
   signal?: AbortSignal;
 }
@@ -11,7 +17,6 @@ export interface CalibrationResult {
 }
 
 const CALIBRATION_TEXT = 'Isto é um teste rápido de calibração de desempenho.';
-const AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH = 15;
 
 export class PocketTtsEngine {
   private worker: Worker | null = null;
@@ -71,10 +76,13 @@ export class PocketTtsEngine {
 
   async calibrate(): Promise<CalibrationResult> {
     const start = performance.now();
-    await this.generate( CALIBRATION_TEXT, {} );
+    const audio = await this.generate( CALIBRATION_TEXT, {} );
     const elapsedMs = performance.now() - start;
-    const estimatedDurationSec = CALIBRATION_TEXT.length / AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH;
-    return { rtf: elapsedMs / 1000 / estimatedDurationSec };
+    // Measure the audio we actually produced rather than guessing its length
+    // from character count — the samples are right here, and a guess would bias
+    // every ETA derived from this RTF.
+    const audioDurationSec = audio.length / this.sampleRate;
+    return { rtf: computeRtf( audioDurationSec, elapsedMs ) };
   }
 
   generate( text: string, options: GenerateOptions ): Promise<Float32Array> {
