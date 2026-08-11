@@ -611,7 +611,7 @@ async function loadBundle(language, { initialLoad = false } = {}) {
     }
     const tokenizerBuffer = await tokenizerResponse.arrayBuffer();
     tokenizerModelB64 = btoa(String.fromCharCode(...new Uint8Array(tokenizerBuffer)));
-    const spModule = await import("./sentencepiece.js?v=3");
+    const spModule = await import("./sentencepiece.js");
     tokenizerProcessor = new spModule.SentencePieceProcessor();
     await tokenizerProcessor.loadFromB64StringModel(tokenizerModelB64);
 
