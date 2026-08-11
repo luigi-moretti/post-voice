@@ -357,7 +357,14 @@ Glue-tier per spec's coverage table (wraps ONNX Runtime/Worker — mocking it fo
 
 ```ts
 export interface GenerateOptions {
-  voice: string;
+  /**
+   * Predefined voice name. Omit to use whatever voice the loaded bundle
+   * reports as its default. Do NOT pass a made-up name like 'default' —
+   * the worker throws `Unknown built-in voice` for anything not in the
+   * bundle's `predefined_voices` list (which is: alba, azelma, cosette,
+   * eponine, fantine, javert, jean, marius).
+   */
+  voice?: string;
   signal?: AbortSignal;
 }
 
@@ -371,6 +378,7 @@ const AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH = 15;
 export class PocketTtsEngine {
   private worker: Worker | null = null;
   private ready = false;
+  private defaultVoice: string | null = null;
   public sampleRate = 24000;
 
   async load( language: string ): Promise<void> {
@@ -382,8 +390,12 @@ export class PocketTtsEngine {
     await new Promise<void>( ( resolve, reject ) => {
       if ( ! this.worker ) return reject( new Error( 'Worker not created' ) );
       const onMessage = ( e: MessageEvent ) => {
-        const { type, sampleRate, error } = e.data;
-        if ( type === 'loaded' ) {
+        const { type, sampleRate, error, defaultVoice } = e.data;
+        if ( type === 'voices_loaded' ) {
+          // The worker picks the bundle's default voice itself; remember it so
+          // callers never have to name one.
+          this.defaultVoice = defaultVoice ?? null;
+        } else if ( type === 'loaded' ) {
           this.ready = true;
           if ( sampleRate ) this.sampleRate = sampleRate;
           this.worker?.removeEventListener( 'message', onMessage );
@@ -406,7 +418,9 @@ export class PocketTtsEngine {
     return new Promise( ( resolve, reject ) => {
       if ( ! this.worker ) return reject( new Error( 'Engine not loaded' ) );
       const onMessage = ( e: MessageEvent ) => {
-        if ( e.data.type === 'bundle_loaded' ) {
+        if ( e.data.type === 'voices_loaded' ) {
+          this.defaultVoice = e.data.defaultVoice ?? this.defaultVoice;
+        } else if ( e.data.type === 'bundle_loaded' ) {
           this.worker?.removeEventListener( 'message', onMessage );
           resolve();
         } else if ( e.data.type === 'error' ) {
@@ -421,7 +435,7 @@ export class PocketTtsEngine {
 
   async calibrate(): Promise<CalibrationResult> {
     const start = performance.now();
-    await this.generate( CALIBRATION_TEXT, { voice: 'default' } );
+    await this.generate( CALIBRATION_TEXT, {} );
     const elapsedMs = performance.now() - start;
     const estimatedDurationSec = CALIBRATION_TEXT.length / AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH;
     return { rtf: elapsedMs / 1000 / estimatedDurationSec };
@@ -461,7 +475,10 @@ export class PocketTtsEngine {
       };
 
       this.worker.addEventListener( 'message', onMessage );
-      this.worker.postMessage( { type: 'generate', data: { text, voice: options.voice } } );
+      this.worker.postMessage( {
+        type: 'generate',
+        data: { text, voice: options.voice ?? this.defaultVoice },
+      } );
     } );
   }
 
@@ -1199,7 +1216,6 @@ function NarrationPanel() {
       setState( 'generating' );
       abortRef.current = new AbortController();
       const audio = await engineRef.current!.generate( text, {
-        voice: 'default',
         signal: abortRef.current.signal,
       } );
       setPreview( encodeMp3( audio, engineRef.current!.sampleRate ) );
@@ -1462,6 +1478,7 @@ define( 'POST_VOICE_URL', plugin_dir_url( __FILE__ ) );
     "@axe-core/playwright": "^4.10.0",
     "@playwright/test": "^1.48.0",
     "@wordpress/e2e-test-utils-playwright": "^1.16.0",
+    "@types/jest": "^29.5.0",
     "typescript": "^5.6.0"
   }
 }
@@ -1502,7 +1519,8 @@ Verify after a real build (later, once entry files exist) that `build/` contains
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": [ "jest", "node" ]
   },
   "include": [ "features" ]
 }
