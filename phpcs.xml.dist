@@ -1,6 +1,7 @@
 <?xml version="1.0"?>
 <ruleset name="Post Voice">
     <file>.</file>
+    <arg name="extensions" value="php"/>
     <exclude-pattern>/build/*</exclude-pattern>
     <exclude-pattern>/node_modules/*</exclude-pattern>
     <exclude-pattern>/vendor/*</exclude-pattern>
