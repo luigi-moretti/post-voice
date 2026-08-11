@@ -148,7 +148,11 @@ Lista final (ver também "Qualidade e testes"): fluxo feliz completo · fallback
 
 **Mirror próprio no Hugging Face**, não dependência direta de `KevinAHM/pocket-tts-onnx`.
 
-**Licença checada (não bloqueia):** modelo base (`kyutai/pocket-tts`) é CC-BY-4.0 — permite redistribuir/derivar com atribuição, tem cláusula de uso proibido (nada ilegal/enganoso/impersonação sem consentimento — relevante pro voice cloning, vira nota de política de uso aceitável do plugin, não bloqueio legal). Export ONNX (`KevinAHM/pocket-tts-onnx`) é dual: modelos CC-BY-4.0 herdado, código de conversão Apache 2.0. Ambos permissivos.
+**Licença checada (não bloqueia):** modelo base (`kyutai/pocket-tts`) é CC-BY-4.0 — permite redistribuir/derivar com atribuição, tem cláusula de uso proibido (nada ilegal/enganoso/impersonação sem consentimento — relevante pro voice cloning, vira nota de política de uso aceitável do plugin, não bloqueio legal). Export ONNX (`KevinAHM/pocket-tts-onnx`) também é CC-BY-4.0. Ambos permissivos.
+
+**Correção (2026-08-11, durante execução do plano):** a frase acima antes dizia que o export ONNX era "dual: modelos CC-BY-4.0, código de conversão Apache 2.0" — **errado**, verificado contra a fonte. `KevinAHM/pocket-tts-onnx` declara `cc-by-4.0` no card e o `LICENSE` que distribui é o texto Attribution 4.0. O Apache 2.0 é do código do *demo Space* (`CODE-LICENSE`), que não é o repo do modelo e não é espelhado.
+
+**Achado mais grave no mesmo caminho:** o demo Space distribui `onnx/ONNX-LICENSE` cujo conteúdo é Attribution-**NonCommercial** 4.0 — contradiz o próprio frontmatter dele (`license: cc-by-4.0`), o `kyutai/pocket-tts` e o `KevinAHM/pocket-tts-onnx`, os três declarando CC-BY-4.0 puro. Esse arquivo chegou a ser republicado no nosso mirror por engano; foi removido e substituído pelo texto Attribution 4.0 que as fontes reais declaram. Importa muito: NC proibiria uso comercial, o que inviabilizaria o plugin na maioria dos sites que o instalariam. Se algum dia o upstream esclarecer que NC é a licença correta de fato, essa decisão inteira ("Engine TTS: Pocket TTS") precisa ser reaberta.
 
 **Por que mirror em vez de só pin por commit:** pin protege contra o arquivo *mudar de conteúdo*, não protege contra a conta/repo inteiro sumir (conta pessoal de terceiro, sem garantia de permanência). Mirror sob controle próprio remove esse risco. É inclusive primeiro passo barato pro caminho já combinado ("Hosting do modelo: HF agora, trocável por auto-hospedado depois").
 
