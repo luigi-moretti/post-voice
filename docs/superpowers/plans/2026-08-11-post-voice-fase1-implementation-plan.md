@@ -63,7 +63,8 @@
 | 22 | **21** — audit scripts | Independent tooling. |
 | 23 | **22** — PHP coverage gate | Needs the PHPUnit suite to exist. |
 | 24 | **23** — CI workflow | Wires up everything above. |
-| 25 | **24** — i18n + `readme.txt` | Needs the panel's strings to exist. |
+| 25 | **26** — licensing + third-party attribution | Needs the vendored files to be final. |
+| 26 | **24** — i18n + `readme.txt` | Needs the panel's strings to exist. |
 
 **Incremental bootstrap wiring:** `post-voice.php` (Task 11) ships with constants only — no `require_once` of feature classes. Each PHP task (12, 13, 14, 15, 16) appends its own `require_once` line and its own registration call as part of that task. A bootstrap that requires files which don't exist yet is a fatal error the moment PHPUnit's bootstrap loads the plugin, which is exactly what Task 12's test run does.
 
@@ -3342,6 +3343,129 @@ Expected: PASS (6/6).
 ```bash
 git add features/narration/editor/storage-check.ts features/narration/tests/js/storage-check.test.ts
 git commit -m "feat: storage pre-check before model download"
+```
+
+---
+
+### Task 26: Licensing and third-party attribution
+
+**Files:**
+- Create: `LICENSE` (GPL-2.0 full text)
+- Create: `CREDITS.md`
+- Modify: `features/narration/editor/engine/pocket-tts.worker.js` (prepend a modification notice header)
+
+**Interfaces:** none — this is a compliance deliverable.
+
+Raised by the Task 2 review. The plugin declares `GPL-2.0-or-later` in `post-voice.php`, `package.json` and `composer.json`, but ships no license text at all, and it vendors third-party code — one file of which was modified — with no attribution or statement of changes. Both are release blockers, and the second is an explicit condition of the Apache-2.0 license the vendored worker is under.
+
+What is actually vendored, verified against sources:
+
+| File | Origin | License | Modified by us? |
+|---|---|---|---|
+| `features/narration/editor/engine/pocket-tts.worker.js` | Pocket TTS web demo Space (`inference-worker.js`) | Apache-2.0 (the Space's `CODE-LICENSE`) | **Yes** — 3 changes |
+| `features/narration/editor/engine/sentencepiece.js` | same Space | carries an inline `tslib` notice (Microsoft, 0BSD-style: use/copy/modify/distribute granted without fee) | No — byte-identical |
+| model bundles (runtime download, not in repo) | `luigi-moretti/pocket-tts-onnx-mirror` | CC-BY-4.0 | No |
+
+Apache-2.0 §4(b) requires modified files to carry prominent notice of the change; §4(d) requires retaining attribution notices. `sentencepiece.js` needs nothing beyond leaving its inline notice intact, which the verbatim copy already does.
+
+**On GPL-2.0-or-later + Apache-2.0:** Apache-2.0 is incompatible with GPL-2.0 *only*, but is compatible with GPL-3.0. Because the plugin is licensed "or later", a recipient may take it under GPL-3.0, where the combination is fine — this is the same position WordPress core takes for its own Apache-2.0-licensed dependencies. Record the reasoning in `CREDITS.md` rather than leaving a reader to rediscover it.
+
+- [ ] **Step 1: Add the GPL-2.0 license text**
+
+```bash
+curl -fsSL https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt -o LICENSE
+head -3 LICENSE
+```
+
+Expected first line: `                    GNU GENERAL PUBLIC LICENSE`. If the download fails, do not hand-type the license — stop and report.
+
+- [ ] **Step 2: Write `CREDITS.md`**
+
+```md
+# Third-party code and attribution
+
+Post Voice is licensed GPL-2.0-or-later (see `LICENSE`). It bundles the third-party
+code below.
+
+## Vendored into this repository
+
+### `features/narration/editor/engine/pocket-tts.worker.js`
+
+Derived from `inference-worker.js` in the Pocket TTS ONNX web demo, licensed
+**Apache-2.0**.
+
+**Modifications made** (required by Apache-2.0 §4(b)):
+
+1. Added an import of `MODEL_BASE_URL` from the plugin's `model-source` module.
+2. `bundleDir()` now returns `` `${MODEL_BASE_URL}${language}` `` instead of the
+   demo's relative `` `./onnx/${language}` `` — the plugin fetches model files from a
+   pinned Hugging Face mirror rather than from files served next to the page.
+3. Removed the `?v=3` cache-busting query string from the dynamic
+   `./sentencepiece.js` import, which the bundler treats as a resource query.
+
+No other line was changed.
+
+### `features/narration/editor/engine/sentencepiece.js`
+
+SentencePiece tokenizer build taken verbatim from the same demo, unmodified. It
+embeds a `tslib` runtime notice (Copyright (c) Microsoft Corporation) granting
+use, copying, modification and distribution without fee. That notice is preserved
+inline in the file.
+
+## Downloaded at runtime, not bundled
+
+Model weights are fetched from
+[`luigi-moretti/pocket-tts-onnx-mirror`](https://huggingface.co/luigi-moretti/pocket-tts-onnx-mirror),
+licensed **CC-BY-4.0**, mirrored from
+[`KevinAHM/pocket-tts-onnx`](https://huggingface.co/KevinAHM/pocket-tts-onnx),
+itself derived from [`kyutai/pocket-tts`](https://huggingface.co/kyutai/pocket-tts).
+
+CC-BY-4.0 permits redistribution and derivative works with attribution. The
+upstream model card also asks that the voice-cloning capability not be used to
+impersonate anyone without their consent — surfaced to plugin users in `readme.txt`.
+
+ONNX Runtime Web is loaded from a CDN at runtime (MIT, © Microsoft) and is not
+redistributed by this plugin.
+
+## License compatibility
+
+Apache-2.0 is incompatible with GPL-2.0 alone, but compatible with GPL-3.0. This
+plugin is GPL-2.0-**or-later**, so a recipient may take it under GPL-3.0, under
+which the combination is compatible. This mirrors how WordPress core treats its own
+Apache-2.0-licensed dependencies.
+```
+
+- [ ] **Step 3: Add the modification notice to the vendored worker**
+
+Apache-2.0 §4(b) wants the notice in the modified file itself, not only in `CREDITS.md`. Prepend to `features/narration/editor/engine/pocket-tts.worker.js`, above its existing first line:
+
+```js
+/*
+ * Derived from `inference-worker.js` in the Pocket TTS ONNX web demo,
+ * licensed Apache-2.0. Modified for Post Voice: model files are fetched from a
+ * pinned Hugging Face mirror via MODEL_BASE_URL instead of a relative ./onnx/
+ * path, and the tokenizer import no longer carries a ?v=3 query string.
+ * See CREDITS.md for full attribution. Otherwise unchanged from upstream.
+ */
+```
+
+Change nothing else in that file.
+
+- [ ] **Step 4: Verify**
+
+```bash
+node --check features/narration/editor/engine/pocket-tts.worker.js
+diff /home/luigi/Documentos/projects/test/pocket-tts/inference-worker.js \
+     features/narration/editor/engine/pocket-tts.worker.js
+```
+
+Expected: `node --check` clean; the diff now shows four hunks — the three original permitted changes plus the new header comment. Confirm no inference logic moved.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add LICENSE CREDITS.md features/narration/editor/engine/pocket-tts.worker.js
+git commit -m "docs: add GPL-2.0 license text and third-party attribution"
 ```
 
 ---
