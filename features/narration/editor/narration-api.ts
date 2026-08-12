@@ -21,6 +21,10 @@ export interface SaveNarrationResponse {
  * `body` is passed through untouched, so the browser sets the multipart
  * `Content-Type` boundary itself. Never pass FormData as `data`: that would be
  * JSON-encoded and arrive as an empty object.
+ * @param postId
+ * @param audio
+ * @param language
+ * @param sourceHash
  */
 export async function saveNarration(
 	postId: number,
@@ -43,6 +47,8 @@ export async function saveNarration(
 		// apiFetch rejects with the parsed REST error body, not an Error instance,
 		// so callers reading `.message` would otherwise get `undefined`.
 		const message = ( error as { message?: string } )?.message;
-		throw new Error( message || __( 'Failed to save narration.', 'post-voice' ) );
+		throw new Error(
+			message || __( 'Failed to save narration.', 'post-voice' )
+		);
 	}
 }

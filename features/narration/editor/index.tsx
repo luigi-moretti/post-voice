@@ -18,13 +18,23 @@ import {
 	requiresLongTextConfirmation,
 	shouldWarnSlowDevice,
 } from './rtf-calibration';
-import { hasEnoughStorage, formatBytes, LANGUAGE_BUNDLE_BYTES } from './storage-check';
+import {
+	hasEnoughStorage,
+	formatBytes,
+	LANGUAGE_BUNDLE_BYTES,
+} from './storage-check';
 import { encodeMp3 } from './mp3-encoder';
 import { saveNarration } from './narration-api';
 
 import './style.scss';
 
-type PanelState = 'idle' | 'calibrating' | 'confirming-long-text' | 'generating' | 'saving' | 'error';
+type PanelState =
+	| 'idle'
+	| 'calibrating'
+	| 'confirming-long-text'
+	| 'generating'
+	| 'saving'
+	| 'error';
 
 interface ExistingNarration {
 	url: string;
@@ -37,7 +47,9 @@ function NarrationPanel() {
 	const [ etaSeconds, setEtaSeconds ] = useState< number | null >( null );
 	const [ previewUrl, setPreviewUrl ] = useState< string | null >( null );
 	const [ error, setError ] = useState< string | null >( null );
-	const [ existing, setExisting ] = useState< ExistingNarration | null >( null );
+	const [ existing, setExisting ] = useState< ExistingNarration | null >(
+		null
+	);
 	const [ isStale, setIsStale ] = useState( false );
 
 	const previewBlobRef = useRef< Blob | null >( null );
@@ -48,9 +60,14 @@ function NarrationPanel() {
 		const editor = select( 'core/editor' ) as any;
 		return {
 			postId: editor.getCurrentPostId() as number,
-			blocks: ( select( 'core/block-editor' ) as any ).getBlocks() as EditorBlock[],
+			blocks: (
+				select( 'core/block-editor' ) as any
+			 ).getBlocks() as EditorBlock[],
 			postStatus: editor.getEditedPostAttribute( 'status' ) as string,
-			meta: ( editor.getEditedPostAttribute( 'meta' ) || {} ) as Record< string, unknown >,
+			meta: ( editor.getEditedPostAttribute( 'meta' ) || {} ) as Record<
+				string,
+				unknown
+			>,
 		};
 	}, [] );
 
@@ -72,13 +89,18 @@ function NarrationPanel() {
 		} )
 			.then( ( media ) => {
 				if ( ! cancelled ) {
-					setExisting( { url: media.source_url, generatedAt: media.date_gmt } );
+					setExisting( {
+						url: media.source_url,
+						generatedAt: media.date_gmt,
+					} );
 				}
 			} )
 			.catch( () => {
 				// Attachment vanished (deleted straight from the Media Library). The
 				// delete_attachment hook clears the meta server-side; nothing to show here.
-				if ( ! cancelled ) setExisting( null );
+				if ( ! cancelled ) {
+					setExisting( null );
+				}
 			} );
 		return () => {
 			cancelled = true;
@@ -92,9 +114,13 @@ function NarrationPanel() {
 			setIsStale( false );
 			return;
 		}
-		computeSourceHash( extractNarratableText( blocks ) ).then( ( currentHash ) => {
-			if ( ! cancelled ) setIsStale( currentHash !== savedHash );
-		} );
+		computeSourceHash( extractNarratableText( blocks ) ).then(
+			( currentHash ) => {
+				if ( ! cancelled ) {
+					setIsStale( currentHash !== savedHash );
+				}
+			}
+		);
 		return () => {
 			cancelled = true;
 		};
@@ -102,7 +128,9 @@ function NarrationPanel() {
 
 	const setPreview = useCallback( ( blob: Blob | null ) => {
 		setPreviewUrl( ( previous ) => {
-			if ( previous ) URL.revokeObjectURL( previous );
+			if ( previous ) {
+				URL.revokeObjectURL( previous );
+			}
 			return blob ? URL.createObjectURL( blob ) : null;
 		} );
 		previewBlobRef.current = blob;
@@ -127,7 +155,9 @@ function NarrationPanel() {
 		try {
 			const text = extractNarratableText( blocks );
 			if ( ! text ) {
-				throw new Error( __( 'No readable text found in this post.', 'post-voice' ) );
+				throw new Error(
+					__( 'No readable text found in this post.', 'post-voice' )
+				);
 			}
 
 			// `crypto.subtle` only exists in a secure context. On a plain-HTTP site it
@@ -171,7 +201,12 @@ function NarrationPanel() {
 			// "unmeasured", not "instant" — otherwise a broken calibration looks like a
 			// blazing-fast device and every guard below silently stops firing.
 			const eta =
-				rtf > 0 ? estimateEtaSeconds( rtf, estimateAudioDurationSeconds( text.length ) ) : null;
+				rtf > 0
+					? estimateEtaSeconds(
+							rtf,
+							estimateAudioDurationSeconds( text.length )
+					  )
+					: null;
 			setEtaSeconds( eta );
 
 			if ( eta !== null && requiresLongTextConfirmation( eta ) ) {
@@ -181,7 +216,10 @@ function NarrationPanel() {
 
 			if ( rtf > 0 && shouldWarnSlowDevice( rtf ) ) {
 				createErrorNotice(
-					__( 'This device is slower than usual for narration — it may take a while.', 'post-voice' ),
+					__(
+						'This device is slower than usual for narration — it may take a while.',
+						'post-voice'
+					),
 					{ type: 'snackbar' }
 				);
 			}
@@ -215,11 +253,20 @@ function NarrationPanel() {
 
 	const confirmSave = useCallback( async () => {
 		const blob = previewBlobRef.current;
-		if ( ! blob ) return;
+		if ( ! blob ) {
+			return;
+		}
 		setState( 'saving' );
 		try {
-			const sourceHash = await computeSourceHash( extractNarratableText( blocks ) );
-			const saved = await saveNarration( postId, blob, language, sourceHash );
+			const sourceHash = await computeSourceHash(
+				extractNarratableText( blocks )
+			);
+			const saved = await saveNarration(
+				postId,
+				blob,
+				language,
+				sourceHash
+			);
 			setPreview( null );
 			setExisting( { url: saved.url, generatedAt: saved.generated_at } );
 			setIsStale( false );
@@ -238,12 +285,20 @@ function NarrationPanel() {
 			<PluginSidebarMoreMenuItem target="post-voice-panel">
 				{ __( 'Narration', 'post-voice' ) }
 			</PluginSidebarMoreMenuItem>
-			<PluginSidebar name="post-voice-panel" title={ __( 'Narration', 'post-voice' ) }>
+			<PluginSidebar
+				name="post-voice-panel"
+				title={ __( 'Narration', 'post-voice' ) }
+			>
 				<div className="post-voice-panel">
 					{ error && <p role="alert">{ error }</p> }
 
 					{ isAutoDraft && (
-						<p>{ __( 'Save the post first to generate narration.', 'post-voice' ) }</p>
+						<p>
+							{ __(
+								'Save the post first to generate narration.',
+								'post-voice'
+							) }
+						</p>
 					) }
 
 					{ existing && ! previewUrl && (
@@ -289,11 +344,20 @@ function NarrationPanel() {
 							<p>
 								{ sprintf(
 									/* translators: %d: estimated generation time in seconds. */
-									__( 'This text is long — estimated time: %d seconds.', 'post-voice' ),
+									__(
+										'This text is long — estimated time: %d seconds.',
+										'post-voice'
+									),
 									Math.round( etaSeconds ?? 0 )
 								) }
 							</p>
-							<button onClick={ () => runGeneration( extractNarratableText( blocks ) ) }>
+							<button
+								onClick={ () =>
+									runGeneration(
+										extractNarratableText( blocks )
+									)
+								}
+							>
 								{ __( 'Generate anyway', 'post-voice' ) }
 							</button>
 							<button onClick={ () => setState( 'idle' ) }>
@@ -305,7 +369,9 @@ function NarrationPanel() {
 					{ ( state === 'generating' || state === 'calibrating' ) && (
 						<div>
 							<p>{ __( 'Generating…', 'post-voice' ) }</p>
-							<button onClick={ cancelGeneration }>{ __( 'Cancel', 'post-voice' ) }</button>
+							<button onClick={ cancelGeneration }>
+								{ __( 'Cancel', 'post-voice' ) }
+							</button>
 						</div>
 					) }
 
@@ -319,7 +385,10 @@ function NarrationPanel() {
 					) }
 
 					{ ! previewUrl && ! isBusy && (
-						<button onClick={ startGeneration } disabled={ isAutoDraft }>
+						<button
+							onClick={ startGeneration }
+							disabled={ isAutoDraft }
+						>
 							{ existing
 								? __( 'Generate again', 'post-voice' )
 								: __( 'Generate audio', 'post-voice' ) }

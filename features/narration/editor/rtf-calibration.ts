@@ -9,29 +9,41 @@ export const LONG_TEXT_CONFIRMATION_ETA_SECONDS = 120; // ETA above this asks fo
  */
 const AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH = 12.5;
 
-export function computeRtf( warmupAudioDurationSec: number, warmupElapsedMs: number ): number {
-  // Both guards matter. A zero-length warm-up (failed synthesis returning an
-  // empty buffer) would otherwise yield Infinity, and Infinity * 0 duration is
-  // NaN — and `NaN > 120` is false, silently disabling the confirmation prompt
-  // in exactly the broken state it exists to catch.
-  if ( warmupElapsedMs <= 0 || warmupAudioDurationSec <= 0 ) return 0;
-  return warmupElapsedMs / 1000 / warmupAudioDurationSec;
+export function computeRtf(
+	warmupAudioDurationSec: number,
+	warmupElapsedMs: number
+): number {
+	// Both guards matter. A zero-length warm-up (failed synthesis returning an
+	// empty buffer) would otherwise yield Infinity, and Infinity * 0 duration is
+	// NaN — and `NaN > 120` is false, silently disabling the confirmation prompt
+	// in exactly the broken state it exists to catch.
+	if ( warmupElapsedMs <= 0 || warmupAudioDurationSec <= 0 ) {
+		return 0;
+	}
+	return warmupElapsedMs / 1000 / warmupAudioDurationSec;
 }
 
 export function estimateAudioDurationSeconds( textLength: number ): number {
-  if ( textLength <= 0 ) return 0;
-  return textLength / AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH;
+	if ( textLength <= 0 ) {
+		return 0;
+	}
+	return textLength / AVERAGE_CHARACTERS_PER_SECOND_OF_SPEECH;
 }
 
-export function estimateEtaSeconds( rtf: number, estimatedAudioDurationSec: number ): number {
-  if ( rtf <= 0 ) return 0;
-  return rtf * estimatedAudioDurationSec;
+export function estimateEtaSeconds(
+	rtf: number,
+	estimatedAudioDurationSec: number
+): number {
+	if ( rtf <= 0 ) {
+		return 0;
+	}
+	return rtf * estimatedAudioDurationSec;
 }
 
 export function shouldWarnSlowDevice( rtf: number ): boolean {
-  return rtf > SLOW_RTF_WARNING_THRESHOLD;
+	return rtf > SLOW_RTF_WARNING_THRESHOLD;
 }
 
 export function requiresLongTextConfirmation( etaSeconds: number ): boolean {
-  return etaSeconds > LONG_TEXT_CONFIRMATION_ETA_SECONDS;
+	return etaSeconds > LONG_TEXT_CONFIRMATION_ETA_SECONDS;
 }

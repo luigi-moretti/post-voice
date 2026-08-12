@@ -17,7 +17,8 @@ describe( 'encodeMp3', () => {
 		const sampleRate = 24000;
 		const samples = new Float32Array( sampleRate * 0.5 );
 		for ( let i = 0; i < samples.length; i++ ) {
-			samples[ i ] = Math.sin( ( 2 * Math.PI * 440 * i ) / sampleRate ) * 0.5;
+			samples[ i ] =
+				Math.sin( ( 2 * Math.PI * 440 * i ) / sampleRate ) * 0.5;
 		}
 
 		const blob = encodeMp3( samples, sampleRate );
@@ -26,6 +27,9 @@ describe( 'encodeMp3', () => {
 
 		const bytes = new Uint8Array( await blob.arrayBuffer() );
 		expect( bytes[ 0 ] ).toBe( 0xff );
-		expect( bytes[ 1 ] & 0xe0 ).toBe( 0xe0 ); // MP3 frame sync word
+		// The 11-bit MP3 frame sync is byte 0 plus the top three bits of byte 1;
+		// masking is how you read it, so the bitwise rule does not apply here.
+		// eslint-disable-next-line no-bitwise
+		expect( bytes[ 1 ] & 0xe0 ).toBe( 0xe0 );
 	} );
 } );

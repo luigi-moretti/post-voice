@@ -1,13 +1,26 @@
-import { createInitialPlayerState, togglePlaying, cycleRate, closePlayer } from './player-state';
+import {
+	createInitialPlayerState,
+	togglePlaying,
+	cycleRate,
+	closePlayer,
+} from './player-state';
 
 import './style.scss';
 
 function initNarrationPlayer( root: HTMLElement ): void {
 	const audio = root.querySelector( 'audio' ) as HTMLAudioElement;
-	const playButton = root.querySelector( '[data-role="play"]' ) as HTMLButtonElement;
-	const rateButton = root.querySelector( '[data-role="rate"]' ) as HTMLButtonElement;
-	const closeButton = root.querySelector( '[data-role="close"]' ) as HTMLButtonElement;
-	const liveRegion = root.querySelector( '[data-role="live"]' ) as HTMLElement;
+	const playButton = root.querySelector(
+		'[data-role="play"]'
+	) as HTMLButtonElement;
+	const rateButton = root.querySelector(
+		'[data-role="rate"]'
+	) as HTMLButtonElement;
+	const closeButton = root.querySelector(
+		'[data-role="close"]'
+	) as HTMLButtonElement;
+	const liveRegion = root.querySelector(
+		'[data-role="live"]'
+	) as HTMLElement;
 
 	let state = createInitialPlayerState();
 
@@ -68,4 +81,6 @@ function initNarrationPlayer( root: HTMLElement ): void {
 	} );
 }
 
-document.querySelectorAll< HTMLElement >( '.post-voice-player' ).forEach( initNarrationPlayer );
+document
+	.querySelectorAll< HTMLElement >( '.post-voice-player' )
+	.forEach( initNarrationPlayer );

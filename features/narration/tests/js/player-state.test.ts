@@ -7,7 +7,11 @@ import {
 
 describe( 'player-state', () => {
 	it( 'starts paused, at 1x, not closed', () => {
-		expect( createInitialPlayerState() ).toEqual( { playing: false, rate: 1, closed: false } );
+		expect( createInitialPlayerState() ).toEqual( {
+			playing: false,
+			rate: 1,
+			closed: false,
+		} );
 	} );
 
 	it( 'toggles playing', () => {

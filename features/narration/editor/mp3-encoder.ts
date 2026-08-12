@@ -19,7 +19,10 @@ export function floatTo16BitPCM( float32: Float32Array ): Int16Array {
 	return out;
 }
 
-export function encodeMp3( float32Audio: Float32Array, sampleRate: number ): Blob {
+export function encodeMp3(
+	float32Audio: Float32Array,
+	sampleRate: number
+): Blob {
 	const pcm = floatTo16BitPCM( float32Audio );
 	const encoder = new Mp3Encoder( 1, sampleRate, MP3_BITRATE_KBPS );
 	const chunks: Uint8Array[] = [];
@@ -27,10 +30,14 @@ export function encodeMp3( float32Audio: Float32Array, sampleRate: number ): Blo
 	for ( let i = 0; i < pcm.length; i += SAMPLES_PER_FRAME ) {
 		const chunk = pcm.subarray( i, i + SAMPLES_PER_FRAME );
 		const encoded = encoder.encodeBuffer( chunk );
-		if ( encoded.length > 0 ) chunks.push( encoded );
+		if ( encoded.length > 0 ) {
+			chunks.push( encoded );
+		}
 	}
 	const finalChunk = encoder.flush();
-	if ( finalChunk.length > 0 ) chunks.push( finalChunk );
+	if ( finalChunk.length > 0 ) {
+		chunks.push( finalChunk );
+	}
 
 	// Flatten into a single buffer rather than handing the array of views straight
 	// to `Blob`. The encoder's return type is an unparameterised `Uint8Array`,

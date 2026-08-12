@@ -6,9 +6,9 @@ const globalScope = typeof window !== 'undefined' ? window : globalThis;
 
 // Ensure crypto.subtle is available (jsdom might not have it fully implemented)
 if ( ! globalScope.crypto ) {
-  globalScope.crypto = webcrypto;
+	globalScope.crypto = webcrypto;
 } else if ( ! globalScope.crypto.subtle ) {
-  globalScope.crypto.subtle = webcrypto.subtle;
+	globalScope.crypto.subtle = webcrypto.subtle;
 }
 
 // jsdom's Blob predates `Blob.prototype.arrayBuffer()`, which every browser has
@@ -17,19 +17,19 @@ if ( ! globalScope.crypto ) {
 // code under test. Read the bytes back through FileReader, which jsdom does
 // implement.
 if ( globalScope.Blob && ! globalScope.Blob.prototype.arrayBuffer ) {
-  globalScope.Blob.prototype.arrayBuffer = function arrayBuffer() {
-    return new Promise( ( resolve, reject ) => {
-      const reader = new globalScope.FileReader();
-      reader.onload = () => resolve( reader.result );
-      reader.onerror = () => reject( reader.error );
-      reader.readAsArrayBuffer( this );
-    } );
-  };
+	globalScope.Blob.prototype.arrayBuffer = function arrayBuffer() {
+		return new Promise( ( resolve, reject ) => {
+			const reader = new globalScope.FileReader();
+			reader.onload = () => resolve( reader.result );
+			reader.onerror = () => reject( reader.error );
+			reader.readAsArrayBuffer( this );
+		} );
+	};
 }
 
 if ( ! globalScope.TextEncoder ) {
-  globalScope.TextEncoder = TextEncoder;
+	globalScope.TextEncoder = TextEncoder;
 }
 if ( ! globalScope.TextDecoder ) {
-  globalScope.TextDecoder = TextDecoder;
+	globalScope.TextDecoder = TextDecoder;
 }

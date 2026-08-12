@@ -1,26 +1,26 @@
 {
-    "name": "post-voice/post-voice",
-    "description": "Post Voice WordPress plugin \u2014 dev tooling only, no runtime dependencies.",
-    "license": "GPL-2.0-or-later",
-    "require-dev": {
-        "php": ">=8.2",
-        "squizlabs/php_codesniffer": "^3.10",
-        "wp-coding-standards/wpcs": "^3.1",
-        "phpcompatibility/phpcompatibility-wp": "^2.1",
-        "phpstan/phpstan": "^1.12",
-        "szepeviktor/phpstan-wordpress": "^1.3",
-        "phpunit/phpunit": "^9.6",
-        "yoast/phpunit-polyfills": "^3.0",
-        "wp-phpunit/wp-phpunit": "~6.6.0"
-    },
-    "config": {
-        "allow-plugins": {
-            "dealerdirect/phpcodesniffer-composer-installer": true
-        }
-    },
-    "scripts": {
-        "lint": "phpcs",
-        "stan": "phpstan analyse --memory-limit=1G",
-        "test": "phpunit"
-    }
+	"name": "post-voice/post-voice",
+	"description": "Post Voice WordPress plugin — dev tooling only, no runtime dependencies.",
+	"license": "GPL-2.0-or-later",
+	"require-dev": {
+		"php": ">=8.2",
+		"squizlabs/php_codesniffer": "^3.10",
+		"wp-coding-standards/wpcs": "^3.1",
+		"phpcompatibility/phpcompatibility-wp": "^2.1",
+		"phpstan/phpstan": "^1.12",
+		"szepeviktor/phpstan-wordpress": "^1.3",
+		"phpunit/phpunit": "^9.6",
+		"yoast/phpunit-polyfills": "^3.0",
+		"wp-phpunit/wp-phpunit": "~6.6.0"
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
+	},
+	"scripts": {
+		"lint": "phpcs",
+		"stan": "phpstan analyse --memory-limit=1G",
+		"test": "phpunit"
+	}
 }

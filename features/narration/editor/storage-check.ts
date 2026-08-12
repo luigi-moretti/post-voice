@@ -9,24 +9,24 @@ export const LANGUAGE_BUNDLE_BYTES = 190 * 1024 * 1024;
 export const STORAGE_HEADROOM_MULTIPLIER = 1.5;
 
 export interface StorageEstimateLike {
-  quota?: number;
-  usage?: number;
+	quota?: number;
+	usage?: number;
 }
 
 export function hasEnoughStorage(
-  estimate: StorageEstimateLike,
-  bundleBytes: number = LANGUAGE_BUNDLE_BYTES
+	estimate: StorageEstimateLike,
+	bundleBytes: number = LANGUAGE_BUNDLE_BYTES
 ): boolean {
-  const quota = estimate.quota ?? 0;
-  const usage = estimate.usage ?? 0;
-  return quota - usage >= bundleBytes * STORAGE_HEADROOM_MULTIPLIER;
+	const quota = estimate.quota ?? 0;
+	const usage = estimate.usage ?? 0;
+	return quota - usage >= bundleBytes * STORAGE_HEADROOM_MULTIPLIER;
 }
 
 export function formatBytes( bytes: number ): string {
-  const MB = 1024 * 1024;
-  const GB = 1024 * MB;
-  if ( bytes >= GB ) {
-    return `${ ( bytes / GB ).toFixed( 1 ) } GB`;
-  }
-  return `${ Math.round( bytes / MB ) } MB`;
+	const MB = 1024 * 1024;
+	const GB = 1024 * MB;
+	if ( bytes >= GB ) {
+		return `${ ( bytes / GB ).toFixed( 1 ) } GB`;
+	}
+	return `${ Math.round( bytes / MB ) } MB`;
 }

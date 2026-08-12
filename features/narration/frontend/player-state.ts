@@ -16,7 +16,8 @@ export function togglePlaying( state: PlayerState ): PlayerState {
 
 export function cycleRate( state: PlayerState ): PlayerState {
 	const currentIndex = PLAYBACK_RATES.indexOf( state.rate );
-	const nextRate = PLAYBACK_RATES[ ( currentIndex + 1 ) % PLAYBACK_RATES.length ];
+	const nextRate =
+		PLAYBACK_RATES[ ( currentIndex + 1 ) % PLAYBACK_RATES.length ];
 	return { ...state, rate: nextRate };
 }
 
