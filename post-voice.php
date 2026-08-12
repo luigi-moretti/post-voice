@@ -27,3 +27,22 @@ define( 'POST_VOICE_URL', plugin_dir_url( __FILE__ ) );
 // append their own `require_once` + registration below as they land. Requiring a
 // file that does not exist yet is a fatal error the moment PHPUnit's bootstrap
 // loads this plugin, so this list only ever names files already committed.
+
+require_once POST_VOICE_PATH . 'features/narration/php/class-post-meta.php';
+require_once POST_VOICE_PATH . 'features/narration/php/class-rest-api.php';
+require_once POST_VOICE_PATH . 'features/narration/php/class-attachment-cleanup.php';
+require_once POST_VOICE_PATH . 'features/narration/php/class-assets.php';
+require_once POST_VOICE_PATH . 'features/narration/php/class-frontend-render.php';
+
+add_action(
+	'init',
+	static function (): void {
+		Post_Voice_Post_Meta::register();
+	}
+);
+
+Post_Voice_Attachment_Cleanup::register();
+Post_Voice_Assets::register();
+Post_Voice_Frontend_Render::register();
+
+add_action( 'rest_api_init', array( 'Post_Voice_Rest_Api', 'register_routes' ) );

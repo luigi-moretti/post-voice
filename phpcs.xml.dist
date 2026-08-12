@@ -5,8 +5,33 @@
     <exclude-pattern>/build/*</exclude-pattern>
     <exclude-pattern>/node_modules/*</exclude-pattern>
     <exclude-pattern>/vendor/*</exclude-pattern>
-    <rule ref="WordPress"/>
+    <rule ref="WordPress">
+        <!--
+            WPCS wants every class file to restate the full class name, i.e.
+            `features/narration/php/class-post-voice-post-meta.php`. The plugin
+            prefix is already carried by the repo (which *is* the plugin folder)
+            and the feature by the directory, so the sniff would only produce
+            paths that say "post-voice" twice. File names follow the plan's
+            architecture tree instead.
+        -->
+        <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+    </rule>
     <rule ref="PHPCompatibilityWP"/>
+
+    <!--
+        Test methods document themselves through their names, which WPCS itself
+        requires to be long and descriptive. Requiring a docblock per test on top
+        of that produces a comment that restates the method name and nothing more.
+    -->
+    <rule ref="Squiz.Commenting.FunctionComment.Missing">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.ClassComment.Missing">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Generic.Commenting.DocComment.MissingShort">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
     <config name="testVersion" value="8.2-"/>
     <config name="minimum_wp_version" value="6.6"/>
 </ruleset>

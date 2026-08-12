@@ -1,0 +1,10 @@
+{
+	"core": "WordPress/WordPress#6.6",
+	"plugins": [ "." ],
+	"mappings": {
+		"wp-content/mu-plugins/coop-coep-headers.php": "./e2e/mu-plugins/coop-coep-headers.php"
+	},
+	"config": {
+		"WP_DEBUG": true
+	}
+}
