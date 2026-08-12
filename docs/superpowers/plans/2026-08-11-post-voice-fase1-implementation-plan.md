@@ -3846,6 +3846,18 @@ inline above where they belong to one task; the rest are recorded here.
     readable text found". It also leaves the post at `auto-draft`, where the
     Generate button is deliberately disabled. Tests must insert a real
     `core/paragraph` and save a draft first (Tasks 19–20).
+19. **Every `getByRole( 'button', { name } )` needs `exact: true`.** The editor's
+    document bar exposes a button whose accessible name is the post title, so a
+    post titled "Narration happy path" collides with the sidebar toggle and one
+    titled "Cancel then regenerate" collides with the Cancel button. Playwright's
+    strict mode fails the click.
+20. **The post-publish panel has no `a.components-external-link`** in WordPress
+    6.6, so scraping the permalink from it times out after the whole pipeline has
+    already succeeded. Read `getCurrentPostId()` from the editor store instead.
+
+**Result:** all 10 E2E tests pass against wp-env, covering all 8 mandatory
+scenarios. Full generation runs about 36-43s per scenario including the model
+download.
 
 ---
 
