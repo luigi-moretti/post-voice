@@ -113,6 +113,86 @@ test.describe( 'Post Voice — narration generation', () => {
 		expect( mediaAfter.length ).toBe( mediaBefore.length );
 	} );
 
+	test( 'audio generated before a text edit is marked out of date once saved', async ( {
+		admin,
+		editor,
+		page,
+	} ) => {
+		// The hash recorded on save must describe the text the audio was actually
+		// synthesised from. Hashing the editor's current text instead let an author
+		// edit while generation ran and get audio labelled "Up to date" that did not
+		// match a word of the post.
+		await createNarratableDraft( admin, editor, 'Stale after edit' );
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
+		).toBeVisible( { timeout: 120_000 } );
+
+		// Edit after generating, before saving.
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: {
+				content: 'An extra paragraph the audio never covered.',
+			},
+		} );
+
+		await page
+			.getByRole( 'button', { name: 'Save narration', exact: true } )
+			.click();
+
+		await expect(
+			page.locator( '.post-voice-panel__badge' )
+		).toContainText( /out of date/i );
+	} );
+
+	test( 'the voice model downloads once per browser, not once per session', async ( {
+		admin,
+		editor,
+		page,
+	} ) => {
+		// Hugging Face serves model files with no Cache-Control at all, so the HTTP
+		// cache re-fetched roughly 190MB every time an author opened a post. The
+		// worker now stores them in the Cache API; this proves a second session
+		// touches the network for none of them.
+		await createNarratableDraft( admin, editor, 'Model cache' );
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
+		).toBeVisible( { timeout: 120_000 } );
+
+		// A reload is a new session: new worker, new ONNX sessions, same origin
+		// storage.
+		const modelRequests: string[] = [];
+		page.on( 'request', ( request ) => {
+			if ( request.url().includes( 'huggingface.co' ) ) {
+				modelRequests.push( request.url() );
+			}
+		} );
+
+		await page.reload();
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
+		).toBeVisible( { timeout: 120_000 } );
+
+		expect( modelRequests ).toEqual( [] );
+	} );
+
 	test( 'author can cancel generation mid-flight', async ( {
 		admin,
 		editor,

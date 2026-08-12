@@ -24,6 +24,13 @@ function initNarrationPlayer( root: HTMLElement ): void {
 
 	let state = createInitialPlayerState();
 
+	// The enhancement controls ship hidden from the server, because only this
+	// script gives them behaviour. Revealing them here is what makes the
+	// progressive enhancement honest: no JavaScript, no dead buttons.
+	for ( const button of [ playButton, rateButton, closeButton ] ) {
+		button.hidden = false;
+	}
+
 	if ( window.matchMedia( '(prefers-reduced-motion: reduce)' ).matches ) {
 		root.classList.add( 'post-voice-player--no-motion' );
 	}

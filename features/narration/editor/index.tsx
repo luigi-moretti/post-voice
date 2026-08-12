@@ -53,6 +53,7 @@ function NarrationPanel() {
 	const [ isStale, setIsStale ] = useState( false );
 
 	const previewBlobRef = useRef< Blob | null >( null );
+	const narratedTextRef = useRef< string | null >( null );
 	const abortRef = useRef< AbortController | null >( null );
 	const engineRef = useRef< PocketTtsEngine | null >( null );
 
@@ -143,6 +144,11 @@ function NarrationPanel() {
 			const audio = await engineRef.current!.generate( text, {
 				signal: abortRef.current.signal,
 			} );
+			// Remember the exact text this audio was synthesised from. Saving must
+			// record a hash of *this*, not of whatever the editor holds by the time
+			// the author clicks Save — they are free to keep typing while generation
+			// runs, and hashing the later text would mark stale audio as up to date.
+			narratedTextRef.current = text;
 			setPreview( encodeMp3( audio, engineRef.current!.sampleRate ) );
 			setState( 'idle' );
 		},
@@ -258,8 +264,10 @@ function NarrationPanel() {
 		}
 		setState( 'saving' );
 		try {
+			// Hash the text the audio was actually generated from, captured in
+			// runGeneration — never the editor's current text.
 			const sourceHash = await computeSourceHash(
-				extractNarratableText( blocks )
+				narratedTextRef.current ?? extractNarratableText( blocks )
 			);
 			const saved = await saveNarration(
 				postId,
@@ -269,7 +277,14 @@ function NarrationPanel() {
 			);
 			setPreview( null );
 			setExisting( { url: saved.url, generatedAt: saved.generated_at } );
-			setIsStale( false );
+			// Not necessarily up to date: if the author edited while generation ran,
+			// the audio just saved is already behind the editor's text.
+			setIsStale(
+				sourceHash !==
+					( await computeSourceHash(
+						extractNarratableText( blocks )
+					) )
+			);
 			setState( 'idle' );
 		} catch ( err ) {
 			setState( 'error' );

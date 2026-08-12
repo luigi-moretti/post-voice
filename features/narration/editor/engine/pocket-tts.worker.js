@@ -9,6 +9,11 @@
  */
 // Pocket TTS ONNX Web Worker
 import { MODEL_BASE_URL } from '../model-source';
+import { installModelCache } from './model-cache';
+
+// Must run before any model file is requested: Hugging Face sends no
+// Cache-Control, so without this the ~190MB bundle is re-fetched every session.
+installModelCache();
 
 console.log("Pocket TTS Worker Starting...");
 self.postMessage({ type: "status", status: "Worker Thread Started", state: "idle" });

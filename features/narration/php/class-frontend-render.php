@@ -52,11 +52,20 @@ class Post_Voice_Frontend_Render {
 		?>
 		<div class="post-voice-player" role="region" aria-label="<?php esc_attr_e( 'Post narration player', 'post-voice' ); ?>">
 			<audio controls src="<?php echo esc_url( $url ); ?>"></audio>
-			<button type="button" data-role="play" aria-pressed="false" aria-label="<?php esc_attr_e( 'Play narration', 'post-voice' ); ?>"
+			<?php
+			/*
+			 * The enhancement controls ship hidden and player.ts reveals them. Only
+			 * JavaScript gives them behaviour, so without it they would render as
+			 * buttons that look operable and do nothing — worse than absent,
+			 * especially for screen reader and keyboard users. The native <audio>
+			 * above is the no-JS experience and works on its own.
+			 */
+			?>
+			<button type="button" data-role="play" hidden aria-pressed="false" aria-label="<?php esc_attr_e( 'Play narration', 'post-voice' ); ?>"
 				data-label-playing="<?php esc_attr_e( 'Playing', 'post-voice' ); ?>"
 				data-label-paused="<?php esc_attr_e( 'Paused', 'post-voice' ); ?>">&#9654;</button>
-			<button type="button" data-role="rate" aria-label="<?php esc_attr_e( 'Playback speed', 'post-voice' ); ?>">1&#215;</button>
-			<button type="button" data-role="close" aria-label="<?php esc_attr_e( 'Close player', 'post-voice' ); ?>">&#10005;</button>
+			<button type="button" data-role="rate" hidden aria-label="<?php esc_attr_e( 'Playback speed', 'post-voice' ); ?>">1&#215;</button>
+			<button type="button" data-role="close" hidden aria-label="<?php esc_attr_e( 'Close player', 'post-voice' ); ?>">&#10005;</button>
 			<span data-role="live" aria-live="polite" class="screen-reader-text"></span>
 		</div>
 		<?php

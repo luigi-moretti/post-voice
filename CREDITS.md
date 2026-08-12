@@ -21,6 +21,9 @@ Derived from `inference-worker.js` in the Pocket TTS ONNX web demo, licensed
 4. Marked the ONNX Runtime CDN import `/* webpackIgnore: true */`. It is an
    absolute URL loaded at runtime by design; without the comment webpack tries to
    resolve it as a local path and the build fails.
+5. Added an import and call of `installModelCache()` at the top of the file, so
+   model files are stored in the Cache API. Hugging Face sends no `Cache-Control`
+   header, so without it the ~190MB bundle is re-downloaded every editor session.
 
 No other line was changed. Both vendored files are excluded from ESLint and
 Prettier (`.eslintrc.js`, `.prettierignore`) so that tooling cannot silently
