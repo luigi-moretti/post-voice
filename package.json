@@ -10,7 +10,11 @@
 		"format": "wp-scripts format",
 		"test:unit": "wp-scripts test-unit-js",
 		"test:e2e": "playwright test",
-		"i18n:pot": "wp-scripts build-language-pack post-voice --pot-only"
+		"i18n:pot": "wp-scripts build-language-pack post-voice --pot-only",
+		"audit:npm": "node scripts/audit-check.mjs",
+		"audit:npm:production": "node scripts/audit-check.mjs --production",
+		"audit:composer": "node scripts/audit-check-composer.mjs",
+		"test:php": "./scripts/run-php-tests.sh"
 	},
 	"devDependencies": {
 		"@axe-core/playwright": "^4.10.0",
@@ -33,5 +37,15 @@
 	},
 	"dependencies": {
 		"@breezystack/lamejs": "^1.2.7"
+	},
+	"overrides": {
+		"adm-zip": "^0.6.0",
+		"linkify-it": "^6.1.0",
+		"markdown-it": "^15.0.0",
+		"minimatch": "^10.2.6",
+		"serialize-javascript": "^7.1.0",
+		"uuid": "^11.1.1",
+		"@opentelemetry/core": "^2.8.0",
+		"webpack-dev-server": "^5.2.5"
 	}
 }

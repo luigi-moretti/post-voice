@@ -8,7 +8,15 @@
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"noEmit": true,
-		"types": [ "jest", "node" ]
+		"types": [
+			"jest",
+			"node"
+		]
 	},
-	"include": [ "features" ]
+	"include": [
+		"features",
+		"e2e",
+		"types",
+		"playwright.config.ts"
+	]
 }
