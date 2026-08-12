@@ -1,5 +1,8 @@
 import { test, expect } from '@wordpress/e2e-test-utils-playwright';
 
+// Short on purpose: every second of synthesised audio is a second of test runtime.
+const NARRATION_TEXT = 'Hello world, this is a test post.';
+
 test.describe( 'Post Voice — narration generation', () => {
 	test( 'author generates, previews, and saves narration end to end', async ( {
 		admin,
@@ -8,8 +11,22 @@ test.describe( 'Post Voice — narration generation', () => {
 	} ) => {
 		await admin.createNewPost( {
 			title: 'Narration happy path',
-			content: 'Hello world, this is a test post.',
 		} );
+		// Two things createNewPost() does not do, both of which the panel cares about.
+		//
+		// It passes `content` as a query argument, and WordPress parses raw text with
+		// no block delimiters into a `core/freeform` (classic) block — which is not in
+		// the narratable block list, so extraction returns an empty string and the
+		// panel reports "No readable text found". Insert a real paragraph instead.
+		//
+		// It also leaves the post at status `auto-draft`. The panel disables
+		// generation in that state (and the REST endpoint answers 409), so the
+		// Generate button never becomes clickable until a draft is saved.
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: { content: NARRATION_TEXT },
+		} );
+		await editor.saveDraft();
 		await editor.openDocumentSettingsSidebar();
 		await page.getByRole( 'button', { name: 'Narration' } ).click();
 		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
@@ -34,13 +51,28 @@ test.describe( 'Post Voice — narration generation', () => {
 
 	test( 'regenerating replaces the previous attachment without leaving an orphan', async ( {
 		admin,
+		editor,
 		page,
 		requestUtils,
 	} ) => {
 		await admin.createNewPost( {
 			title: 'Regenerate test',
-			content: 'First version of the text.',
 		} );
+		// Two things createNewPost() does not do, both of which the panel cares about.
+		//
+		// It passes `content` as a query argument, and WordPress parses raw text with
+		// no block delimiters into a `core/freeform` (classic) block — which is not in
+		// the narratable block list, so extraction returns an empty string and the
+		// panel reports "No readable text found". Insert a real paragraph instead.
+		//
+		// It also leaves the post at status `auto-draft`. The panel disables
+		// generation in that state (and the REST endpoint answers 409), so the
+		// Generate button never becomes clickable until a draft is saved.
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: { content: NARRATION_TEXT },
+		} );
+		await editor.saveDraft();
 		await page.getByRole( 'button', { name: 'Narration' } ).click();
 		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 		await page
@@ -60,12 +92,27 @@ test.describe( 'Post Voice — narration generation', () => {
 
 	test( 'author can cancel generation mid-flight', async ( {
 		admin,
+		editor,
 		page,
 	} ) => {
 		await admin.createNewPost( {
 			title: 'Cancel test',
-			content: 'Some text to narrate for cancellation.',
 		} );
+		// Two things createNewPost() does not do, both of which the panel cares about.
+		//
+		// It passes `content` as a query argument, and WordPress parses raw text with
+		// no block delimiters into a `core/freeform` (classic) block — which is not in
+		// the narratable block list, so extraction returns an empty string and the
+		// panel reports "No readable text found". Insert a real paragraph instead.
+		//
+		// It also leaves the post at status `auto-draft`. The panel disables
+		// generation in that state (and the REST endpoint answers 409), so the
+		// Generate button never becomes clickable until a draft is saved.
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: { content: NARRATION_TEXT },
+		} );
+		await editor.saveDraft();
 		await page.getByRole( 'button', { name: 'Narration' } ).click();
 		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 		await page.getByRole( 'button', { name: 'Cancel' } ).click();
@@ -76,6 +123,7 @@ test.describe( 'Post Voice — narration generation', () => {
 
 	test( 'cancelling and immediately regenerating produces one clean audio file', async ( {
 		admin,
+		editor,
 		page,
 	} ) => {
 		// Regression guard for a worker-level race: the vendored worker cancels via a
@@ -84,8 +132,22 @@ test.describe( 'Post Voice — narration generation', () => {
 		// chunks into the same listener. The panel now disposes the worker on cancel.
 		await admin.createNewPost( {
 			title: 'Cancel then regenerate',
-			content: 'Text to narrate twice in a row.',
 		} );
+		// Two things createNewPost() does not do, both of which the panel cares about.
+		//
+		// It passes `content` as a query argument, and WordPress parses raw text with
+		// no block delimiters into a `core/freeform` (classic) block — which is not in
+		// the narratable block list, so extraction returns an empty string and the
+		// panel reports "No readable text found". Insert a real paragraph instead.
+		//
+		// It also leaves the post at status `auto-draft`. The panel disables
+		// generation in that state (and the REST endpoint answers 409), so the
+		// Generate button never becomes clickable until a draft is saved.
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: { content: NARRATION_TEXT },
+		} );
+		await editor.saveDraft();
 		await page.getByRole( 'button', { name: 'Narration' } ).click();
 		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 		await page.getByRole( 'button', { name: 'Cancel' } ).click();

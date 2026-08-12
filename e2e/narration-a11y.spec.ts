@@ -32,7 +32,10 @@ test( 'editor panel has zero serious/critical accessibility violations', async (
  * @param requestUtils REST helper from the Playwright fixtures.
  * @param title        Title for the created post.
  */
-async function createPostWithNarration( requestUtils: RequestUtils, title: string ) {
+async function createPostWithNarration(
+	requestUtils: RequestUtils,
+	title: string
+) {
 	const post = await requestUtils.createPost( {
 		title,
 		status: 'publish',
@@ -102,7 +105,10 @@ test( 'player controls are fully operable by keyboard', async ( {
 
 test( 'respects prefers-reduced-motion', async ( { page, requestUtils } ) => {
 	await page.emulateMedia( { reducedMotion: 'reduce' } );
-	const post = await createPostWithNarration( requestUtils, 'Reduced motion' );
+	const post = await createPostWithNarration(
+		requestUtils,
+		'Reduced motion'
+	);
 	await page.goto( `/?p=${ post.id }` );
 
 	await expect( page.locator( '.post-voice-player' ) ).toHaveClass(
