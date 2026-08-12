@@ -20,3 +20,6 @@ pocket-tts-onnx-mirror-src/
 .wp-env.override.json
 *.log
 .DS_Store
+
+# PHPUnit
+.phpunit.result.cache
