@@ -3861,6 +3861,39 @@ download.
 
 ---
 
+## Revision 2026-08-12 (b) — manual testing findings
+
+Manual testing of the running plugin found four things the automated suite had
+not, because each needed a human to look.
+
+21. **The stale badge lied when the author edited during generation.**
+    `confirmSave()` hashed the editor's current text rather than the text the
+    audio was actually synthesised from, so audio that matched none of the post
+    was recorded as up to date. `runGeneration()` now captures the narrated text
+    and saving hashes that. Covered by an E2E scenario reproducing the sequence.
+22. **The player's pill controls were dead without JavaScript.** They rendered
+    visible from PHP but only `player.ts` gives them behaviour. They now ship
+    `hidden` and the script reveals them, which is what makes the progressive
+    enhancement honest.
+23. **The voice model re-downloaded every session.** The plan assumed pinned,
+    immutable URLs would be served from the HTTP cache. They are not: Hugging
+    Face answers with a 307 to a signed CDN URL and sends no `Cache-Control` at
+    all, only an ETag. Model files are now stored in the Cache API by a `fetch`
+    interceptor installed in the worker — an interceptor rather than a helper per
+    call site, because ONNX Runtime fetches the five `.onnx` files itself.
+24. **Neither surface matched its approved mockup.** Both shipped native
+    `<audio controls>`, which renders completely differently across browsers.
+    Rebuilt: the reader player as the "pílula flutuante" of Option B, the editor
+    panel as Option C on top of `@wordpress/components`. Both draw their own
+    controls; the `<audio>` element still does the playing.
+
+One environment note for anyone iterating locally: Docker Desktop's file-sharing
+cache is keyed on inode, so editing a PHP file **in place** leaves the container
+serving the old contents and E2E silently tests stale code. Rewriting the file
+(copy to a new name, move back) gives it a new inode and does propagate.
+
+---
+
 ## Self-Review
 
 **Spec coverage** — every named decision in the spec maps to a task:
