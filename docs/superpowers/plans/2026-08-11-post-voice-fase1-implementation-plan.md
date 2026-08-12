@@ -1194,17 +1194,27 @@ git commit -m "feat: pure player state machine (play/pause/rate/close)"
 
 Glue-tier (network call), no Jest unit test — verified by Task 19's E2E happy path, which exercises the real save round-trip.
 
+**Go through `apiFetch`, not bare `fetch` + a `wpApiSettings` global.** That global is localized on the `wp-api-request` script handle, and the editor bundle's dependencies are derived from its imports by `DependencyExtractionWebpackPlugin` — `wp-api-request` is not among them, so nothing enqueues it and `wpApiSettings` is simply undefined on the page. Every save would throw `wpApiSettings is not defined`. `apiFetch` already supplies the REST root and the nonce, and the panel uses it to read the attachment back, so this keeps one auth path instead of two.
+
+**Step 0: the `@wordpress/*` packages need to be installed as devDependencies** for `tsc` to resolve their types. `@wordpress/scripts` does not pull them in, and webpack externalizes them at build time, so they never reach the bundle:
+
+```bash
+npm install --save-dev @wordpress/api-fetch @wordpress/plugins @wordpress/editor \
+  @wordpress/data @wordpress/date @wordpress/notices @wordpress/element @wordpress/i18n
+```
+
 - [ ] **Step 1: Implement**
 
 ```ts
+import apiFetch from '@wordpress/api-fetch';
+import { __ } from '@wordpress/i18n';
+
 export interface SaveNarrationResponse {
   attachment_id: number;
   url: string;
   generated_at: string;
   language: string;
 }
-
-declare const wpApiSettings: { root: string; nonce: string };
 
 export async function saveNarration(
   postId: number,
@@ -1217,17 +1227,21 @@ export async function saveNarration(
   formData.append( 'language', language );
   formData.append( 'source_hash', sourceHash );
 
-  const response = await fetch( `${ wpApiSettings.root }post-voice/v1/posts/${ postId }/narration`, {
-    method: 'POST',
-    headers: { 'X-WP-Nonce': wpApiSettings.nonce },
-    body: formData,
-  } );
-
-  const data = await response.json();
-  if ( ! response.ok ) {
-    throw new Error( data.message || 'Failed to save narration.' );
+  try {
+    // `body` is passed through untouched, so the browser sets the multipart
+    // Content-Type boundary itself. Never pass FormData as `data` — that would be
+    // JSON-encoded and arrive as an empty object.
+    return await apiFetch< SaveNarrationResponse >( {
+      path: `/post-voice/v1/posts/${ postId }/narration`,
+      method: 'POST',
+      body: formData,
+    } );
+  } catch ( error ) {
+    // apiFetch rejects with the parsed REST error body, not an Error instance,
+    // so callers reading `.message` would otherwise get `undefined`.
+    const message = ( error as { message?: string } )?.message;
+    throw new Error( message || __( 'Failed to save narration.', 'post-voice' ) );
   }
-  return data as SaveNarrationResponse;
 }
 ```
 
