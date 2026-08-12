@@ -272,6 +272,16 @@ function NarrationPanel() {
 		setState( 'idle' );
 	}, [] );
 
+	const discardPreview = useCallback( () => {
+		// Nothing was persisted, so there is nothing to confirm away — the spec is
+		// explicit that an unsaved preview is dropped silently. Clearing the blob
+		// also revokes its object URL, and clearing the narrated text keeps a later
+		// save from hashing audio that no longer exists.
+		setPreview( null );
+		narratedTextRef.current = null;
+		setState( 'idle' );
+	}, [ setPreview ] );
+
 	const confirmSave = useCallback( async () => {
 		const blob = previewBlobRef.current;
 		if ( ! blob ) {
@@ -460,9 +470,20 @@ function NarrationPanel() {
 								{ __( 'Preview', 'post-voice' ) }
 							</p>
 							<MiniPlayer src={ previewUrl } />
-							<Button variant="primary" onClick={ confirmSave }>
-								{ __( 'Save narration', 'post-voice' ) }
-							</Button>
+							<div className="post-voice-panel__actions">
+								<Button
+									variant="primary"
+									onClick={ confirmSave }
+								>
+									{ __( 'Save narration', 'post-voice' ) }
+								</Button>
+								<Button
+									variant="tertiary"
+									onClick={ discardPreview }
+								>
+									{ __( 'Discard', 'post-voice' ) }
+								</Button>
+							</div>
 						</div>
 					) }
 
@@ -523,19 +544,30 @@ function NarrationPanel() {
 						/>
 					) }
 
-					{ ! previewUrl && ! isBusy && (
+					{ /*
+					 * Available during preview too. Regenerating before saving is an
+					 * explicitly supported path — the spec has the previous blob
+					 * discarded silently, since nothing was persisted — and hiding
+					 * this button left "Save narration" as the only way out of the
+					 * preview state.
+					 */ }
+					{ ! isBusy && (
 						<>
 							<Button
-								variant={ isStale ? 'primary' : 'secondary' }
+								variant={
+									isStale && ! previewUrl
+										? 'primary'
+										: 'secondary'
+								}
 								onClick={ startGeneration }
 								disabled={ isAutoDraft }
 								__next40pxDefaultSize
 							>
-								{ existing
+								{ existing || previewUrl
 									? __( 'Generate again', 'post-voice' )
 									: __( 'Generate audio', 'post-voice' ) }
 							</Button>
-							{ isStale && (
+							{ isStale && ! previewUrl && (
 								<p className="post-voice-panel__hint">
 									{ __(
 										'The post text changed since the last generation.',

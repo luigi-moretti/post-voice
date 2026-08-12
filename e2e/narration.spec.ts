@@ -193,6 +193,48 @@ test.describe( 'Post Voice — narration generation', () => {
 		expect( modelRequests ).toEqual( [] );
 	} );
 
+	test( 'an unwanted preview can be discarded instead of forced onto the post', async ( {
+		admin,
+		editor,
+		page,
+		requestUtils,
+	} ) => {
+		// The preview state used to offer "Save narration" and nothing else, so an
+		// author who disliked the result had no way out but to persist it.
+		await createNarratableDraft( admin, editor, 'Discard preview' );
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
+		).toBeVisible( { timeout: 120_000 } );
+
+		// Regenerating without saving is also possible, per the spec.
+		await expect(
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
+		).toBeVisible();
+
+		const mediaBefore = await requestUtils.rest( { path: '/wp/v2/media' } );
+
+		await page
+			.getByRole( 'button', { name: 'Discard', exact: true } )
+			.click();
+
+		// Back to the pre-generation state, and nothing reached the Media Library.
+		await expect(
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
+		).toBeHidden();
+		await expect(
+			page.getByRole( 'button', { name: 'Generate audio', exact: true } )
+		).toBeVisible();
+
+		const mediaAfter = await requestUtils.rest( { path: '/wp/v2/media' } );
+		expect( mediaAfter.length ).toBe( mediaBefore.length );
+	} );
+
 	test( 'author can cancel generation mid-flight', async ( {
 		admin,
 		editor,

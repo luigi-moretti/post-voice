@@ -3887,6 +3887,14 @@ not, because each needed a human to look.
     panel as Option C on top of `@wordpress/components`. Both draw their own
     controls; the `<audio>` element still does the playing.
 
+25. **The preview state trapped the author.** It offered "Save narration" and
+    nothing else, and the generate button was hidden while a preview existed — so
+    an author who disliked the result had no way out but to persist it. The spec
+    already contemplated the opposite (line 171: regenerating before saving
+    discards the previous blob silently, since nothing was persisted), which the
+    implementation had quietly closed off. The preview card now offers Discard
+    beside Save, and the generate button stays available throughout.
+
 One environment note for anyone iterating locally: Docker Desktop's file-sharing
 cache is keyed on inode, so editing a PHP file **in place** leaves the container
 serving the old contents and E2E silently tests stale code. Rewriting the file
