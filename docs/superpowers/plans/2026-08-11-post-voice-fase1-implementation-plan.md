@@ -3759,6 +3759,96 @@ git commit -m "docs: add GPL-2.0 license text and third-party attribution"
 
 ---
 
+## Revision 2026-08-12 — execution findings
+
+Executing the plan surfaced defects that only a real run could show. Fixes are
+inline above where they belong to one task; the rest are recorded here.
+
+**Toolchain**
+
+1. **`lamejs@1.2.1` does not work at all.** Its published modular build reads
+   `MPEGMode` as a free global that nothing requires, so `new Mp3Encoder()`
+   throws; its `lame.all.js` is a browser-global script with no `module.exports`.
+   Replaced with `@breezystack/lamejs` (Task 7).
+2. **`wp-scripts build-language-pack` does not exist.** wp-scripts v30 ships no
+   i18n script whatsoever. Extraction is WP-CLI's `wp i18n make-pot`, which
+   cannot parse TypeScript — it reads an unminified development build instead of
+   the `.tsx` sources, and must be scoped to the two entry bundles or it exhausts
+   PHP's memory limit on the 3.9MB vendored sentencepiece chunk (Task 24).
+3. **`npm run lint:js` never finished.** ESLint was type-aware linting the
+   vendored sentencepiece bundle: over ten minutes per run. Both vendored files
+   are excluded via `ignorePatterns` and `.prettierignore` — the latter matters
+   because `npm run format` otherwise rewrites them, invalidating Task 26's
+   byte-identical claim.
+4. **Prettier was the wrong Prettier.** `prettier` resolved to upstream 3.9.6,
+   which silently ignores `@wordpress/prettier-config`'s `parenSpacing`, so every
+   WordPress-style `( x )` in the codebase was reported as an error. Install it as
+   `prettier@npm:wp-prettier`.
+5. **The `@wordpress/*` packages must be devDependencies** for `tsc` to resolve
+   their types; webpack externalizes them, so they never reach the bundle.
+6. **The full `npm audit` gate started red** at 12 high / 22 moderate, all
+   dev-only and all inside `@wordpress/scripts`' pinned tree, so `npm audit fix`
+   could not touch it. `overrides` on the eight vulnerable leaves brings it to
+   0/0/0 (Task 21).
+
+**PHPUnit (Task 12)**
+
+7. **`wp-phpunit: ^6.6` resolves to 6.9.5**, whose `MockPHPMailer extends
+   WP_PHPMailer` — a class WordPress 6.6 does not have. The suite fatals before
+   the first test. The library must track the core version under test: pin
+   `~6.6.0`. Relatedly, changing `.wp-env.json`'s `core` downward leaves stale
+   files from the previous download; `wp-env destroy` before restarting.
+8. **`wp-tests-config.php` is required** and the plan never created one. Exporting
+   `WP_TESTS_DB_*` is not enough — the suite also needs `WP_TESTS_DOMAIN`,
+   `WP_TESTS_EMAIL`, `WP_TESTS_TITLE`, `WP_PHP_BINARY` and `ABSPATH`. Added at
+   `tests/php/wp-tests-config.php`, located via `WP_TESTS_CONFIG_FILE_PATH`.
+9. **Run PHPUnit on the host, not in the container.** Docker Desktop's
+   file-sharing layer does not reliably propagate host edits into a running
+   container — verified by md5sum, where the container kept serving a stale
+   `phpunit.xml.dist` across several rewrites — so an in-container run silently
+   executes stale code. `scripts/run-php-tests.sh` points PHPUnit at the
+   WordPress core wp-env unpacks onto the host and the MySQL port it publishes.
+10. **`phpunit.xml.dist` needs `suffix=".php"`** on the test directory: this
+    project uses WordPress's `test-*.php` naming, not PHPUnit's `*Test.php`, so
+    discovery found nothing and reported success.
+11. **`wp_handle_upload()` fails under PHPUnit** because it moves the file with
+    `move_uploaded_file()`, which by design rejects anything PHP did not receive
+    as an HTTP upload. Pass a non-default `action` when `DIR_TESTDATA` is defined,
+    exactly as WP core's own attachments controller does (Task 13).
+12. **WP_UnitTestCase unregisters every meta key between tests**, so each test
+    class that touches meta must call `Post_Voice_Post_Meta::register()` in
+    `set_up()`. Enqueued script handles, by contrast, *persist* between tests and
+    must be reset, or a later assertion passes on an earlier test's state.
+13. **REST routes must be registered through `rest_api_init`.** Calling
+    `register_routes()` directly trips WordPress's `_doing_it_wrong()`, which the
+    test case turns into a failure.
+14. **The coverage gate needs a driver.** PHPUnit 9 emits an empty Clover report
+    rather than failing when pcov/Xdebug is absent, so the threshold check would
+    pass on 0 measured statements. CI requests `coverage: pcov`, and the script
+    rejects a zero-statement report (Task 22).
+
+**Build and E2E**
+
+15. **Two vendored-file build blockers**: the ONNX Runtime CDN import needs
+    `/* webpackIgnore: true */`, and sentencepiece's Node-branch
+    `await import('module')` needs `resolve.fallback.module = false` (Task 2).
+16. **Nothing emitted the enqueued stylesheets.** Webpack only produces CSS for
+    styles an entry imports, and wp-scripts prefixes the output with `style-`
+    (Task 15).
+17. **There was no `playwright.config.ts`**, so `npm run test:e2e` had nothing to
+    run. It extends the wp-scripts base config, overriding `testDir` and raising
+    the 100s timeout — the happy path downloads ~190MB before it can assert.
+    `npx playwright install chromium` is not sufficient either; the base config
+    wants `chromium-headless-shell` too.
+18. **Every generation E2E scenario failed before asserting anything.**
+    `createNewPost()` passes `content` as a query argument, which WordPress parses
+    into a `core/freeform` block — not narratable, so the panel reported "No
+    readable text found". It also leaves the post at `auto-draft`, where the
+    Generate button is deliberately disabled. Tests must insert a real
+    `core/paragraph` and save a draft first (Tasks 19–20).
+
+---
+
 ## Self-Review
 
 **Spec coverage** — every named decision in the spec maps to a task:
