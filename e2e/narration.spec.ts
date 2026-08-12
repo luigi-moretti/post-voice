@@ -43,13 +43,17 @@ test.describe( 'Post Voice — narration generation', () => {
 		await page
 			.getByRole( 'button', { name: 'Narration', exact: true } )
 			.click();
-		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
 		await expect(
-			page.getByRole( 'button', { name: 'Save narration' } )
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
 		).toBeVisible( { timeout: 120_000 } );
-		await page.getByRole( 'button', { name: 'Save narration' } ).click();
+		await page
+			.getByRole( 'button', { name: 'Save narration', exact: true } )
+			.click();
 		await expect(
-			page.getByRole( 'button', { name: 'Generate again' } )
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
 		).toBeVisible();
 
 		await editor.publishPost();
@@ -89,16 +93,20 @@ test.describe( 'Post Voice — narration generation', () => {
 		await page
 			.getByRole( 'button', { name: 'Narration', exact: true } )
 			.click();
-		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 		await page
-			.getByRole( 'button', { name: 'Save narration' } )
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Save narration', exact: true } )
 			.click( { timeout: 120_000 } );
 
 		const mediaBefore = await requestUtils.rest( { path: '/wp/v2/media' } );
 
-		await page.getByRole( 'button', { name: 'Generate again' } ).click();
 		await page
-			.getByRole( 'button', { name: 'Save narration' } )
+			.getByRole( 'button', { name: 'Generate again', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Save narration', exact: true } )
 			.click( { timeout: 120_000 } );
 
 		const mediaAfter = await requestUtils.rest( { path: '/wp/v2/media' } );
@@ -114,10 +122,14 @@ test.describe( 'Post Voice — narration generation', () => {
 		await page
 			.getByRole( 'button', { name: 'Narration', exact: true } )
 			.click();
-		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
-		await page.getByRole( 'button', { name: 'Cancel' } ).click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Cancel', exact: true } )
+			.click();
 		await expect(
-			page.getByRole( 'button', { name: 'Generate audio' } )
+			page.getByRole( 'button', { name: 'Generate audio', exact: true } )
 		).toBeVisible();
 	} );
 
@@ -134,12 +146,18 @@ test.describe( 'Post Voice — narration generation', () => {
 		await page
 			.getByRole( 'button', { name: 'Narration', exact: true } )
 			.click();
-		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
-		await page.getByRole( 'button', { name: 'Cancel' } ).click();
-		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Cancel', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
 
 		await expect(
-			page.getByRole( 'button', { name: 'Save narration' } )
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
 		).toBeVisible( { timeout: 180_000 } );
 		// Exactly one preview player — not one per surviving pipeline.
 		await expect( page.locator( '.post-voice-panel audio' ) ).toHaveCount(
