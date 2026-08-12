@@ -54,7 +54,7 @@ class Post_Voice_Assets {
 
 		wp_enqueue_style(
 			'post-voice-editor',
-			POST_VOICE_URL . 'build/narration-editor.css',
+			POST_VOICE_URL . 'build/style-narration-editor.css',
 			array(),
 			$asset['version']
 		);
@@ -81,7 +81,7 @@ class Post_Voice_Assets {
 		);
 		wp_enqueue_style(
 			'post-voice-player',
-			POST_VOICE_URL . 'build/narration-player.css',
+			POST_VOICE_URL . 'build/style-narration-player.css',
 			array(),
 			POST_VOICE_VERSION
 		);

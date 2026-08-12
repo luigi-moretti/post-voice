@@ -299,7 +299,24 @@ function bundleDir(language) {
 
 The import is **extensionless on purpose**. `model-source` is a `.ts` file; `@wordpress/scripts`' webpack config sets `resolve.extensions` to include `.ts` but leaves `resolve.extensionAlias` undefined, so a `'../model-source.js'` specifier would look for a literal `model-source.js` and fail to resolve at build time.
 
+**A second required diff: mark the ONNX Runtime CDN import as `webpackIgnore`.** The worker loads ONNX Runtime Web from jsDelivr at runtime (spec: a CDN load, deliberately not an npm dependency), but webpack tries to resolve that absolute URL as a local path at build time and fails with `Can't resolve 'https://cdn.jsdelivr.net/npm'`:
+
+```js
+    const ortModule = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/ort.min.mjs`);
+```
+
 No other line changes — `MODEL_STEMS`, `LANGUAGE_BUNDLES`, the tokenizer/voice-loading/generation pipeline are already correct as copied.
+
+The vendored `sentencepiece.js` needs no edit, but it does need one line of webpack config. It is an Emscripten build carrying its Node branch beside its browser one, including `await import('module')`; that branch never runs in a worker, yet webpack still resolves the specifier and fails. Add to `webpack.config.js`:
+
+```js
+  resolve: {
+    ...defaultConfig.resolve,
+    fallback: { ...( defaultConfig.resolve?.fallback || {} ), module: false },
+  },
+```
+
+Both vendored files are also added to `.eslintignore`: they are copied rather than authored, and linting a 3.9MB bundle makes every `npm run lint:js` take minutes.
 
 - [ ] **Step 3: Vendor the tokenizer the worker depends on**
 
@@ -2495,6 +2512,8 @@ git commit -m "feat: symmetric post/attachment cleanup hooks"
 
 Enqueued handles resolve to `build/narration-editor.js` and `build/narration-player.js` — the exact entry names pinned in Task 11's `webpack.config.js`. If those two names ever change, both files change together.
 
+**Stylesheets need to exist, and their filenames are not the entry names.** The plan originally enqueued `build/narration-*.css`, which nothing emitted — webpack only produces CSS for styles an entry actually imports, and `wp-scripts` prefixes the result with `style-`. So each entry imports a `style.scss` beside it, and the enqueue points at `build/style-narration-editor.css` / `build/style-narration-player.css`. The player stylesheet is not decoration: the spec's "UI/UX do player do leitor (sticky/mobile)" section requires a sticky, mobile-first pill with a visible focus ring and an entry animation that `prefers-reduced-motion` disables, and three E2E scenarios assert on exactly that.
+
 **Interfaces:**
 - Consumes: `POST_VOICE_PATH`, `POST_VOICE_URL`, `POST_VOICE_VERSION` (Task 11), `Post_Voice_Post_Meta::get_attachment_id()` (Task 12).
 - Produces: `register()`, `enqueue_editor_assets()`, `enqueue_frontend_assets()`.
@@ -2572,7 +2591,7 @@ class Post_Voice_Assets {
 
         wp_enqueue_style(
             'post-voice-editor',
-            POST_VOICE_URL . 'build/narration-editor.css',
+            POST_VOICE_URL . 'build/style-narration-editor.css',
             [],
             $asset['version']
         );
@@ -2596,7 +2615,7 @@ class Post_Voice_Assets {
         );
         wp_enqueue_style(
             'post-voice-player',
-            POST_VOICE_URL . 'build/narration-player.css',
+            POST_VOICE_URL . 'build/style-narration-player.css',
             [],
             POST_VOICE_VERSION
         );

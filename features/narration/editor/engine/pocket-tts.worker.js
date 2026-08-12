@@ -535,7 +535,11 @@ async function loadOrt() {
     postMessage({ type: "status", status: "Loading ONNX Runtime...", state: "loading" });
     const version = "1.20.0";
     const cdnBase = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/`;
-    const ortModule = await import(`https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/ort.min.mjs`);
+    // webpackIgnore keeps this a real runtime import of an absolute URL. ONNX
+    // Runtime Web is loaded from a CDN on purpose (spec: not an npm dependency);
+    // without the comment webpack tries to resolve the URL as a local path at
+    // build time and fails with "Can't resolve 'https://cdn.jsdelivr.net/npm'".
+    const ortModule = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/ort.min.mjs`);
     ort = ortModule.default || ortModule;
     ort.env.wasm.wasmPaths = cdnBase;
     ort.env.wasm.simd = true;

@@ -1,0 +1,28 @@
+// Narration sidebar panel.
+//
+// Deliberately thin: the panel lives inside the block editor, so it inherits
+// WordPress admin typography and spacing rather than restating them.
+
+.post-voice-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	padding: 1rem;
+
+	audio {
+		width: 100%;
+	}
+
+	&__badge {
+		margin: 0;
+		font-size: 0.75rem;
+		color: #757575;
+	}
+
+	// The error paragraph carries role="alert"; give it enough contrast to read
+	// as an error rather than as body copy.
+	[role='alert'] {
+		margin: 0;
+		color: #cc1818;
+	}
+}
