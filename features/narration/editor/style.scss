@@ -1,7 +1,9 @@
-// Narration sidebar panel.
+// Narration sidebar panel — approved "Opção C" card from the Fase 1 spec.
 //
-// Deliberately thin: the panel lives inside the block editor, so it inherits
-// WordPress admin typography and spacing rather than restating them.
+// Structure and controls come from @wordpress/components, so the panel inherits
+// admin typography, focus styles, dark mode and future WordPress changes. Only
+// what core has no component for is styled here: the status card, the staleness
+// badge, the generation progress bar and the mini player.
 
 .post-voice-panel {
 	display: flex;
@@ -9,20 +11,204 @@
 	gap: 1rem;
 	padding: 1rem;
 
-	audio {
-		width: 100%;
+	&__card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		padding: 0.75rem;
+		border: 1px solid #e0e0e0;
+		border-radius: 4px;
+	}
+
+	&__card-heading {
+		margin: 0;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		color: #757575;
+	}
+
+	&__status {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	&__generated-at {
+		font-size: 0.75rem;
+		color: #757575;
 	}
 
 	&__badge {
+		padding: 0.125rem 0.5rem;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		border-radius: 2px;
+
+		// Colour is a secondary cue only: the badge text says "Up to date" or "May
+		// be out of date" in full, so it does not rely on colour to be understood.
+		&.is-current {
+			color: #007017;
+			background: #edfaef;
+		}
+
+		&.is-stale {
+			color: #8a5700;
+			background: #fcf4e6;
+		}
+	}
+
+	&__generating-label {
+		margin: 0;
+		font-size: 0.8125rem;
+	}
+
+	&__hint {
 		margin: 0;
 		font-size: 0.75rem;
 		color: #757575;
 	}
 
-	// The error paragraph carries role="alert"; give it enough contrast to read
-	// as an error rather than as body copy.
-	[role='alert'] {
+	&__actions {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	&__progress {
+		height: 0.25rem;
+		overflow: hidden;
+		background: #e0e0e0;
+		border-radius: 999px;
+	}
+
+	&__progress-fill {
+		height: 100%;
+		background: var(--wp-admin-theme-color, #3858e9);
+		border-radius: 999px;
+		transition: width 250ms linear;
+
+		// No usable estimate — a failed calibration, say. Sliding back and forth
+		// says "working" without claiming a completion percentage that would be
+		// invented.
+		&.is-indeterminate {
+			width: 40%;
+			animation: post-voice-indeterminate 1.4s ease-in-out infinite;
+		}
+	}
+}
+
+.post-voice-mini-player {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+
+	// The element still plays the audio; the panel draws its own controls so it
+	// looks the same in every browser.
+	audio {
+		display: none;
+	}
+
+	&__play {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+		width: 2rem;
+		height: 2rem;
+		padding: 0;
+		color: #fff;
+		background: var(--wp-admin-theme-color, #3858e9);
+		border: none;
+		border-radius: 50%;
+		cursor: pointer;
+		font-size: 0.75rem;
+		line-height: 1;
+
+		&:hover {
+			filter: brightness(1.1);
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--wp-admin-theme-color, #3858e9);
+			outline-offset: 2px;
+		}
+	}
+
+	&__seek {
+		flex: 1 1 auto;
+		min-width: 0;
+		height: 1.25rem;
 		margin: 0;
-		color: #cc1818;
+		background: transparent;
+		appearance: none;
+		cursor: pointer;
+
+		&::-webkit-slider-runnable-track {
+			height: 0.25rem;
+			background: #e0e0e0;
+			border-radius: 999px;
+		}
+
+		&::-moz-range-track {
+			height: 0.25rem;
+			background: #e0e0e0;
+			border-radius: 999px;
+		}
+
+		&::-moz-range-progress {
+			height: 0.25rem;
+			background: var(--wp-admin-theme-color, #3858e9);
+			border-radius: 999px;
+		}
+
+		&::-webkit-slider-thumb {
+			width: 0.75rem;
+			height: 0.75rem;
+			margin-top: -0.25rem;
+			background: var(--wp-admin-theme-color, #3858e9);
+			border: none;
+			border-radius: 50%;
+			appearance: none;
+		}
+
+		&::-moz-range-thumb {
+			width: 0.75rem;
+			height: 0.75rem;
+			background: var(--wp-admin-theme-color, #3858e9);
+			border: none;
+			border-radius: 50%;
+		}
+	}
+
+	&__time {
+		flex: 0 0 auto;
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums; // stops the row twitching each second
+		color: #757575;
+	}
+}
+
+@keyframes post-voice-indeterminate {
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(250%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.post-voice-panel__progress-fill {
+		transition: none;
+
+		&.is-indeterminate {
+			animation: none;
+			width: 100%;
+			opacity: 0.5;
+		}
 	}
 }

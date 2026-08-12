@@ -6,6 +6,7 @@ import { __, sprintf } from '@wordpress/i18n';
 import apiFetch from '@wordpress/api-fetch';
 import { dateI18n } from '@wordpress/date';
 import { store as noticesStore } from '@wordpress/notices';
+import { Button, Notice, SelectControl } from '@wordpress/components';
 
 import { PocketTtsEngine } from './engine/tts-engine';
 import { SUPPORTED_LANGUAGES } from './model-source';
@@ -25,8 +26,21 @@ import {
 } from './storage-check';
 import { encodeMp3 } from './mp3-encoder';
 import { saveNarration } from './narration-api';
+import { MiniPlayer } from './mini-player';
 
 import './style.scss';
+
+/**
+ * Human-readable names for the bundles. The identifiers are file paths in the
+ * model mirror — "english_2026-04" is not something to show an author.
+ */
+const LANGUAGE_LABELS: Record< string, string > = {
+	'english_2026-04': 'English',
+	german: 'Deutsch',
+	italian: 'Italiano',
+	portuguese: 'Português',
+	spanish: 'Español',
+};
 
 type PanelState =
 	| 'idle'
@@ -51,6 +65,7 @@ function NarrationPanel() {
 		null
 	);
 	const [ isStale, setIsStale ] = useState( false );
+	const [ elapsedSeconds, setElapsedSeconds ] = useState( 0 );
 
 	const previewBlobRef = useRef< Blob | null >( null );
 	const narratedTextRef = useRef< string | null >( null );
@@ -292,8 +307,34 @@ function NarrationPanel() {
 		}
 	}, [ blocks, language, postId, setPreview ] );
 
+	// Elapsed-time ticker for the generating state's countdown. The mockup shows a
+	// determinate bar and "~Ns remaining", and the RTF calibration exists precisely
+	// to make that estimate; the worker itself reports no progress.
+	useEffect( () => {
+		if ( state !== 'generating' ) {
+			setElapsedSeconds( 0 );
+			return;
+		}
+		const startedAt = Date.now();
+		const timer = setInterval(
+			() => setElapsedSeconds( ( Date.now() - startedAt ) / 1000 ),
+			250
+		);
+		return () => clearInterval( timer );
+	}, [ state ] );
+
 	const isAutoDraft = postStatus === 'auto-draft';
 	const isBusy = state !== 'idle' && state !== 'error';
+	const isGenerating = state === 'generating' || state === 'calibrating';
+
+	// Clamp short of complete: finishing the bar before the audio arrives would
+	// claim the work is done when it is not.
+	const progressPercent =
+		etaSeconds && etaSeconds > 0
+			? Math.min( 95, ( elapsedSeconds / etaSeconds ) * 100 )
+			: null;
+	const remainingSeconds =
+		etaSeconds !== null ? Math.max( 0, etaSeconds - elapsedSeconds ) : null;
 
 	return (
 		<>
@@ -303,59 +344,85 @@ function NarrationPanel() {
 			<PluginSidebar
 				name="post-voice-panel"
 				title={ __( 'Narration', 'post-voice' ) }
+				icon="microphone"
 			>
 				<div className="post-voice-panel">
-					{ error && <p role="alert">{ error }</p> }
+					{ error && (
+						// role="alert" on a wrapper rather than relying on Notice:
+						// the component styles the message but does not itself
+						// claim a live region, and an error raised by the author's
+						// own click has to be announced, not merely drawn.
+						<div role="alert">
+							<Notice status="error" isDismissible={ false }>
+								{ error }
+							</Notice>
+						</div>
+					) }
 
 					{ isAutoDraft && (
-						<p>
+						<Notice status="warning" isDismissible={ false }>
 							{ __(
 								'Save the post first to generate narration.',
 								'post-voice'
 							) }
-						</p>
+						</Notice>
 					) }
 
-					{ existing && ! previewUrl && (
-						<div className="post-voice-panel__status">
-							<p>
-								{ sprintf(
-									/* translators: %s: date the narration audio was generated. */
-									__( 'Generated on %s', 'post-voice' ),
-									dateI18n( 'F j, Y', existing.generatedAt )
-								) }
-							</p>
-							<p className="post-voice-panel__badge">
-								{ isStale
-									? __(
-											'May be out of date — the post text changed since this was generated.',
+					{ isGenerating && (
+						<div className="post-voice-panel__card">
+							<p className="post-voice-panel__generating-label">
+								{ state === 'calibrating'
+									? __( 'Preparing…', 'post-voice' )
+									: __(
+											'Synthesising audio…',
 											'post-voice'
-									  )
-									: __( 'Up to date', 'post-voice' ) }
+									  ) }
 							</p>
-							<audio controls src={ existing.url } />
+							<div
+								className="post-voice-panel__progress"
+								role="progressbar"
+								aria-label={ __(
+									'Narration generation progress',
+									'post-voice'
+								) }
+								aria-valuemin={ 0 }
+								aria-valuemax={ 100 }
+								aria-valuenow={
+									progressPercent === null
+										? undefined
+										: Math.round( progressPercent )
+								}
+							>
+								<div
+									className={
+										progressPercent === null
+											? 'post-voice-panel__progress-fill is-indeterminate'
+											: 'post-voice-panel__progress-fill'
+									}
+									style={
+										progressPercent === null
+											? undefined
+											: { width: `${ progressPercent }%` }
+									}
+								/>
+							</div>
+							{ remainingSeconds !== null && (
+								<p className="post-voice-panel__hint">
+									{ sprintf(
+										/* translators: %d: seconds remaining until narration is ready. */
+										__( '~%ds remaining', 'post-voice' ),
+										Math.ceil( remainingSeconds )
+									) }
+								</p>
+							) }
+							<Button variant="link" onClick={ cancelGeneration }>
+								{ __( 'Cancel', 'post-voice' ) }
+							</Button>
 						</div>
 					) }
 
-					{ ! existing && ! previewUrl && ! isAutoDraft && (
-						<p>{ __( 'No audio generated yet.', 'post-voice' ) }</p>
-					) }
-
-					<select
-						value={ language }
-						onChange={ ( e ) => setLanguage( e.target.value ) }
-						disabled={ isBusy }
-						aria-label={ __( 'Narration language', 'post-voice' ) }
-					>
-						{ SUPPORTED_LANGUAGES.map( ( lang ) => (
-							<option key={ lang } value={ lang }>
-								{ lang }
-							</option>
-						) ) }
-					</select>
-
 					{ state === 'confirming-long-text' && (
-						<div>
+						<div className="post-voice-panel__card">
 							<p>
 								{ sprintf(
 									/* translators: %d: estimated generation time in seconds. */
@@ -366,48 +433,117 @@ function NarrationPanel() {
 									Math.round( etaSeconds ?? 0 )
 								) }
 							</p>
-							<button
-								onClick={ () =>
-									runGeneration(
-										extractNarratableText( blocks )
-									)
-								}
-							>
-								{ __( 'Generate anyway', 'post-voice' ) }
-							</button>
-							<button onClick={ () => setState( 'idle' ) }>
-								{ __( 'Cancel', 'post-voice' ) }
-							</button>
-						</div>
-					) }
-
-					{ ( state === 'generating' || state === 'calibrating' ) && (
-						<div>
-							<p>{ __( 'Generating…', 'post-voice' ) }</p>
-							<button onClick={ cancelGeneration }>
-								{ __( 'Cancel', 'post-voice' ) }
-							</button>
+							<div className="post-voice-panel__actions">
+								<Button
+									variant="primary"
+									onClick={ () =>
+										runGeneration(
+											extractNarratableText( blocks )
+										)
+									}
+								>
+									{ __( 'Generate anyway', 'post-voice' ) }
+								</Button>
+								<Button
+									variant="tertiary"
+									onClick={ () => setState( 'idle' ) }
+								>
+									{ __( 'Cancel', 'post-voice' ) }
+								</Button>
+							</div>
 						</div>
 					) }
 
 					{ previewUrl && ! isBusy && (
-						<div>
-							<audio controls src={ previewUrl } />
-							<button onClick={ confirmSave }>
+						<div className="post-voice-panel__card">
+							<p className="post-voice-panel__card-heading">
+								{ __( 'Preview', 'post-voice' ) }
+							</p>
+							<MiniPlayer src={ previewUrl } />
+							<Button variant="primary" onClick={ confirmSave }>
 								{ __( 'Save narration', 'post-voice' ) }
-							</button>
+							</Button>
 						</div>
 					) }
 
+					{ existing && ! previewUrl && ! isBusy && (
+						<div className="post-voice-panel__card">
+							<div className="post-voice-panel__status">
+								<span className="post-voice-panel__generated-at">
+									{ sprintf(
+										/* translators: %s: date and time the narration was generated. */
+										__( 'Generated on %s', 'post-voice' ),
+										dateI18n(
+											'j M, H:i',
+											existing.generatedAt
+										)
+									) }
+								</span>
+								<span
+									className={
+										isStale
+											? 'post-voice-panel__badge is-stale'
+											: 'post-voice-panel__badge is-current'
+									}
+								>
+									{ isStale
+										? __(
+												'⚠ May be out of date',
+												'post-voice'
+										  )
+										: __( 'Up to date', 'post-voice' ) }
+								</span>
+							</div>
+							<MiniPlayer src={ existing.url } />
+						</div>
+					) }
+
+					{ ! existing &&
+						! previewUrl &&
+						! isBusy &&
+						! isAutoDraft && (
+							<p className="post-voice-panel__hint">
+								{ __(
+									'No audio generated yet.',
+									'post-voice'
+								) }
+							</p>
+						) }
+
+					{ ! isBusy && (
+						<SelectControl
+							__nextHasNoMarginBottom
+							label={ __( 'Language', 'post-voice' ) }
+							value={ language }
+							options={ SUPPORTED_LANGUAGES.map( ( lang ) => ( {
+								label: LANGUAGE_LABELS[ lang ] ?? lang,
+								value: lang as string,
+							} ) ) }
+							onChange={ ( next ) => setLanguage( next ) }
+						/>
+					) }
+
 					{ ! previewUrl && ! isBusy && (
-						<button
-							onClick={ startGeneration }
-							disabled={ isAutoDraft }
-						>
-							{ existing
-								? __( 'Generate again', 'post-voice' )
-								: __( 'Generate audio', 'post-voice' ) }
-						</button>
+						<>
+							<Button
+								variant={ isStale ? 'primary' : 'secondary' }
+								onClick={ startGeneration }
+								disabled={ isAutoDraft }
+								__next40pxDefaultSize
+							>
+								{ existing
+									? __( 'Generate again', 'post-voice' )
+									: __( 'Generate audio', 'post-voice' ) }
+							</Button>
+							{ isStale && (
+								<p className="post-voice-panel__hint">
+									{ __(
+										'The post text changed since the last generation.',
+										'post-voice'
+									) }
+								</p>
+							) }
+						</>
 					) }
 				</div>
 			</PluginSidebar>
