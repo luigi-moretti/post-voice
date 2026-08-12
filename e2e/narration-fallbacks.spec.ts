@@ -38,7 +38,9 @@ test( 'generates audio single-threaded when crossOriginIsolated is unavailable',
 		false
 	);
 
-	await page.getByRole( 'button', { name: 'Narration' } ).click();
+	await page
+		.getByRole( 'button', { name: 'Narration', exact: true } )
+		.click();
 	await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 	await expect(
 		page.getByRole( 'button', { name: 'Save narration' } )
@@ -74,7 +76,9 @@ test( 'warns before downloading the model when storage is insufficient', async (
 		attributes: { content: NARRATION_TEXT },
 	} );
 	await editor.saveDraft();
-	await page.getByRole( 'button', { name: 'Narration' } ).click();
+	await page
+		.getByRole( 'button', { name: 'Narration', exact: true } )
+		.click();
 	await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 	await expect( page.getByRole( 'alert' ) ).toContainText( /storage|space/i );
 } );

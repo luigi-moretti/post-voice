@@ -10,7 +10,9 @@ test( 'editor panel has zero serious/critical accessibility violations', async (
 	page,
 } ) => {
 	await admin.createNewPost( { title: 'A11y editor' } );
-	await page.getByRole( 'button', { name: 'Narration' } ).click();
+	await page
+		.getByRole( 'button', { name: 'Narration', exact: true } )
+		.click();
 
 	const results = await new AxeBuilder( { page } )
 		.include( '.post-voice-panel' )

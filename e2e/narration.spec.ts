@@ -28,7 +28,9 @@ test.describe( 'Post Voice — narration generation', () => {
 		} );
 		await editor.saveDraft();
 		await editor.openDocumentSettingsSidebar();
-		await page.getByRole( 'button', { name: 'Narration' } ).click();
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
 		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 		await expect(
 			page.getByRole( 'button', { name: 'Save narration' } )
@@ -73,7 +75,9 @@ test.describe( 'Post Voice — narration generation', () => {
 			attributes: { content: NARRATION_TEXT },
 		} );
 		await editor.saveDraft();
-		await page.getByRole( 'button', { name: 'Narration' } ).click();
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
 		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 		await page
 			.getByRole( 'button', { name: 'Save narration' } )
@@ -113,7 +117,9 @@ test.describe( 'Post Voice — narration generation', () => {
 			attributes: { content: NARRATION_TEXT },
 		} );
 		await editor.saveDraft();
-		await page.getByRole( 'button', { name: 'Narration' } ).click();
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
 		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 		await page.getByRole( 'button', { name: 'Cancel' } ).click();
 		await expect(
@@ -148,7 +154,9 @@ test.describe( 'Post Voice — narration generation', () => {
 			attributes: { content: NARRATION_TEXT },
 		} );
 		await editor.saveDraft();
-		await page.getByRole( 'button', { name: 'Narration' } ).click();
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
 		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
 		await page.getByRole( 'button', { name: 'Cancel' } ).click();
 		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
