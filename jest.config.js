@@ -33,6 +33,7 @@ module.exports = {
 		'features/narration/editor/mp3-encoder.ts',
 		'features/narration/editor/model-source.ts',
 		'features/narration/frontend/player-state.ts',
+		'features/narration/format-time.ts',
 	],
 	coverageThreshold: {
 		global: { lines: 80 },

@@ -1,64 +1,171 @@
-// Sticky, mobile-first narration player.
+// Reader player — approved "Opção B: pílula flutuante" from the Fase 1 spec.
 //
-// The server renders a bare `<audio controls>` that works without JavaScript;
-// these styles turn it into the floating pill described in the spec's "UI/UX do
-// player do leitor (sticky/mobile)" section. Nothing here is required for
-// playback — with CSS unavailable the native control still renders inline.
+// A floating dark pill with a margin from the viewport edges, drawing its own
+// play button, progress bar and controls. It draws its own because the native
+// `<audio controls>` renders completely differently in each browser, which the
+// design explicitly rejects.
+//
+// Everything here styles the *enhanced* player. Without JavaScript the root
+// never gets `--enhanced`, the native control keeps its own appearance, and none
+// of the layout below applies — that is the no-JS fallback working as intended.
+
+$pv-surface: #1e1e1e;
+$pv-surface-hover: #333;
+$pv-accent: #2b62f0;
+$pv-track: #4a4a4a;
+$pv-text: #fff;
 
 .post-voice-player {
-	position: sticky;
-	bottom: 0;
+	&[hidden] {
+		display: none;
+	}
+}
+
+.post-voice-player--enhanced {
+	// Fixed, not sticky: the approved design floats the pill above the article at
+	// the bottom of the viewport for the whole read, which sticky cannot do once
+	// the content it belongs to scrolls past. The close button exists precisely
+	// because fixed UI collides with sticky headers and cookie banners.
+	position: fixed;
+	right: 1rem;
+	bottom: 1rem;
+	left: 1rem;
 	z-index: 100;
 
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
-	flex-wrap: wrap;
+	gap: 0.75rem;
 
-	margin: 2rem 0 0;
-	padding: 0.75rem;
+	// Margin from the edges rather than full width — the distinguishing choice of
+	// Option B over the full-width bar of Option A.
+	max-width: 40rem;
+	margin: 0 auto;
+	padding: 0.625rem 0.875rem;
 
-	background: #1e1e1e;
-	color: #fff;
-	border-radius: 0.75rem;
-	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+	background: $pv-surface;
+	color: $pv-text;
+	border-radius: 999px;
+	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
 
-	// Entry animation, disabled under prefers-reduced-motion (see below and the
-	// `--no-motion` class player.ts adds).
 	animation: post-voice-player-in 200ms ease-out;
 
+	// The element still plays the audio; it just stops drawing itself.
 	audio {
-		flex: 1 1 12rem;
-		min-width: 0;
-		max-width: 100%;
+		display: none;
 	}
 
 	button {
 		flex: 0 0 auto;
-		min-width: 2.75rem; // ≥44px touch target
-		min-height: 2.75rem;
-
-		background: #2f2f2f;
+		background: transparent;
 		color: inherit;
 		border: 1px solid transparent;
-		border-radius: 0.5rem;
 		cursor: pointer;
-		font-size: 1rem;
+		font: inherit;
 		line-height: 1;
 
-		&:hover {
-			background: #3d3d3d;
-		}
-
-		// Never remove the focus ring: the player must be fully keyboard operable.
 		&:focus-visible {
-			outline: 2px solid #fff;
+			outline: 2px solid $pv-text;
 			outline-offset: 2px;
 		}
 	}
 
-	&[hidden] {
-		display: none;
+	[data-role='play'] {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.75rem; // 44px — minimum comfortable touch target
+		height: 2.75rem;
+		padding: 0;
+		font-size: 1rem;
+		background: $pv-accent;
+		border-radius: 50%;
+
+		&:hover {
+			filter: brightness(1.1);
+		}
+	}
+
+	[data-role='rate'] {
+		min-width: 2.75rem;
+		height: 2rem;
+		padding: 0 0.5rem;
+		font-size: 0.8125rem;
+		background: $pv-surface-hover;
+		border-radius: 999px;
+
+		&:hover {
+			filter: brightness(1.2);
+		}
+	}
+
+	[data-role='close'] {
+		width: 2.25rem;
+		height: 2.25rem;
+		padding: 0;
+		font-size: 0.875rem;
+		border-radius: 50%;
+		opacity: 0.75;
+
+		&:hover {
+			opacity: 1;
+			background: $pv-surface-hover;
+		}
+	}
+
+}
+
+// Progress bar. A range input keeps arrow-key seeking, Home/End and screen
+// reader announcements for free, so only its appearance is replaced.
+.post-voice-player--enhanced [data-role='seek'] {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 1.5rem;
+	margin: 0;
+	padding: 0;
+	background: transparent;
+	appearance: none;
+	cursor: pointer;
+
+	&:focus-visible {
+		outline: 2px solid $pv-text;
+		outline-offset: 2px;
+		border-radius: 999px;
+	}
+
+	&::-webkit-slider-runnable-track {
+		height: 0.25rem;
+		background: $pv-track;
+		border-radius: 999px;
+	}
+
+	&::-moz-range-track {
+		height: 0.25rem;
+		background: $pv-track;
+		border-radius: 999px;
+	}
+
+	&::-moz-range-progress {
+		height: 0.25rem;
+		background: $pv-accent;
+		border-radius: 999px;
+	}
+
+	&::-webkit-slider-thumb {
+		width: 0.875rem;
+		height: 0.875rem;
+		margin-top: -0.3125rem; // centre the thumb on a 4px track
+		background: $pv-accent;
+		border: none;
+		border-radius: 50%;
+		appearance: none;
+	}
+
+	&::-moz-range-thumb {
+		width: 0.875rem;
+		height: 0.875rem;
+		background: $pv-accent;
+		border: none;
+		border-radius: 50%;
 	}
 }
 
@@ -92,7 +199,7 @@
 // whose preference is set before the page loads; the class covers the E2E
 // scenario and any runtime change, since player.ts reads matchMedia directly.
 @media (prefers-reduced-motion: reduce) {
-	.post-voice-player {
+	.post-voice-player--enhanced {
 		animation: none;
 	}
 }

@@ -94,6 +94,11 @@ test( 'player controls are fully operable by keyboard', async ( {
 	await page.keyboard.press( 'Enter' );
 	await expect( playButton ).toHaveAttribute( 'aria-pressed', 'true' );
 
+	// The progress bar sits between play and speed, matching the approved layout.
+	// It is a range input so arrow keys seek without any handling of our own.
+	await page.keyboard.press( 'Tab' );
+	await expect( page.locator( '[data-role="seek"]' ) ).toBeFocused();
+
 	await page.keyboard.press( 'Tab' );
 	await expect( page.locator( '[data-role="rate"]' ) ).toBeFocused();
 	await page.keyboard.press( 'Enter' );

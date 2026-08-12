@@ -64,6 +64,16 @@ class Post_Voice_Frontend_Render {
 			<button type="button" data-role="play" hidden aria-pressed="false" aria-label="<?php esc_attr_e( 'Play narration', 'post-voice' ); ?>"
 				data-label-playing="<?php esc_attr_e( 'Playing', 'post-voice' ); ?>"
 				data-label-paused="<?php esc_attr_e( 'Paused', 'post-voice' ); ?>">&#9654;</button>
+			<?php
+			/*
+			 * A range input rather than a styled <div>: it is seekable with the
+			 * arrow keys and Home/End for free, announces its position to screen
+			 * readers, and needs no drag handling of our own. `max` is a placeholder
+			 * until the audio reports its real duration.
+			 */
+			?>
+			<input type="range" data-role="seek" hidden value="0" min="0" max="100" step="0.1"
+				aria-label="<?php esc_attr_e( 'Seek within narration', 'post-voice' ); ?>" />
 			<button type="button" data-role="rate" hidden aria-label="<?php esc_attr_e( 'Playback speed', 'post-voice' ); ?>">1&#215;</button>
 			<button type="button" data-role="close" hidden aria-label="<?php esc_attr_e( 'Close player', 'post-voice' ); ?>">&#10005;</button>
 			<span data-role="live" aria-live="polite" class="screen-reader-text"></span>
