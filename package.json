@@ -10,11 +10,12 @@
 		"format": "wp-scripts format",
 		"test:unit": "wp-scripts test-unit-js",
 		"test:e2e": "playwright test",
-		"i18n:pot": "wp-scripts build-language-pack post-voice --pot-only",
+		"i18n:pot": "npm run build:dev && wp-env run cli --env-cwd=wp-content/plugins/post-voice wp i18n make-pot . languages/post-voice.pot --include=post-voice.php,features/narration/php,build/narration-editor.js,build/narration-player.js",
 		"audit:npm": "node scripts/audit-check.mjs",
 		"audit:npm:production": "node scripts/audit-check.mjs --production",
 		"audit:composer": "node scripts/audit-check-composer.mjs",
-		"test:php": "./scripts/run-php-tests.sh"
+		"test:php": "./scripts/run-php-tests.sh",
+		"build:dev": "wp-scripts build --mode=development"
 	},
 	"devDependencies": {
 		"@axe-core/playwright": "^4.10.0",

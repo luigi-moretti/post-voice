@@ -19,6 +19,20 @@
     <rule ref="PHPCompatibilityWP"/>
 
     <!--
+        `scripts/` holds CI build tooling run from a terminal, not code that ever
+        serves a request. WP_Filesystem exists to work through WordPress's
+        filesystem abstraction on a live site, and escaping exists to protect
+        HTML output — neither applies to a script whose entire job is writing
+        numbers to stdout and a non-zero exit code.
+    -->
+    <rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_fwrite">
+        <exclude-pattern>*/scripts/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.Security.EscapeOutput.OutputNotEscaped">
+        <exclude-pattern>*/scripts/*</exclude-pattern>
+    </rule>
+
+    <!--
         Test methods document themselves through their names, which WPCS itself
         requires to be long and descriptive. Requiring a docblock per test on top
         of that produces a comment that restates the method name and nothing more.

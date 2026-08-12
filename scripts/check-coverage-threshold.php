@@ -26,7 +26,17 @@ if ( ! $xml ) {
 $metrics    = $xml->project->metrics;
 $statements = (int) $metrics['statements'];
 $covered    = (int) $metrics['coveredstatements'];
-$percent    = $statements > 0 ? ( $covered / $statements ) * 100 : 100.0;
+
+// Zero statements means no coverage was measured at all — almost always a
+// missing pcov/Xdebug driver, since PHPUnit 9 emits an empty Clover report
+// rather than failing. Treating that as 100% would turn this gate into a
+// rubber stamp precisely when it stopped working.
+if ( 0 === $statements ) {
+	fwrite( STDERR, "✗ {$clover_path} reports 0 statements — no coverage driver (pcov/Xdebug)?\n" );
+	exit( 1 );
+}
+
+$percent = ( $covered / $statements ) * 100;
 
 printf( "PHP line coverage: %.2f%% (threshold: %.2f%%)\n", $percent, $threshold );
 

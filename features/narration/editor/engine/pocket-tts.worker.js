@@ -1,3 +1,12 @@
+/*
+ * Derived from `inference-worker.js` in the Pocket TTS ONNX web demo,
+ * licensed Apache-2.0. Modified for Post Voice: model files are fetched from a
+ * pinned Hugging Face mirror via MODEL_BASE_URL instead of a relative ./onnx/
+ * path, the tokenizer import no longer carries a ?v=3 query string, and the
+ * ONNX Runtime CDN import is marked webpackIgnore so the bundler leaves it as a
+ * runtime URL. See CREDITS.md for full attribution. Otherwise unchanged from
+ * upstream.
+ */
 // Pocket TTS ONNX Web Worker
 import { MODEL_BASE_URL } from '../model-source';
 
