@@ -4024,6 +4024,26 @@ the code but in the gates that were supposed to be watching it.
     patch. `npm audit --omit=dev` (the gate that guards what reaches an author's
     browser) is clean at 0/0/0.
 
+    **Resolved the same day, by fixing the counter rather than the threshold.**
+    Two upgrade paths were measured against the real overrides before choosing.
+    Bumping `@wordpress/env` to 11 removes exactly one of the seven — it swaps
+    `extract-zip` for `adm-zip`, but `extract-zip` re-enters through
+    `@wordpress/scripts` → `@wordpress/e2e-test-utils-playwright` → `lighthouse`
+    → `puppeteer-core` → `@puppeteer/browsers`, so the gate stays red at 6. It
+    also does not install cleanly: `@wordpress/scripts@30` declares
+    `peerOptional @wordpress/env@^10.0.0`, and only `@wordpress/scripts@32+`
+    relaxes that to `>=10.0.0` — so "bump wp-env" is really "bump the whole
+    toolchain we extend for webpack, jest, eslint and prettier". Rejected.
+
+    What was wrong was the unit of measurement. `audit-check.mjs` now counts
+    distinct (advisory, vulnerable package) pairs, which is what Snyk headlines
+    as "issues" against a separate "vulnerable paths" number, what Dependabot
+    raises alerts for, and what Trivy considers a bug to double-count. The same
+    tree now reports `1 issue across 7 affected packages`, names it, and links
+    the advisory. Thresholds are untouched; they simply mean distinct problems
+    now. `audit-check-composer.mjs` needed no change — `composer audit` returns
+    advisories indexed by package, so it already counted pairs.
+
 Also left open by explicit decision: **model-download progress as a percentage**
 (spec, "Fluxo de dados" step 3, "download do modelo % + síntese %"). The first
 generation shows "Preparing…" with an indeterminate bar while ~190MB downloads,
