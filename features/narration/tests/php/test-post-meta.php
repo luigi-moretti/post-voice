@@ -19,23 +19,25 @@ class Test_Post_Voice_Post_Meta extends WP_UnitTestCase {
 		Post_Voice_Post_Meta::register();
 	}
 
-	public function test_save_writes_all_three_meta_keys(): void {
+	public function test_save_writes_all_four_meta_keys(): void {
 		$post_id = self::factory()->post->create();
-		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
 
 		$this->assertSame( 42, Post_Voice_Post_Meta::get_attachment_id( $post_id ) );
 		$this->assertSame( 'portuguese', get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGE, true ) );
+		$this->assertSame( 'alba', get_post_meta( $post_id, Post_Voice_Post_Meta::VOICE, true ) );
 		$this->assertSame( str_repeat( 'a', 64 ), get_post_meta( $post_id, Post_Voice_Post_Meta::SOURCE_HASH, true ) );
 	}
 
-	public function test_clear_removes_all_three_meta_keys(): void {
+	public function test_clear_removes_all_four_meta_keys(): void {
 		$post_id = self::factory()->post->create();
-		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
 
 		Post_Voice_Post_Meta::clear( $post_id );
 
 		$this->assertSame( 0, Post_Voice_Post_Meta::get_attachment_id( $post_id ) );
 		$this->assertSame( '', get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGE, true ) );
+		$this->assertSame( '', get_post_meta( $post_id, Post_Voice_Post_Meta::VOICE, true ) );
 		$this->assertSame( '', get_post_meta( $post_id, Post_Voice_Post_Meta::SOURCE_HASH, true ) );
 	}
 
@@ -56,6 +58,7 @@ class Test_Post_Voice_Post_Meta extends WP_UnitTestCase {
 
 		$this->assertArrayHasKey( Post_Voice_Post_Meta::ATTACHMENT_ID, $registered );
 		$this->assertArrayHasKey( Post_Voice_Post_Meta::LANGUAGE, $registered );
+		$this->assertArrayHasKey( Post_Voice_Post_Meta::VOICE, $registered );
 		$this->assertArrayHasKey( Post_Voice_Post_Meta::SOURCE_HASH, $registered );
 		$this->assertTrue( $registered[ Post_Voice_Post_Meta::ATTACHMENT_ID ]['show_in_rest'] );
 	}

@@ -235,6 +235,61 @@ test.describe( 'Post Voice — narration generation', () => {
 		expect( mediaAfter.length ).toBe( mediaBefore.length );
 	} );
 
+	test( 'the chosen voice is previewable and travels with the saved narration', async ( {
+		admin,
+		editor,
+		page,
+		requestUtils,
+	} ) => {
+		await createNarratableDraft( admin, editor, 'Voice selection' );
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+
+		await page
+			.getByRole( 'combobox', { name: 'Voice', exact: true } )
+			.selectOption( 'javert' );
+
+		// The sample plays the bundle's own short phrase. It must not produce a
+		// preview to save, and must not touch the Media Library — it is a way to
+		// hear a voice, not a way to narrate the post.
+		const mediaBeforeSample = await requestUtils.rest( {
+			path: '/wp/v2/media',
+		} );
+		await page
+			.getByRole( 'button', { name: /Hear a sample of javert/ } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: /Hear a sample of javert/ } )
+		).toBeEnabled( { timeout: 120_000 } );
+		await expect(
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
+		).toBeHidden();
+		expect(
+			( await requestUtils.rest( { path: '/wp/v2/media' } ) ).length
+		).toBe( mediaBeforeSample.length );
+
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Save narration', exact: true } )
+			.click( { timeout: 120_000 } );
+		await expect(
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
+		).toBeVisible();
+
+		// The voice is recorded alongside the audio, so reopening the post shows
+		// what was actually generated rather than the default.
+		const postId = await page.evaluate( () =>
+			( window as any ).wp.data.select( 'core/editor' ).getCurrentPostId()
+		);
+		const post = await requestUtils.rest( {
+			path: `/wp/v2/posts/${ postId }`,
+		} );
+		expect( post.meta._narration_voice ).toBe( 'javert' );
+	} );
+
 	test( 'author can cancel generation mid-flight', async ( {
 		admin,
 		editor,

@@ -3895,6 +3895,47 @@ not, because each needed a human to look.
     implementation had quietly closed off. The preview card now offers Discard
     beside Save, and the generate button stays available throughout.
 
+---
+
+## Revision 2026-08-13 — voice selection
+
+26. **The author could not choose a voice, and did not know there were any.**
+    Every Pocket TTS bundle ships eight predefined voices in the `voices.bin`
+    already inside the ~190MB download, and the panel silently used the bundle's
+    default (`alba`) forever. The spec never rejected voice selection — it simply
+    never mentioned it, in the scope list or in the explicit "Fora (fases 2/3)"
+    list — so this is a gap being filled, not a scope change. Approved format is
+    variant B1 of `assets/2026-08-13-voice-selector-options.html`: a `Voice`
+    `SelectControl` beside `Language`, plus a round button that plays a short
+    sample. `voice` now travels through the REST call into `_narration_voice`,
+    validated server-side against `ALLOWED_VOICES` exactly as `language` is.
+27. **The sample phrase must not go through `__()`.** Gettext follows the *admin*
+    locale, but the phrase feeds a speech model whose language is the chosen
+    bundle — an admin running WordPress in Portuguese while generating English
+    narration would hear the English voice read Portuguese. `SAMPLE_TEXTS` in
+    `voice-catalog.ts` is a fixed map keyed by bundle, each phrase under 60
+    characters so a sample stays around four seconds of speech.
+28. **Calibration warmed up on Portuguese in every language.** `CALIBRATION_TEXT`
+    was a hardcoded Portuguese sentence used regardless of the loaded bundle.
+    Invisible while the warm-up audio was discarded; audible the moment that same
+    audio started doubling as the voice sample. Calibration now speaks the
+    bundle's own phrase, and its audio is kept as the first sample instead of
+    thrown away — the author hears the voice they are about to generate with, and
+    the RTF measurement comes free in the same pass.
+29. **The engine ignored a language change after the first generation.** The
+    engine instance deliberately outlives a single generation so the model is not
+    re-fetched, but it was only ever told a language in `load()`. An author who
+    switched the Language selector and generated again got the *first* bundle,
+    silently. New `ensureLanguage()` is called before every generation and every
+    sample. Found while wiring the sample button, not by a test — no scenario
+    generated twice with two different languages.
+
+Related, and deliberately left out: an editable sample text (a 150-character
+textarea). 150 characters is ~12s of speech, which is ~36s of waiting on a device
+at the "slow" RTF threshold — it would break the only promise the sample button
+makes. What free text would really expose is *pronunciation* of specific terms,
+which is the Fase 2 dictionary; timbre does not change with the sentence.
+
 One environment note for anyone iterating locally: Docker Desktop's file-sharing
 cache is keyed on inode, so editing a PHP file **in place** leaves the container
 serving the old contents and E2E silently tests stale code. Rewriting the file

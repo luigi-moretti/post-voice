@@ -56,6 +56,7 @@ Convenções derivadas (usar daqui pra frente em todo o doc e no código):
 |---|---|---|
 | `audio` | file | O blob gerado no browser |
 | `language` | string | Código do bundle (ex. `pt`, alinhado com pasta `onnx/<language>/`) |
+| `voice` | string | Voz pré-definida usada na geração (ver "Seletor de voz") |
 | `source_hash` | string | SHA-256 hex, calculado no client (`crypto.subtle.digest`) sobre o texto filtrado que foi de fato narrado |
 
 Autenticação: header `X-WP-Nonce` padrão WP REST (cookie+nonce), não vai no body.
@@ -174,7 +175,7 @@ Lista final (ver também "Qualidade e testes"): fluxo feliz completo · fallback
 
 **Dentro:**
 - Painel no editor Gutenberg (aba "Narração") — visível durante edição do post.
-- Autor escolhe idioma, gera áudio (Pocket TTS, 100% client-side).
+- Autor escolhe idioma e voz, gera áudio (Pocket TTS, 100% client-side).
 - Autor ouve preview antes de persistir.
 - Áudio confirmado é salvo como asset de mídia do post (Media Library).
 - Player no frontend do post: play, pause, stop, seletor de velocidade.
@@ -226,6 +227,7 @@ Não cria pasta vazia `features/segment-language/` ou similar agora — enfeite 
 
 Só orquestra — nunca roda TTS no servidor. Recebe o blob de áudio já gerado no browser via REST, salva como attachment (`wp_insert_attachment`), grava meta:
 - `_narration_language` — idioma do áudio gerado
+- `_narration_voice` — voz pré-definida usada na geração (ver "Seletor de voz")
 - `_narration_source_hash` — hash do texto do post no momento da geração (detecta desatualização)
 - `_narration_attachment_id` — liga o post ao asset de mídia
 
@@ -235,7 +237,7 @@ Toda ação passa por checagem de capability (`edit_post` **e** `upload_files`, 
 
 Layout: **card de status no topo + controles de ação abaixo**, não "tudo visível de uma vez" nem "wizard passo a passo" — escolhido por ser composicional: cada fase futura empilha um card novo abaixo sem redesenhar o que já existe (validado com a ilustração da Fase 2 nos mockups).
 
-- **Sem áudio:** card de status ("Nenhum áudio gerado ainda") + seletor de idioma + botão "Gerar áudio".
+- **Sem áudio:** card de status ("Nenhum áudio gerado ainda") + seletor de idioma + seletor de voz + botão "Gerar áudio".
 - **Com áudio existente:** card de status mostra data de geração + badge "Atualizado"/"Pode estar desatualizado" (se o hash do texto mudou) + player inline (play/scrubber/tempo) + botão "Gerar novamente".
 - **Gerando:** card de status vira progresso (texto + barra + ETA) + botão "Cancelar".
 
@@ -243,6 +245,21 @@ Mockups aprovados (fonte + screenshot, não só descrição):
 - [`assets/2026-08-08-narration-panel-layout-options.html`](assets/2026-08-08-narration-panel-layout-options.html) — comparação das 3 direções de layout (A/B/C).
 - [`assets/2026-08-08-narration-panel-option-c-states.html`](assets/2026-08-08-narration-panel-option-c-states.html) — opção C nos estados áudio-existente / desatualizado / gerando + ilustração de compatibilidade com Fase 2.
 - [`assets/2026-08-08-narration-panel-option-c.png`](assets/2026-08-08-narration-panel-option-c.png) — screenshot renderizado.
+
+### Seletor de voz (emenda de 2026-08-13)
+
+Lacuna do spec original, não decisão: escolha de voz não aparecia nem no escopo nem na lista "Fora (fases 2/3)" — o painel aprovado só tinha idioma, e a Fase 1 acabou fixando a voz padrão do bundle (`alba`) sem o autor saber que havia outras. Os 5 bundles espelhados trazem as **mesmas 8 vozes** (`alba, azelma, cosette, eponine, fantine, javert, jean, marius`), já dentro do `voices.bin` que vem no download de ~190MB — trocar de voz não baixa nada novo, e trocar de idioma não invalida a voz escolhida.
+
+**Formato aprovado: `SelectControl` "Voz" + botão redondo de amostra ao lado** (variante B1 dos mockups). Comparado com só o dropdown (avaliar uma voz custaria uma geração completa do post) e com uma lista das 8 vozes com play por linha (melhor pra comparar, mas ~170px de altura e componente custom sem equivalente em `@wordpress/components`).
+
+- [`assets/2026-08-13-voice-selector-options.html`](assets/2026-08-13-voice-selector-options.html) — as 3 variantes, interativo.
+- [`assets/2026-08-13-voice-selector-options.png`](assets/2026-08-13-voice-selector-options.png) — screenshot renderizado.
+
+**Frase de amostra: fixa, uma por bundle, fora do gettext.** Gettext segue o locale do admin; a amostra alimenta um modelo de fala cujo idioma é o bundle escolhido. Traduzir via `__()` faria um admin em português ouvir a voz inglesa lendo português. Mapa fixo por idioma, todas as frases abaixo de 60 caracteres (~4s de fala) pra manter a amostra rápida.
+
+**Texto de amostra editável pelo autor: rejeitado nesta fase.** 150 caracteres são ~12s de fala — ~36s de espera num device no limiar de "lento" (RTF 3), o que quebra a única promessa que o botão faz. E o que o texto livre revelaria de verdade é pronúncia de termos específicos, que é o dicionário da Fase 2; timbre não muda com a frase. Para "como fica o meu texto nessa voz" o caminho é o preview real, que já é descartável.
+
+**Guarda espelhada no server**, mesma lógica do idioma: `ALLOWED_VOICES` no REST, 400 `post_voice_invalid_voice`. Controle desabilitado no painel é UX, não garantia — o endpoint é alcançável direto e o valor acaba em post meta que o frontend confia.
 
 **Nota de compatibilidade entre fases:** customização visual do player (Fase 3) não mora nesse painel — é configuração de site/tema, não por post; vai pra uma tela de Configurações separada do plugin (ver seção abaixo). Highlight de palavra (Fase 3) não deve exigir card novo aqui — é automático uma vez que o áudio é gerado com timestamps.
 

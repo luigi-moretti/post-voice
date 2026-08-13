@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-12T12:53:23+00:00\n"
+"POT-Creation-Date: 2026-08-13T15:17:52+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -28,48 +28,58 @@ msgstr ""
 msgid "Post narration player"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:55
+#: features/narration/php/class-frontend-render.php:64
+#: build/narration-editor.js:19
 msgid "Play narration"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:56
+#: features/narration/php/class-frontend-render.php:65
 msgid "Playing"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:57
+#: features/narration/php/class-frontend-render.php:66
 msgid "Paused"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:58
+#: features/narration/php/class-frontend-render.php:76
+#: build/narration-editor.js:19
+msgid "Seek within narration"
+msgstr ""
+
+#: features/narration/php/class-frontend-render.php:77
 msgid "Playback speed"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:59
+#: features/narration/php/class-frontend-render.php:78
 msgid "Close player"
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:62
+#: features/narration/php/class-rest-api.php:70
 msgid "Your role does not have permission to add media. Ask an administrator."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:70
+#: features/narration/php/class-rest-api.php:78
 msgid "Save the post before generating narration."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:91
+#: features/narration/php/class-rest-api.php:99
 msgid "No audio file was received."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:100
+#: features/narration/php/class-rest-api.php:108
 msgid "Unsupported narration language."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:109
+#: features/narration/php/class-rest-api.php:117
+msgid "Unsupported narration voice."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:126
 msgid "Malformed source hash."
 msgstr ""
 
 #. translators: %s: title of the post being narrated.
-#: features/narration/php/class-rest-api.php:155
+#: features/narration/php/class-rest-api.php:172
 #, php-format
 msgid "Narration — %s"
 msgstr ""
@@ -79,7 +89,7 @@ msgid "Failed to save narration."
 msgstr ""
 
 #: build/narration-editor.js:19
-msgid "No readable text found in this post."
+msgid "Pause narration"
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -90,6 +100,10 @@ msgstr ""
 #: build/narration-editor.js:19
 #, js-format
 msgid "Not enough free storage to download the voice model. About %s of free space is needed."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "No readable text found in this post."
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -104,26 +118,26 @@ msgstr ""
 msgid "Save the post first to generate narration."
 msgstr ""
 
-#. translators: %s: date the narration audio was generated.
+#: build/narration-editor.js:19
+msgid "Preparing…"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Synthesising audio…"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Narration generation progress"
+msgstr ""
+
+#. translators: %d: seconds remaining until narration is ready.
 #: build/narration-editor.js:19
 #, js-format
-msgid "Generated on %s"
+msgid "~%ds remaining"
 msgstr ""
 
 #: build/narration-editor.js:19
-msgid "May be out of date — the post text changed since this was generated."
-msgstr ""
-
-#: build/narration-editor.js:19
-msgid "Up to date"
-msgstr ""
-
-#: build/narration-editor.js:19
-msgid "No audio generated yet."
-msgstr ""
-
-#: build/narration-editor.js:19
-msgid "Narration language"
+msgid "Cancel"
 msgstr ""
 
 #. translators: %d: estimated generation time in seconds.
@@ -137,15 +151,53 @@ msgid "Generate anyway"
 msgstr ""
 
 #: build/narration-editor.js:19
-msgid "Cancel"
-msgstr ""
-
-#: build/narration-editor.js:19
-msgid "Generating…"
+msgid "Preview"
 msgstr ""
 
 #: build/narration-editor.js:19
 msgid "Save narration"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Discard"
+msgstr ""
+
+#. translators: %s: date and time the narration was generated.
+#: build/narration-editor.js:19
+#, js-format
+msgid "Generated on %s"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "⚠ May be out of date"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Up to date"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "No audio generated yet."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Language"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Voice"
+msgstr ""
+
+#. translators: %s: voice name, e.g. "alba".
+#: build/narration-editor.js:19
+#, js-format
+msgid "Hear a sample of %s"
+msgstr ""
+
+#. translators: %s: model download size, e.g. "190 MB".
+#: build/narration-editor.js:19
+#, js-format
+msgid "The first sample downloads the voice model (about %s). After that, samples play in a couple of seconds."
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -154,4 +206,8 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "Generate audio"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "The post text changed since the last generation."
 msgstr ""

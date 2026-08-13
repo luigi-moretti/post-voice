@@ -115,9 +115,23 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		$this->assertSame( 'post_voice_invalid_language', $response->as_error()->get_error_code() );
 	}
 
+	public function test_rejects_unsupported_voice_with_400(): void {
+		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
+		$request->set_param( 'language', 'portuguese' );
+		$request->set_param( 'voice', 'gandalf' );
+		$request->set_param( 'source_hash', str_repeat( 'a', 64 ) );
+		$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
+
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'post_voice_invalid_voice', $response->as_error()->get_error_code() );
+	}
+
 	public function test_rejects_malformed_source_hash_with_400(): void {
 		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
 		$request->set_param( 'language', 'portuguese' );
+		$request->set_param( 'voice', 'alba' );
 		$request->set_param( 'source_hash', 'not-a-sha256' );
 		$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
 
@@ -130,6 +144,7 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 	public function test_saves_attachment_and_meta_on_valid_request(): void {
 		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
 		$request->set_param( 'language', 'portuguese' );
+		$request->set_param( 'voice', 'javert' );
 		$request->set_param( 'source_hash', str_repeat( 'a', 64 ) );
 		$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
 
@@ -139,6 +154,8 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertArrayHasKey( 'attachment_id', $data );
 		$this->assertSame( 'portuguese', $data['language'] );
+		$this->assertSame( 'javert', $data['voice'] );
+		$this->assertSame( 'javert', get_post_meta( $this->post_id, Post_Voice_Post_Meta::VOICE, true ) );
 		$this->assertSame( $data['attachment_id'], Post_Voice_Post_Meta::get_attachment_id( $this->post_id ) );
 		$this->assertSame( $this->post_id, get_post( $data['attachment_id'] )->post_parent );
 	}
@@ -146,12 +163,14 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 	public function test_regenerating_deletes_previous_attachment(): void {
 		$first = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
 		$first->set_param( 'language', 'portuguese' );
+		$first->set_param( 'voice', 'alba' );
 		$first->set_param( 'source_hash', str_repeat( 'a', 64 ) );
 		$first->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
 		$first_id = rest_get_server()->dispatch( $first )->get_data()['attachment_id'];
 
 		$second = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
 		$second->set_param( 'language', 'spanish' );
+		$second->set_param( 'voice', 'marius' );
 		$second->set_param( 'source_hash', str_repeat( 'b', 64 ) );
 		$second->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
 		$second_id = rest_get_server()->dispatch( $second )->get_data()['attachment_id'];

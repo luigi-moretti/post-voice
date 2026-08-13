@@ -1,4 +1,5 @@
 import { computeRtf } from '../rtf-calibration';
+import { sampleTextFor } from '../voice-catalog';
 
 export interface GenerateOptions {
 	/**
@@ -14,17 +15,23 @@ export interface GenerateOptions {
 
 export interface CalibrationResult {
 	rtf: number;
+	/** The warm-up audio itself — the bundle's sample phrase, ready to play. */
+	audio: Float32Array;
 }
-
-const CALIBRATION_TEXT = 'Isto é um teste rápido de calibração de desempenho.';
 
 export class PocketTtsEngine {
 	private worker: Worker | null = null;
 	private ready = false;
 	private defaultVoice: string | null = null;
+	// Remembered so calibration can speak the loaded bundle's own language. It
+	// used to warm up on a hardcoded Portuguese sentence regardless of bundle,
+	// which was invisible while the warm-up audio was thrown away — and became
+	// audible the moment the same audio started doubling as the voice sample.
+	private language: string = 'english_2026-04';
 	public sampleRate = 24000;
 
 	async load( language: string ): Promise< void > {
+		this.language = language;
 		this.worker = new Worker(
 			new URL( './pocket-tts.worker.js', import.meta.url ),
 			{ type: 'module' }
@@ -66,6 +73,25 @@ export class PocketTtsEngine {
 		}
 	}
 
+	/**
+	 * Switch the loaded bundle, or do nothing if it is already the one loaded.
+	 *
+	 * Callers must run this before every generation. The engine instance
+	 * outlives any single generation — it is kept alive precisely so the model
+	 * is not re-fetched — so an author who changes the Language selector between
+	 * two generations would otherwise get the second one synthesised by the
+	 * first one's bundle, with no error anywhere.
+	 *
+	 * @param language Model bundle identifier.
+	 */
+	async ensureLanguage( language: string ): Promise< void > {
+		if ( language === this.language ) {
+			return;
+		}
+		await this.setLanguage( language );
+		this.language = language;
+	}
+
 	private setLanguage( language: string ): Promise< void > {
 		return new Promise( ( resolve, reject ) => {
 			if ( ! this.worker ) {
@@ -94,15 +120,37 @@ export class PocketTtsEngine {
 		} );
 	}
 
-	async calibrate(): Promise< CalibrationResult > {
+	/**
+	 * Synthesise the bundle's sample phrase in a given voice.
+	 *
+	 * Short, fixed text — see `SAMPLE_TEXTS` for why it is per-bundle and not
+	 * translated — so the caller can play it back as a preview of the voice
+	 * without generating the whole post.
+	 *
+	 * @param voice Predefined voice name; omitted means the bundle's default.
+	 */
+	speakSample( voice?: string ): Promise< Float32Array > {
+		return this.generate( sampleTextFor( this.language ), { voice } );
+	}
+
+	/**
+	 * Measure this device's real-time factor by synthesising the sample phrase.
+	 *
+	 * Returns the audio as well as the RTF: it is the same phrase the sample
+	 * button plays, in the same voice, so the caller can hand it to the author
+	 * instead of throwing away a perfectly good few seconds of speech.
+	 *
+	 * @param voice Voice to warm up with — pass the one that will be generated.
+	 */
+	async calibrate( voice?: string ): Promise< CalibrationResult > {
 		const start = performance.now();
-		const audio = await this.generate( CALIBRATION_TEXT, {} );
+		const audio = await this.speakSample( voice );
 		const elapsedMs = performance.now() - start;
 		// Measure the audio we actually produced rather than guessing its length
 		// from character count — the samples are right here, and a guess would bias
 		// every ETA derived from this RTF.
 		const audioDurationSec = audio.length / this.sampleRate;
-		return { rtf: computeRtf( audioDurationSec, elapsedMs ) };
+		return { rtf: computeRtf( audioDurationSec, elapsedMs ), audio };
 	}
 
 	generate(

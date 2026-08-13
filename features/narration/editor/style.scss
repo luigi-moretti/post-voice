@@ -78,6 +78,33 @@
 		flex-wrap: wrap;
 	}
 
+	// Voice selector and its sample button on one line. `align-items: end` keeps
+	// the round button on the control's baseline rather than the label's.
+	&__voice {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.5rem;
+
+		.components-base-control {
+			flex: 1 1 auto;
+			min-width: 0;
+		}
+	}
+
+	&__sample {
+		flex: 0 0 auto;
+
+		&.components-button.has-icon {
+			width: 2rem;
+			height: 2rem;
+			min-width: 2rem;
+			padding: 0;
+			border-radius: 50%;
+			border: 1px solid var(--wp-admin-theme-color, #3858e9);
+			color: var(--wp-admin-theme-color, #3858e9);
+		}
+	}
+
 	&__progress {
 		height: 0.25rem;
 		overflow: hidden;

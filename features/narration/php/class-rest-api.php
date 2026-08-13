@@ -25,6 +25,14 @@ class Post_Voice_Rest_Api {
 	public const ALLOWED_LANGUAGES = array( 'english_2026-04', 'german', 'italian', 'portuguese', 'spanish' );
 
 	/**
+	 * The predefined voices every Pocket TTS bundle ships, mirrored from the
+	 * editor's `voice-catalog.ts`. Validated here as well because a disabled
+	 * control in the panel is UX, not a guarantee: the endpoint is reachable
+	 * directly, and the value ends up in post meta the frontend trusts.
+	 */
+	public const ALLOWED_VOICES = array( 'alba', 'azelma', 'cosette', 'eponine', 'fantine', 'javert', 'jean', 'marius' );
+
+	/**
 	 * Register the single narration route.
 	 */
 	public static function register_routes(): void {
@@ -98,6 +106,15 @@ class Post_Voice_Rest_Api {
 			return new WP_Error(
 				'post_voice_invalid_language',
 				__( 'Unsupported narration language.', 'post-voice' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$voice = (string) $request->get_param( 'voice' );
+		if ( ! in_array( $voice, self::ALLOWED_VOICES, true ) ) {
+			return new WP_Error(
+				'post_voice_invalid_voice',
+				__( 'Unsupported narration voice.', 'post-voice' ),
 				array( 'status' => 400 )
 			);
 		}
@@ -181,7 +198,7 @@ class Post_Voice_Rest_Api {
 			wp_delete_attachment( $previous_attachment_id, true );
 		}
 
-		Post_Voice_Post_Meta::save( $post_id, $attachment_id, $language, $source_hash );
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, $language, $voice, $source_hash );
 
 		return new WP_REST_Response(
 			array(
@@ -189,6 +206,7 @@ class Post_Voice_Rest_Api {
 				'url'           => wp_get_attachment_url( $attachment_id ),
 				'generated_at'  => get_the_date( 'c', $attachment_id ),
 				'language'      => $language,
+				'voice'         => $voice,
 			),
 			200
 		);

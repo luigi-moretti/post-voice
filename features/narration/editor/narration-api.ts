@@ -6,6 +6,7 @@ export interface SaveNarrationResponse {
 	url: string;
 	generated_at: string;
 	language: string;
+	voice: string;
 }
 
 /**
@@ -24,17 +25,20 @@ export interface SaveNarrationResponse {
  * @param postId
  * @param audio
  * @param language
+ * @param voice
  * @param sourceHash
  */
 export async function saveNarration(
 	postId: number,
 	audio: Blob,
 	language: string,
+	voice: string,
 	sourceHash: string
 ): Promise< SaveNarrationResponse > {
 	const formData = new FormData();
 	formData.append( 'audio', audio, 'narration.mp3' );
 	formData.append( 'language', language );
+	formData.append( 'voice', voice );
 	formData.append( 'source_hash', sourceHash );
 
 	try {

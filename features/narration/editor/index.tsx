@@ -27,6 +27,7 @@ import {
 import { encodeMp3 } from './mp3-encoder';
 import { saveNarration } from './narration-api';
 import { MiniPlayer } from './mini-player';
+import { VOICES, DEFAULT_VOICE, isVoice } from './voice-catalog';
 
 import './style.scss';
 
@@ -47,6 +48,7 @@ type PanelState =
 	| 'calibrating'
 	| 'confirming-long-text'
 	| 'generating'
+	| 'sampling'
 	| 'saving'
 	| 'error';
 
@@ -58,6 +60,7 @@ interface ExistingNarration {
 function NarrationPanel() {
 	const [ state, setState ] = useState< PanelState >( 'idle' );
 	const [ language, setLanguage ] = useState< string >( 'portuguese' );
+	const [ voice, setVoice ] = useState< string >( DEFAULT_VOICE );
 	const [ etaSeconds, setEtaSeconds ] = useState< number | null >( null );
 	const [ previewUrl, setPreviewUrl ] = useState< string | null >( null );
 	const [ error, setError ] = useState< string | null >( null );
@@ -71,6 +74,13 @@ function NarrationPanel() {
 	const narratedTextRef = useRef< string | null >( null );
 	const abortRef = useRef< AbortController | null >( null );
 	const engineRef = useRef< PocketTtsEngine | null >( null );
+	// One `<audio>` reused for every sample, so clicking a second voice stops the
+	// first instead of layering two voices on top of each other.
+	const sampleAudioRef = useRef< HTMLAudioElement | null >( null );
+	// Samples already synthesised, keyed `language:voice`. Comparing voices means
+	// going back and forth between the same few — re-synthesising each time would
+	// make the second listen as slow as the first for no reason.
+	const sampleCacheRef = useRef< Map< string, string > >( new Map() );
 
 	const { postId, blocks, postStatus, meta } = useSelect( ( select ) => {
 		const editor = select( 'core/editor' ) as any;
@@ -91,6 +101,30 @@ function NarrationPanel() {
 
 	const attachmentId = meta._narration_attachment_id as number | undefined;
 	const savedHash = meta._narration_source_hash as string | undefined;
+	const savedVoice = meta._narration_voice as string | undefined;
+	const savedLanguage = meta._narration_language as string | undefined;
+
+	// Reopen the panel on the settings the existing audio was made with, rather
+	// than on the defaults. Otherwise the selectors quietly describe a narration
+	// nobody generated: an English narration listed as Portuguese, in `alba`
+	// whatever voice actually recorded it. Keyed on the meta, so a later manual
+	// change by the author stands.
+	useEffect( () => {
+		if ( isVoice( savedVoice ) ) {
+			setVoice( savedVoice );
+		}
+	}, [ savedVoice ] );
+
+	useEffect( () => {
+		if (
+			savedLanguage &&
+			( SUPPORTED_LANGUAGES as readonly string[] ).includes(
+				savedLanguage
+			)
+		) {
+			setLanguage( savedLanguage );
+		}
+	}, [ savedLanguage ] );
 
 	// Load the existing attachment's URL and date so the panel can show a real
 	// inline player instead of just claiming audio exists.
@@ -152,11 +186,120 @@ function NarrationPanel() {
 		previewBlobRef.current = blob;
 	}, [] );
 
+	/**
+	 * Bring the engine up on the selected language, downloading the model if this
+	 * is the first use.
+	 *
+	 * Shared by generation and by the voice sample: both need a loaded bundle,
+	 * both must refuse to start on an insecure origin, and both must warn about
+	 * disk space *before* spending ~190MB of bandwidth rather than after.
+	 */
+	const ensureEngine = useCallback( async (): Promise< PocketTtsEngine > => {
+		// `crypto.subtle` only exists in a secure context. On a plain-HTTP site it
+		// is undefined, so hashing throws and staleness detection breaks. Check up
+		// front rather than failing mid-generation after the model has downloaded.
+		// The same requirement gates AudioWorklet and cross-origin isolation, so
+		// this one check covers the whole feature.
+		if ( ! window.isSecureContext || ! window.crypto?.subtle ) {
+			throw new Error(
+				__(
+					'Narration needs a secure connection. Load the editor over HTTPS (or localhost) and try again.',
+					'post-voice'
+				)
+			);
+		}
+
+		// Check storage BEFORE downloading ~190MB of model, not after.
+		if ( ! engineRef.current && navigator.storage?.estimate ) {
+			const estimate = await navigator.storage.estimate();
+			if ( ! hasEnoughStorage( estimate ) ) {
+				throw new Error(
+					sprintf(
+						/* translators: %s: required free storage, e.g. "285 MB". */
+						__(
+							'Not enough free storage to download the voice model. About %s of free space is needed.',
+							'post-voice'
+						),
+						formatBytes( LANGUAGE_BUNDLE_BYTES * 1.5 )
+					)
+				);
+			}
+		}
+
+		if ( ! engineRef.current ) {
+			engineRef.current = new PocketTtsEngine();
+			await engineRef.current.load( language );
+		} else {
+			// The engine outlives a single generation; the selector does not have
+			// to agree with it.
+			await engineRef.current.ensureLanguage( language );
+		}
+
+		return engineRef.current;
+	}, [ language ] );
+
+	/**
+	 * Store a synthesised sample phrase as a playable URL for the current
+	 * language/voice pair, and return that URL.
+	 *
+	 * @param audio      Raw samples from the engine.
+	 * @param sampleRate Sample rate the engine reported.
+	 */
+	const cacheSample = useCallback(
+		( audio: Float32Array, sampleRate: number ): string => {
+			const key = `${ language }:${ voice }`;
+			const existingUrl = sampleCacheRef.current.get( key );
+			if ( existingUrl ) {
+				return existingUrl;
+			}
+			const url = URL.createObjectURL( encodeMp3( audio, sampleRate ) );
+			sampleCacheRef.current.set( key, url );
+			return url;
+		},
+		[ language, voice ]
+	);
+
+	const playSample = useCallback( async () => {
+		setError( null );
+		try {
+			let url = sampleCacheRef.current.get( `${ language }:${ voice }` );
+			if ( ! url ) {
+				setState( 'sampling' );
+				const engine = await ensureEngine();
+				url = cacheSample(
+					await engine.speakSample( voice ),
+					engine.sampleRate
+				);
+				setState( 'idle' );
+			}
+			const player = sampleAudioRef.current ?? new Audio();
+			sampleAudioRef.current = player;
+			player.src = url;
+			player.currentTime = 0;
+			await player.play();
+		} catch ( err ) {
+			setState( 'error' );
+			setError( ( err as Error ).message );
+		}
+	}, [ cacheSample, ensureEngine, language, voice ] );
+
+	// Object URLs outlive the component unless revoked, and the panel is
+	// unmounted every time the author closes the sidebar.
+	useEffect( () => {
+		const cache = sampleCacheRef.current;
+		return () => {
+			sampleAudioRef.current?.pause();
+			cache.forEach( ( url ) => URL.revokeObjectURL( url ) );
+			cache.clear();
+		};
+	}, [] );
+
 	const runGeneration = useCallback(
 		async ( text: string ) => {
 			setState( 'generating' );
 			abortRef.current = new AbortController();
 			const audio = await engineRef.current!.generate( text, {
+				voice,
 				signal: abortRef.current.signal,
 			} );
 			// Remember the exact text this audio was synthesised from. Saving must
@@ -167,7 +310,7 @@ function NarrationPanel() {
 			setPreview( encodeMp3( audio, engineRef.current!.sampleRate ) );
 			setState( 'idle' );
 		},
-		[ setPreview ]
+		[ setPreview, voice ]
 	);
 
 	const startGeneration = useCallback( async () => {
@@ -181,43 +324,13 @@ function NarrationPanel() {
 				);
 			}
 
-			// `crypto.subtle` only exists in a secure context. On a plain-HTTP site it
-			// is undefined, so hashing throws and staleness detection breaks. Check up
-			// front rather than failing mid-generation after the model has downloaded.
-			// The same requirement gates AudioWorklet and cross-origin isolation, so
-			// this one check covers the whole feature.
-			if ( ! window.isSecureContext || ! window.crypto?.subtle ) {
-				throw new Error(
-					__(
-						'Narration needs a secure connection. Load the editor over HTTPS (or localhost) and try again.',
-						'post-voice'
-					)
-				);
-			}
+			const engine = await ensureEngine();
 
-			// Check storage BEFORE downloading ~190MB of model, not after.
-			if ( ! engineRef.current && navigator.storage?.estimate ) {
-				const estimate = await navigator.storage.estimate();
-				if ( ! hasEnoughStorage( estimate ) ) {
-					throw new Error(
-						sprintf(
-							/* translators: %s: required free storage, e.g. "285 MB". */
-							__(
-								'Not enough free storage to download the voice model. About %s of free space is needed.',
-								'post-voice'
-							),
-							formatBytes( LANGUAGE_BUNDLE_BYTES * 1.5 )
-						)
-					);
-				}
-			}
-
-			if ( ! engineRef.current ) {
-				engineRef.current = new PocketTtsEngine();
-				await engineRef.current.load( language );
-			}
-
-			const { rtf } = await engineRef.current.calibrate();
+			const { rtf, audio } = await engine.calibrate( voice );
+			// The warm-up spoke this bundle's sample phrase in the voice about to
+			// be used, so it is exactly what the sample button would synthesise.
+			// Keep it instead of discarding it.
+			cacheSample( audio, engine.sampleRate );
 			// rtf === 0 means the warm-up produced no measurable audio. Treat that as
 			// "unmeasured", not "instant" — otherwise a broken calibration looks like a
 			// blazing-fast device and every guard below silently stops firing.
@@ -254,7 +367,14 @@ function NarrationPanel() {
 			setState( 'error' );
 			setError( ( err as Error ).message );
 		}
-	}, [ blocks, language, runGeneration, createErrorNotice ] );
+	}, [
+		blocks,
+		cacheSample,
+		createErrorNotice,
+		ensureEngine,
+		runGeneration,
+		voice,
+	] );
 
 	const cancelGeneration = useCallback( () => {
 		abortRef.current?.abort();
@@ -298,6 +418,7 @@ function NarrationPanel() {
 				postId,
 				blob,
 				language,
+				voice,
 				sourceHash
 			);
 			setPreview( null );
@@ -315,7 +436,7 @@ function NarrationPanel() {
 			setState( 'error' );
 			setError( ( err as Error ).message );
 		}
-	}, [ blocks, language, postId, setPreview ] );
+	}, [ blocks, language, postId, setPreview, voice ] );
 
 	// Elapsed-time ticker for the generating state's countdown. The mockup shows a
 	// determinate bar and "~Ns remaining", and the RTF calibration exists precisely
@@ -334,8 +455,14 @@ function NarrationPanel() {
 	}, [ state ] );
 
 	const isAutoDraft = postStatus === 'auto-draft';
-	const isBusy = state !== 'idle' && state !== 'error';
+	const isSampling = state === 'sampling';
+	// Sampling is deliberately not "busy": it must not tear down the panel around
+	// the author. The selectors stay on screen and merely go inert, so the voice
+	// they just clicked is still visible while its sample is being synthesised.
+	const isBusy = state !== 'idle' && state !== 'error' && ! isSampling;
 	const isGenerating = state === 'generating' || state === 'calibrating';
+	// Nothing has been downloaded yet, so the first sample pays for the model.
+	const needsModelDownload = ! engineRef.current;
 
 	// Clamp short of complete: finishing the bar before the audio arrives would
 	// claim the work is done when it is not.
@@ -532,16 +659,66 @@ function NarrationPanel() {
 						) }
 
 					{ ! isBusy && (
-						<SelectControl
-							__nextHasNoMarginBottom
-							label={ __( 'Language', 'post-voice' ) }
-							value={ language }
-							options={ SUPPORTED_LANGUAGES.map( ( lang ) => ( {
-								label: LANGUAGE_LABELS[ lang ] ?? lang,
-								value: lang as string,
-							} ) ) }
-							onChange={ ( next ) => setLanguage( next ) }
-						/>
+						<>
+							<SelectControl
+								__nextHasNoMarginBottom
+								label={ __( 'Language', 'post-voice' ) }
+								value={ language }
+								disabled={ isSampling }
+								options={ SUPPORTED_LANGUAGES.map(
+									( lang ) => ( {
+										label: LANGUAGE_LABELS[ lang ] ?? lang,
+										value: lang as string,
+									} )
+								) }
+								onChange={ ( next ) => setLanguage( next ) }
+							/>
+
+							<div className="post-voice-panel__voice">
+								<SelectControl
+									__nextHasNoMarginBottom
+									label={ __( 'Voice', 'post-voice' ) }
+									value={ voice }
+									disabled={ isSampling }
+									options={ VOICES.map( ( name ) => ( {
+										label: name,
+										value: name as string,
+									} ) ) }
+									onChange={ ( next ) => setVoice( next ) }
+								/>
+								<Button
+									className="post-voice-panel__sample"
+									icon={
+										isSampling ? undefined : 'controls-play'
+									}
+									isBusy={ isSampling }
+									disabled={ isSampling }
+									onClick={ playSample }
+									label={ sprintf(
+										/* translators: %s: voice name, e.g. "alba". */
+										__(
+											'Hear a sample of %s',
+											'post-voice'
+										),
+										voice
+									) }
+									showTooltip
+								/>
+							</div>
+
+							{ needsModelDownload && (
+								<p className="post-voice-panel__hint">
+									{ sprintf(
+										/* translators: %s: model download size, e.g. "190 MB". */
+										__(
+											'The first sample downloads the voice model (about %s). After that, samples play in a couple of seconds.',
+											'post-voice'
+										),
+										formatBytes( LANGUAGE_BUNDLE_BYTES )
+									) }
+								</p>
+							) }
+						</>
 					) }
 
 					{ /*
@@ -560,7 +737,7 @@ function NarrationPanel() {
 										: 'secondary'
 								}
 								onClick={ startGeneration }
-								disabled={ isAutoDraft }
+								disabled={ isAutoDraft || isSampling }
 								__next40pxDefaultSize
 							>
 								{ existing || previewUrl
