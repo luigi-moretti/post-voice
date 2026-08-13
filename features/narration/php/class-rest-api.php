@@ -72,6 +72,22 @@ class Post_Voice_Rest_Api {
 			);
 		}
 
+		// Fase 1 supports the `post` type only, and the panel is enqueued nowhere
+		// else — but the endpoint is reachable directly, so the same rule has to
+		// hold here. Without it a narration saved against a page produced an
+		// attachment and four meta rows that nothing can ever read back: the
+		// frontend renders on `is_singular( 'post' )`, the assets enqueue on the
+		// same test, and the meta is registered for `post` alone. Write-only
+		// media, invisible to the UI that would let someone remove it. This is
+		// also the single seam to relax when other post types are supported.
+		if ( 'post' !== get_post_type( $post_id ) ) {
+			return new WP_Error(
+				'post_voice_unsupported_post_type',
+				__( 'Narration is only available for posts.', 'post-voice' ),
+				array( 'status' => 400 )
+			);
+		}
+
 		if ( 'auto-draft' === get_post_status( $post_id ) ) {
 			return new WP_Error(
 				'post_voice_post_not_saved',

@@ -128,6 +128,28 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		$this->assertSame( 'post_voice_invalid_voice', $response->as_error()->get_error_code() );
 	}
 
+	public function test_rejects_a_post_type_the_plugin_does_not_render_with_400(): void {
+		// Nothing in the UI offers this, but the route is reachable directly and
+		// a narration on a page is media no screen can ever show or remove.
+		$page_id = self::factory()->post->create(
+			array(
+				'post_type'   => 'page',
+				'post_author' => $this->editor_id,
+			)
+		);
+		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$page_id}/narration" );
+		$request->set_param( 'language', 'portuguese' );
+		$request->set_param( 'voice', 'alba' );
+		$request->set_param( 'source_hash', str_repeat( 'a', 64 ) );
+		$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
+
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'post_voice_unsupported_post_type', $response->as_error()->get_error_code() );
+		$this->assertSame( 0, Post_Voice_Post_Meta::get_attachment_id( $page_id ) );
+	}
+
 	public function test_rejects_malformed_source_hash_with_400(): void {
 		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
 		$request->set_param( 'language', 'portuguese' );

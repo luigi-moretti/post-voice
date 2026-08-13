@@ -72,18 +72,29 @@ class Post_Voice_Assets {
 			return;
 		}
 
+		// Same guard the editor path has, for the same reason: a plugin copied to
+		// a server without running the build would otherwise 404 two assets on
+		// every narrated post. The version comes from the asset file rather than
+		// POST_VOICE_VERSION so a rebuilt player is not served from the reader's
+		// cache until the next release bumps the plugin version.
+		$asset_file = POST_VOICE_PATH . 'build/narration-player.asset.php';
+		if ( ! file_exists( $asset_file ) ) {
+			return;
+		}
+		$asset = require $asset_file;
+
 		wp_enqueue_script(
 			'post-voice-player',
 			POST_VOICE_URL . 'build/narration-player.js',
 			array(),
-			POST_VOICE_VERSION,
+			$asset['version'],
 			true
 		);
 		wp_enqueue_style(
 			'post-voice-player',
 			POST_VOICE_URL . 'build/style-narration-player.css',
 			array(),
-			POST_VOICE_VERSION
+			$asset['version']
 		);
 	}
 }

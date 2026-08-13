@@ -4075,6 +4075,88 @@ the code but in the gates that were supposed to be watching it.
     behaves the same on a developer's machine and on CI, which never builds.
     Six new tests, 30 total, **90.28%**.
 
+## Revision 2026-08-13 (c) — code review before the PR
+
+A reviewer subagent read the whole branch against the spec. Verdict was "ready
+to merge with fixes"; it found one genuine privilege-escalation hole that the
+spec's own principles should have caught, and four real defects a user would
+hit. All fixed here.
+
+40. **Any Author could permanently delete arbitrary Media Library files.**
+    `before_delete_post` called `wp_delete_attachment( $id, true )` with the ID
+    read straight from `_narration_attachment_id` — no check that it was a
+    narration, belonged to the post, or was the actor's to delete. That key is
+    registered `show_in_rest` and authorised with `edit_post`, so it is writable
+    by anyone who can edit the post: set it to the site logo over
+    `/wp/v2/posts/<id>`, force-delete your own post, and the victim's file
+    leaves the disk unrecoverably. The branch's own a11y E2E fixture writes that
+    meta over REST, which is the proof the first step works. WordPress withholds
+    `delete_others_posts` from Authors deliberately; this handed it back for
+    attachments.
+
+    Fixed with infrastructure this branch already had: the hook now iterates
+    `get_narration_attachment_ids()`, scoped to the post's own children *and* to
+    the `_post_voice_narration` marker, which REST cannot write because it is
+    unregistered meta on the attachment. Three regression tests: forged meta
+    pointing at unrelated media deletes nothing, every accumulated orphan goes
+    with the post (finding 41), and audio the author attached themselves
+    survives. Behaviour change accepted and documented in the code: a narration
+    saved before the marker existed is no longer deleted with its post. That is
+    the safe direction to fail in — surviving media can be deleted by hand,
+    destroyed media cannot be recovered.
+
+    The general lesson, worth applying beyond this hook: **meta registered
+    `show_in_rest` is untrusted input**, and a capability check on the *post*
+    is not a capability check on whatever its meta points at.
+
+41. **Post deletion cleaned up one narration, not all of them.** Same hook. Once
+    a save could leave orphans (finding 30), the rest stayed as Media Library
+    litter with a dead `post_parent`. The loop in finding 40 fixes both.
+42. **The TTS worker was never disposed when the panel unmounted.**
+    `PluginSidebar` unmounts its children when the sidebar closes, and a Worker
+    is not garbage collected — it runs until `terminate()` or page unload. Every
+    open → generate → close cycle stranded a worker holding five loaded ONNX
+    sessions, and closing mid-generation left that synthesis burning CPU with
+    nobody listening. The unmount cleanup now aborts, disposes and clears the
+    engine, and revokes the preview object URL it was also leaking.
+43. **"Generate anyway" had no error handling.** Every other path into
+    `runGeneration` wrapped it; the long-text confirmation button called it as a
+    bare inline arrow. A worker error there left the panel in `generating`
+    forever with a bar climbing to 95% and no message, and cancelling logged an
+    unhandled `AbortError`. Extracted `failGeneration()` and routed every path
+    through it.
+44. **Voice and language could change between generating and saving.** Both
+    selectors stay live during preview by design, and `confirmSave()` read their
+    *current* values — so comparing voices while listening and then saving
+    persisted `javert`/`spanish` against audio recorded in `alba`/`portuguese`,
+    into meta the frontend trusts. This is finding 21's bug class exactly, fixed
+    the same way: `narratedTextRef` became `generatedWithRef` holding
+    `{ text, voice, language }`, captured in `runGeneration()`.
+45. **The endpoint did not restrict the post type**, though the spec mirrors
+    every other client guard on the server. A narration saved against a page
+    produced an attachment and four meta rows nothing can read back: the
+    frontend and the assets both gate on `is_singular( 'post' )` and the meta is
+    registered for `post` alone — write-only media, invisible to the UI that
+    would let someone delete it. Now a 400 `post_voice_unsupported_post_type`,
+    and the single seam to relax when other post types are supported. The plan's
+    own self-review claimed Task 13 scoped to `post`; it did not.
+
+Minor findings fixed in the same pass: the staleness hash ran on every keystroke
+with no `.catch()` (a plain-HTTP site produced an unhandled rejection per
+keypress) — now debounced 500ms and caught; the frontend enqueue gained the
+build-exists guard and asset-hash cache busting the editor path already had;
+`readme.txt` said narration happens in the *visitor's* browser when it is the
+author's; the worker's in-file modification notice listed four of its five
+changes, which matters because that notice is what satisfies Apache-2.0 §4(b);
+and the `unit` CI job now stops wp-env like its neighbours.
+
+Deliberately not taken from the review: making `_narration_attachment_id`
+REST-unwritable as defence in depth. It is a bigger change than it looks — the
+a11y E2E fixtures write it — and with finding 40 fixed the meta only drives what
+the panel displays. Worth doing, worth doing on purpose.
+
+---
+
 Also left open by explicit decision: **model-download progress as a percentage**
 (spec, "Fluxo de dados" step 3, "download do modelo % + síntese %"). The first
 generation shows "Preparing…" with an indeterminate bar while ~190MB downloads,

@@ -4,8 +4,10 @@
  * pinned Hugging Face mirror via MODEL_BASE_URL instead of a relative ./onnx/
  * path, the tokenizer import no longer carries a ?v=3 query string, and the
  * ONNX Runtime CDN import is marked webpackIgnore so the bundler leaves it as a
- * runtime URL. See CREDITS.md for full attribution. Otherwise unchanged from
- * upstream.
+ * runtime URL, and model files are routed through a Cache API interceptor
+ * installed by `installModelCache()` below, because Hugging Face serves them
+ * with no Cache-Control at all. See CREDITS.md for full attribution. Otherwise
+ * unchanged from upstream.
  */
 // Pocket TTS ONNX Web Worker
 import { MODEL_BASE_URL } from '../model-source';

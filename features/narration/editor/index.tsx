@@ -55,6 +55,14 @@ const WASM_UNAVAILABLE_MESSAGE = () =>
 		'post-voice'
 	);
 
+/**
+ * How long typing has to pause before the panel re-checks whether the saved
+ * audio still matches the post. Long enough that a sentence typed at speed
+ * costs one hash instead of forty, short enough that the badge has settled by
+ * the time an author looks away from the text and at the panel.
+ */
+const STALENESS_CHECK_DELAY_MS = 500;
+
 type PanelState =
 	| 'idle'
 	| 'calibrating'
@@ -87,7 +95,20 @@ function NarrationPanel() {
 	const [ elapsedSeconds, setElapsedSeconds ] = useState( 0 );
 
 	const previewBlobRef = useRef< Blob | null >( null );
-	const narratedTextRef = useRef< string | null >( null );
+	// Everything the audio in memory was actually synthesised from. Saving must
+	// record *this*, never what the panel currently shows: the author is free to
+	// keep typing and to move both selectors while generation runs and while the
+	// preview plays, and persisting the later values describes audio that does
+	// not exist. The text half of this fixed a stale "up to date" badge; voice
+	// and language went the same way for the same reason.
+	const generatedWithRef = useRef< {
+		text: string;
+		voice: string;
+		language: string;
+	} | null >( null );
+	// Mirrors previewUrl so the unmount cleanup, which runs once and therefore
+	// closes over the first render's state, can still revoke the current one.
+	const previewUrlRef = useRef< string | null >( null );
 	const abortRef = useRef< AbortController | null >( null );
 	const savingRef = useRef( false );
 	const engineRef = useRef< PocketTtsEngine | null >( null );
@@ -175,21 +196,32 @@ function NarrationPanel() {
 	}, [ attachmentId ] );
 
 	// Recompute the current text hash and compare against what was saved.
+	//
+	// Debounced, because `getBlocks()` returns a fresh array on every editor
+	// change: undebounced this re-extracted the whole post and ran SHA-256 on
+	// every keystroke, and the badge it feeds is a passive hint that nobody
+	// reads mid-word. The catch matters as much as the delay — on a plain-HTTP
+	// site `crypto.subtle` does not exist, so each keystroke also produced an
+	// unhandled rejection. A failed comparison leaves the badge alone rather
+	// than claiming freshness it could not verify.
 	useEffect( () => {
-		let cancelled = false;
 		if ( ! savedHash ) {
 			setIsStale( false );
 			return;
 		}
-		computeSourceHash( extractNarratableText( blocks ) ).then(
-			( currentHash ) => {
-				if ( ! cancelled ) {
-					setIsStale( currentHash !== savedHash );
-				}
-			}
-		);
+		let cancelled = false;
+		const timer = setTimeout( () => {
+			computeSourceHash( extractNarratableText( blocks ) )
+				.then( ( currentHash ) => {
+					if ( ! cancelled ) {
+						setIsStale( currentHash !== savedHash );
+					}
+				} )
+				.catch( () => {} );
+		}, STALENESS_CHECK_DELAY_MS );
 		return () => {
 			cancelled = true;
+			clearTimeout( timer );
 		};
 	}, [ blocks, savedHash ] );
 
@@ -198,7 +230,9 @@ function NarrationPanel() {
 			if ( previous ) {
 				URL.revokeObjectURL( previous );
 			}
-			return blob ? URL.createObjectURL( blob ) : null;
+			const next = blob ? URL.createObjectURL( blob ) : null;
+			previewUrlRef.current = next;
+			return next;
 		} );
 		previewBlobRef.current = blob;
 	}, [] );
@@ -308,14 +342,26 @@ function NarrationPanel() {
 		}
 	}, [ cacheSample, ensureEngine, language, voice ] );
 
-	// Object URLs outlive the component unless revoked, and the panel is
-	// unmounted every time the author closes the sidebar.
+	// The panel is unmounted every time the author closes the sidebar, and
+	// nothing it holds is reclaimed on its own. Object URLs outlive the
+	// component unless revoked, and a Worker is never garbage collected — it
+	// runs until `terminate()` or until the page goes away. Without this, each
+	// open → generate → close cycle stranded a worker holding five loaded ONNX
+	// sessions, and closing mid-generation left that synthesis running at full
+	// CPU with nobody listening for its result.
 	useEffect( () => {
 		const cache = sampleCacheRef.current;
 		return () => {
 			sampleAudioRef.current?.pause();
 			cache.forEach( ( url ) => URL.revokeObjectURL( url ) );
 			cache.clear();
+			if ( previewUrlRef.current ) {
+				URL.revokeObjectURL( previewUrlRef.current );
+				previewUrlRef.current = null;
+			}
+			abortRef.current?.abort();
+			engineRef.current?.dispose();
+			engineRef.current = null;
 		};
 	}, [] );
 
@@ -327,16 +373,28 @@ function NarrationPanel() {
 				voice,
 				signal: abortRef.current.signal,
 			} );
-			// Remember the exact text this audio was synthesised from. Saving must
-			// record a hash of *this*, not of whatever the editor holds by the time
-			// the author clicks Save — they are free to keep typing while generation
-			// runs, and hashing the later text would mark stale audio as up to date.
-			narratedTextRef.current = text;
+			generatedWithRef.current = { text, voice, language };
 			setPreview( encodeMp3( audio, engineRef.current!.sampleRate ) );
 			setState( 'idle' );
 		},
-		[ setPreview, voice ]
+		[ language, setPreview, voice ]
 	);
+
+	/**
+	 * Land a failed generation somewhere the author can act from.
+	 *
+	 * Shared by every path that can start one, because a rejection escaping any
+	 * of them leaves the panel stuck in `generating` with a progress bar still
+	 * climbing and no message.
+	 */
+	const failGeneration = useCallback( ( err: unknown ) => {
+		if ( ( err as Error ).name === 'AbortError' ) {
+			setState( 'idle' );
+			return;
+		}
+		setState( 'error' );
+		setError( ( err as Error ).message );
+	}, [] );
 
 	const startGeneration = useCallback( async () => {
 		setError( null );
@@ -385,21 +443,33 @@ function NarrationPanel() {
 
 			await runGeneration( text );
 		} catch ( err ) {
-			if ( ( err as Error ).name === 'AbortError' ) {
-				setState( 'idle' );
-				return;
-			}
-			setState( 'error' );
-			setError( ( err as Error ).message );
+			failGeneration( err );
 		}
 	}, [
 		blocks,
 		cacheSample,
 		createErrorNotice,
 		ensureEngine,
+		failGeneration,
 		runGeneration,
 		voice,
 	] );
+
+	/**
+	 * Generate after the author accepted the long-text warning.
+	 *
+	 * Its own callback rather than an inline arrow, so the rejection lands in
+	 * `failGeneration` like every other path. Inline, a worker error here left
+	 * the panel generating forever and cancelling logged an unhandled AbortError.
+	 */
+	const generateAfterConfirmation = useCallback( async () => {
+		setError( null );
+		try {
+			await runGeneration( extractNarratableText( blocks ) );
+		} catch ( err ) {
+			failGeneration( err );
+		}
+	}, [ blocks, failGeneration, runGeneration ] );
 
 	const cancelGeneration = useCallback( () => {
 		abortRef.current?.abort();
@@ -423,7 +493,7 @@ function NarrationPanel() {
 		// also revokes its object URL, and clearing the narrated text keeps a later
 		// save from hashing audio that no longer exists.
 		setPreview( null );
-		narratedTextRef.current = null;
+		generatedWithRef.current = null;
 		setState( 'idle' );
 	}, [ setPreview ] );
 
@@ -441,16 +511,20 @@ function NarrationPanel() {
 		savingRef.current = true;
 		setState( 'saving' );
 		try {
-			// Hash the text the audio was actually generated from, captured in
-			// runGeneration — never the editor's current text.
+			// What the audio was made from, captured in runGeneration — never what
+			// the panel shows now. Both selectors stay live during preview, so an
+			// author comparing voices while listening would otherwise persist
+			// `javert`/`spanish` against audio recorded in `alba`/`portuguese`, and
+			// the frontend trusts that meta.
+			const generated = generatedWithRef.current;
 			const sourceHash = await computeSourceHash(
-				narratedTextRef.current ?? extractNarratableText( blocks )
+				generated?.text ?? extractNarratableText( blocks )
 			);
 			const saved = await saveNarration(
 				postId,
 				blob,
-				language,
-				voice,
+				generated?.language ?? language,
+				generated?.voice ?? voice,
 				sourceHash
 			);
 			setPreview( null );
@@ -613,11 +687,7 @@ function NarrationPanel() {
 							<div className="post-voice-panel__actions">
 								<Button
 									variant="primary"
-									onClick={ () =>
-										runGeneration(
-											extractNarratableText( blocks )
-										)
-									}
+									onClick={ generateAfterConfirmation }
 								>
 									{ __( 'Generate anyway', 'post-voice' ) }
 								</Button>

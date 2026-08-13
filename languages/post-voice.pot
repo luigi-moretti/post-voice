@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-13T19:34:34+00:00\n"
+"POT-Creation-Date: 2026-08-13T22:08:17+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -58,28 +58,32 @@ msgstr ""
 msgid "Your role does not have permission to add media. Ask an administrator."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:78
+#: features/narration/php/class-rest-api.php:86
+msgid "Narration is only available for posts."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:94
 msgid "Save the post before generating narration."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:99
+#: features/narration/php/class-rest-api.php:115
 msgid "No audio file was received."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:108
+#: features/narration/php/class-rest-api.php:124
 msgid "Unsupported narration language."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:117
+#: features/narration/php/class-rest-api.php:133
 msgid "Unsupported narration voice."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:126
+#: features/narration/php/class-rest-api.php:142
 msgid "Malformed source hash."
 msgstr ""
 
 #. translators: %s: title of the post being narrated.
-#: features/narration/php/class-rest-api.php:191
+#: features/narration/php/class-rest-api.php:207
 #, php-format
 msgid "Narration — %s"
 msgstr ""

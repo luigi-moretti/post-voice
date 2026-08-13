@@ -8,7 +8,7 @@ Stable tag: 0.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Generate spoken-word narration for your posts, entirely in the visitor's browser — no server-side processing, no per-request cost.
+Generate spoken-word narration for your posts, entirely in the author's browser — no server-side processing, no per-request cost.
 
 == Description ==
 

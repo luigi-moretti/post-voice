@@ -43,6 +43,8 @@ jobs:
       - run: npx wp-env start
       - run: npm run test:php -- --coverage-clover=coverage/clover.xml
       - run: php scripts/check-coverage-threshold.php coverage/clover.xml 85
+      - if: always()
+        run: npx wp-env stop
 
   # Its own job rather than a step on `lint`: this one needs wp-env (WP-CLI does
   # the extraction) and a development build, and a stale .pot should read as a
