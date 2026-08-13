@@ -133,6 +133,10 @@ Mockups (fonte + screenshot):
 
 Continua valendo o já decidido em "Acessibilidade" (teclado, aria-label, aria-live, `prefers-reduced-motion`) e em "Frontend (TypeScript leve)" (sem framework, controla `<audio>` nativo, botão de fechar/minimizar).
 
+**Sem botão Stop (emenda de 2026-08-13).** O escopo e os critérios de aceite, escritos em 08/08, listavam "play, pause, stop, velocidade" — antes desta seção existir. A decisão de 10/08 acima trocou stop por scrubber e nunca voltou lá pra corrigir; as duas listas ficaram se contradizendo até uma revisão de consistência achar. Vale esta seção: **não há botão Stop**, e as duas listas foram corrigidas pra dizer scrubber.
+
+Motivo, pra não ser reaberto como esquecimento: stop é herança de fita cassete, onde parar e rebobinar eram operações físicas distintas. Nenhum player de áudio contemporâneo tem — nem YouTube, nem Spotify, nem o próprio `<audio controls>` nativo do navegador. O que a linha original queria garantir (o leitor consegue parar e voltar ao começo) o par pause + scrubber já entrega, com a vantagem de também levar a qualquer outro ponto. E o scrubber é um `<input type="range">`, então voltar ao início por teclado é a tecla Home — mais barato que um quinto controle numa pílula desenhada pra ser pequena em mobile.
+
 ### A11y — enforcement automatizado em CI [definido]
 
 Fechado junto com "Cenários E2E obrigatórios" (mesmo conserto, ver abaixo). Resumo:
@@ -178,7 +182,7 @@ Lista final (ver também "Qualidade e testes"): fluxo feliz completo · fallback
 - Autor escolhe idioma e voz, gera áudio (Pocket TTS, 100% client-side).
 - Autor ouve preview antes de persistir.
 - Áudio confirmado é salvo como asset de mídia do post (Media Library).
-- Player no frontend do post: play, pause, stop, seletor de velocidade.
+- Player no frontend do post: play, pause, scrubber, seletor de velocidade (ver emenda "Sem botão Stop").
 - Player sticky (acompanha scroll) e mobile-first.
 - Fundação de qualidade: lint, testes automatizados, CI, i18n (nasce junto, não é add-on depois).
 
@@ -368,7 +372,7 @@ Feature é adjacente a acessibilidade (narração ajuda quem prefere/precisa ouv
 
 - Autor consegue gerar, ouvir preview e salvar narração de um post, num idioma suportado, sem sair do editor.
 - Áudio salvo aparece na Media Library e reproduz corretamente no frontend do post; regenerar substitui o áudio anterior sem deixar attachment órfão.
-- Player no frontend: play/pause/stop/velocidade funcionam, fica fixo ao rolar, tem botão de fechar/minimizar, é utilizável em viewport mobile e operável 100% por teclado.
+- Player no frontend: play/pause/scrubber/velocidade funcionam, fica fixo ao rolar, tem botão de fechar/minimizar, é utilizável em viewport mobile e operável 100% por teclado.
 - Autor recebe ETA antes de disparar geração de texto longo, e consegue cancelar uma geração em andamento a qualquer momento.
 - Editor sem `crossOriginIsolated` ainda gera áudio (single-thread), só mais devagar — nunca bloqueia por causa disso.
 - Editor de post sem áudio gerado não sofre nenhuma degradação de performance (modelo só carrega sob demanda).
