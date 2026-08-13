@@ -180,6 +180,30 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		$this->assertSame( $second_id, Post_Voice_Post_Meta::get_attachment_id( $this->post_id ) );
 	}
 
+	public function test_regenerating_never_reuses_the_previous_audio_url(): void {
+		// Deleting the old attachment frees its filename, so the next upload was
+		// handed the very same name and therefore the very same URL. The editor's
+		// <audio> element sees an unchanged `src` string and keeps playing the
+		// buffer it already loaded — the author saves a new narration and hears
+		// the old one. The reader's browser cache does the same thing.
+		$save = function () {
+			$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
+			$request->set_param( 'language', 'portuguese' );
+			$request->set_param( 'voice', 'alba' );
+			$request->set_param( 'source_hash', str_repeat( 'a', 64 ) );
+			$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
+
+			return rest_get_server()->dispatch( $request )->get_data();
+		};
+
+		// Three saves, not two: the second upload is pushed to `narration-1.mp3`
+		// because `narration.mp3` still exists while it is being named, and only
+		// then is the first deleted. The third save is handed the freed name back.
+		$urls = array( $save()['url'], $save()['url'], $save()['url'] );
+
+		$this->assertSame( $urls, array_unique( $urls ), 'Each narration needs its own URL.' );
+	}
+
 	public function test_sweeps_narrations_orphaned_by_a_concurrent_save(): void {
 		// Two saves in flight at once each read the meta before the other wrote
 		// it, so neither deleted the other's upload. Standing in for that here:

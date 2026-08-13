@@ -322,6 +322,52 @@ test.describe( 'Post Voice — narration generation', () => {
 		expect( post.meta._narration_voice ).toBe( 'javert' );
 	} );
 
+	test( 'a regenerated narration gets its own URL, so the player cannot serve the old audio', async ( {
+		admin,
+		editor,
+		page,
+	} ) => {
+		// Reported from manual testing: after saving a new narration the panel kept
+		// playing the previous one. Deleting the superseded attachment freed its
+		// filename, so the next upload was handed the same name and the same URL —
+		// and an `<audio>` element whose `src` string did not change never reloads.
+		await createNarratableDraft( admin, editor, 'Fresh URL per narration' );
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+
+		const saveOnce = async () => {
+			await page
+				.getByRole( 'button', {
+					name: /^Generate (audio|again)$/,
+					exact: true,
+				} )
+				.click();
+			await page
+				.getByRole( 'button', { name: 'Save narration', exact: true } )
+				.click( { timeout: 120_000 } );
+			await expect(
+				page.getByRole( 'button', {
+					name: 'Generate again',
+					exact: true,
+				} )
+			).toBeVisible( { timeout: 120_000 } );
+			return page
+				.locator(
+					'.post-voice-panel__card .post-voice-mini-player audio'
+				)
+				.getAttribute( 'src' );
+		};
+
+		const first = await saveOnce();
+		const second = await saveOnce();
+		// A third one matters: only here does WordPress hand back the filename the
+		// first narration freed.
+		const third = await saveOnce();
+
+		expect( new Set( [ first, second, third ] ).size ).toBe( 3 );
+	} );
+
 	test( 'a double-click on Save leaves one audio file, not two', async ( {
 		admin,
 		editor,

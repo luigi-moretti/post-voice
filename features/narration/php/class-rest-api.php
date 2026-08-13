@@ -154,6 +154,25 @@ class Post_Voice_Rest_Api {
 			$overrides['action'] = 'wp_handle_mock_upload';
 		}
 
+		// Name every narration uniquely instead of taking the client's
+		// `narration.mp3`. Deleting the superseded attachment frees its filename,
+		// so the next upload was handed the same name and therefore the same URL —
+		// and an unchanged URL is indistinguishable from unchanged audio. The
+		// editor's `<audio>` element sees a `src` string that did not change and
+		// keeps playing the buffer it already has, so the author saves a new
+		// narration and hears the previous one; a reader's HTTP cache does the
+		// same. `wp_unique_filename()` cannot help here: at the moment it runs,
+		// the old file is already gone.
+		//
+		// The random suffix is not decoration: the timestamp alone repeats when two
+		// saves land in the same second, which is exactly what a double-click does.
+		$files['audio']['name'] = sprintf(
+			'narration-%d-%s-%s.mp3',
+			$post_id,
+			gmdate( 'YmdHis' ),
+			wp_generate_password( 6, false )
+		);
+
 		$upload = wp_handle_upload( $files['audio'], $overrides );
 
 		if ( isset( $upload['error'] ) ) {

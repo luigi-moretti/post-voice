@@ -15,7 +15,8 @@
 		"audit:npm:production": "node scripts/audit-check.mjs --production",
 		"audit:composer": "node scripts/audit-check-composer.mjs",
 		"test:php": "./scripts/run-php-tests.sh",
-		"build:dev": "wp-scripts build --mode=development"
+		"build:dev": "wp-scripts build --mode=development",
+		"refresh:php": "./scripts/refresh-php.sh"
 	},
 	"devDependencies": {
 		"@axe-core/playwright": "^4.10.0",

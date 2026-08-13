@@ -3950,6 +3950,31 @@ not, because each needed a human to look.
     carry no marker and are not referenced by any meta, so nothing sweeps them.
     They are ordinary Media Library items and can be deleted by hand.
 
+31. **A regenerated narration reused the previous one's URL.** Reported as "the
+    preview keeps playing the old audio", and separate from the duplicate-file
+    race above. Deleting the superseded attachment frees its filename, so the
+    next upload was handed the same name — `narration-4.mp3` on the reporter's
+    site, twice in a row — and therefore the same URL. An `<audio>` element whose
+    `src` string does not change never reloads: the author saves a new narration
+    and hears the previous one, and a reader's HTTP cache does the same.
+    `wp_unique_filename()` cannot help, because by the time it runs the old file
+    is already gone. Uploads are now named
+    `narration-<post_id>-<timestamp>-<random>.mp3`; the random suffix matters
+    because two saves in the same second would otherwise collide, which is
+    precisely what a double-click produces. Pinned by a PHPUnit test that saves
+    three times — two is not enough, since the second upload is pushed to
+    `-1.mp3` while the first still exists and only the third is handed the freed
+    name back — and by an E2E asserting three distinct `src` values.
+32. **The container was serving stale PHP, which masked finding 30.** The
+    reporter's retest of the concurrency fix ran against code that did not
+    contain it. `scripts/refresh-php.sh` (`npm run refresh:php`) now handles it
+    and is checked in rather than living in a scratch directory. Two things had
+    to change in it: `cp -p` preserved mtime, so PHP's opcache served the old
+    compiled file regardless of the new bytes; and the copy-then-rename dance was
+    not always enough on its own — the directory entry has to disappear before it
+    reappears, so the file is removed between the copy and the rename. Anything
+    testing PHP changes through the browser should run it first.
+
 Related, and deliberately left out: an editable sample text (a 150-character
 textarea). 150 characters is ~12s of speech, which is ~36s of waiting on a device
 at the "slow" RTF threshold — it would break the only promise the sample button
