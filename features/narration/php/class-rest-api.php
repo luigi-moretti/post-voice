@@ -194,21 +194,67 @@ class Post_Voice_Rest_Api {
 			wp_generate_attachment_metadata( $attachment_id, $upload['file'] )
 		);
 
+		Post_Voice_Post_Meta::mark_attachment( $attachment_id );
+
+		// Narrations saved before the marker existed carry none, so claim the one
+		// the meta already points at. Without this it would survive the sweep
+		// below as if it were media the author uploaded.
 		if ( $previous_attachment_id && $previous_attachment_id !== $attachment_id ) {
-			wp_delete_attachment( $previous_attachment_id, true );
+			Post_Voice_Post_Meta::mark_attachment( $previous_attachment_id );
 		}
 
-		Post_Voice_Post_Meta::save( $post_id, $attachment_id, $language, $voice, $source_hash );
+		$kept_attachment_id = self::sweep_superseded_narrations( $post_id, $attachment_id );
+
+		Post_Voice_Post_Meta::save( $post_id, $kept_attachment_id, $language, $voice, $source_hash );
 
 		return new WP_REST_Response(
 			array(
-				'attachment_id' => $attachment_id,
-				'url'           => wp_get_attachment_url( $attachment_id ),
-				'generated_at'  => get_the_date( 'c', $attachment_id ),
+				'attachment_id' => $kept_attachment_id,
+				'url'           => wp_get_attachment_url( $kept_attachment_id ),
+				'generated_at'  => get_the_date( 'c', $kept_attachment_id ),
 				'language'      => $language,
 				'voice'         => $voice,
 			),
 			200
 		);
+	}
+
+	/**
+	 * Leave the post with exactly one narration attachment: the newest.
+	 *
+	 * Deleting only the ID recorded in post meta was not enough. Two saves in
+	 * flight at once — a double-click on Save, two editor tabs, a retried
+	 * request — each read that meta before the other wrote it, so neither
+	 * deleted the other's upload and the post ended up with two audio files
+	 * while the meta pointed at whichever request happened to finish last,
+	 * frequently the older one.
+	 *
+	 * Sweeping by "highest attachment ID wins" makes the outcome independent of
+	 * completion order: every concurrent request reaches the same verdict, and
+	 * the loser's response reports the survivor rather than its own upload. It
+	 * also clears out orphans left behind by earlier saves that raced.
+	 *
+	 * Only attachments carrying the plugin's marker are ever considered, so
+	 * audio the author attached to the post by hand is untouched.
+	 *
+	 * @param int $post_id       Post being narrated.
+	 * @param int $attachment_id Attachment this request just created.
+	 * @return int Attachment the post should keep.
+	 */
+	private static function sweep_superseded_narrations( int $post_id, int $attachment_id ): int {
+		$narrations = Post_Voice_Post_Meta::get_narration_attachment_ids( $post_id );
+		if ( ! $narrations ) {
+			return $attachment_id;
+		}
+
+		$keep = max( $narrations );
+
+		foreach ( $narrations as $narration_id ) {
+			if ( $narration_id !== $keep ) {
+				wp_delete_attachment( $narration_id, true );
+			}
+		}
+
+		return $keep;
 	}
 }

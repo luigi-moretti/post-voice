@@ -3930,6 +3930,26 @@ not, because each needed a human to look.
     sample. Found while wiring the sample button, not by a test — no scenario
     generated twice with two different languages.
 
+30. **Saving twice at once left the post with two audio files.** Reported from
+    manual testing: a save sometimes produced two attachments, and the player
+    picked the older one. Two clicks landing in the same JavaScript task both run
+    `confirmSave` — React has not re-rendered, so the button is still mounted and
+    `state` is still `idle` for the second one — and each request read
+    `_narration_attachment_id` before the other wrote it, so neither deleted the
+    other's upload. Whichever request wrote meta last won, frequently the older.
+    Reproduced with two synchronous clicks, which produced attachments 263 and
+    264 on one post. Fixed on both sides: a `savingRef` guard that does not depend
+    on render timing, and a server-side sweep that leaves the post with exactly
+    one narration — the highest attachment ID — so every concurrent request
+    reaches the same verdict regardless of completion order and the loser's
+    response reports the survivor. Attachments the plugin creates now carry a
+    `_post_voice_narration` marker, so the sweep can never touch audio the author
+    attached themselves. Predates the voice work; the endpoint always had it.
+
+    Note for anyone auditing an existing site: orphans created *before* this fix
+    carry no marker and are not referenced by any meta, so nothing sweeps them.
+    They are ordinary Media Library items and can be deleted by hand.
+
 Related, and deliberately left out: an editable sample text (a 150-character
 textarea). 150 characters is ~12s of speech, which is ~36s of waiting on a device
 at the "slow" RTF threshold — it would break the only promise the sample button

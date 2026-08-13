@@ -73,6 +73,7 @@ function NarrationPanel() {
 	const previewBlobRef = useRef< Blob | null >( null );
 	const narratedTextRef = useRef< string | null >( null );
 	const abortRef = useRef< AbortController | null >( null );
+	const savingRef = useRef( false );
 	const engineRef = useRef< PocketTtsEngine | null >( null );
 	// One `<audio>` reused for every sample, so clicking a second voice stops the
 	// first instead of layering two voices on top of each other.
@@ -404,9 +405,16 @@ function NarrationPanel() {
 
 	const confirmSave = useCallback( async () => {
 		const blob = previewBlobRef.current;
-		if ( ! blob ) {
+		// A ref, not the `saving` state: two clicks landing in the same JavaScript
+		// task both run this handler before React has re-rendered and unmounted the
+		// button, so `state` is still 'idle' for the second one. That uploaded the
+		// same audio twice, and neither request could delete the other's
+		// attachment — the post was left with two audio files. Reproduced with two
+		// synchronous clicks; a fast enough double-click does the same.
+		if ( ! blob || savingRef.current ) {
 			return;
 		}
+		savingRef.current = true;
 		setState( 'saving' );
 		try {
 			// Hash the text the audio was actually generated from, captured in
@@ -435,6 +443,8 @@ function NarrationPanel() {
 		} catch ( err ) {
 			setState( 'error' );
 			setError( ( err as Error ).message );
+		} finally {
+			savingRef.current = false;
 		}
 	}, [ blocks, language, postId, setPreview, voice ] );
 

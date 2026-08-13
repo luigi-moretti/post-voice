@@ -179,4 +179,89 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		$this->assertNull( get_post( $first_id ) );
 		$this->assertSame( $second_id, Post_Voice_Post_Meta::get_attachment_id( $this->post_id ) );
 	}
+
+	public function test_sweeps_narrations_orphaned_by_a_concurrent_save(): void {
+		// Two saves in flight at once each read the meta before the other wrote
+		// it, so neither deleted the other's upload. Standing in for that here:
+		// a narration attachment already parented to the post and marked as ours,
+		// which the meta does not point at.
+		$orphan_id = self::factory()->attachment->create_object(
+			array(
+				'file'           => 'orphan.mp3',
+				'post_parent'    => $this->post_id,
+				'post_mime_type' => 'audio/mpeg',
+			)
+		);
+		Post_Voice_Post_Meta::mark_attachment( $orphan_id );
+
+		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
+		$request->set_param( 'language', 'portuguese' );
+		$request->set_param( 'voice', 'alba' );
+		$request->set_param( 'source_hash', str_repeat( 'a', 64 ) );
+		$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
+
+		$data = rest_get_server()->dispatch( $request )->get_data();
+
+		$this->assertNull( get_post( $orphan_id ), 'The superseded narration should be gone.' );
+		$this->assertSame(
+			array( $data['attachment_id'] ),
+			Post_Voice_Post_Meta::get_narration_attachment_ids( $this->post_id )
+		);
+		$this->assertSame( $data['attachment_id'], Post_Voice_Post_Meta::get_attachment_id( $this->post_id ) );
+	}
+
+	public function test_keeps_exactly_one_narration_however_many_are_orphaned(): void {
+		// Every concurrent save reaches the same verdict — highest attachment ID
+		// wins — so the outcome does not depend on which request finishes last.
+		// Sequential tests cannot interleave two real requests, so what is pinned
+		// here is that verdict: any number of marked narrations collapses to one,
+		// and the response names the survivor rather than whatever it uploaded.
+		$orphans = array();
+		foreach ( array( 'first.mp3', 'second.mp3' ) as $file ) {
+			$orphan_id = self::factory()->attachment->create_object(
+				array(
+					'file'           => $file,
+					'post_parent'    => $this->post_id,
+					'post_mime_type' => 'audio/mpeg',
+				)
+			);
+			Post_Voice_Post_Meta::mark_attachment( $orphan_id );
+			$orphans[] = $orphan_id;
+		}
+
+		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
+		$request->set_param( 'language', 'portuguese' );
+		$request->set_param( 'voice', 'alba' );
+		$request->set_param( 'source_hash', str_repeat( 'a', 64 ) );
+		$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
+
+		$data      = rest_get_server()->dispatch( $request )->get_data();
+		$remaining = Post_Voice_Post_Meta::get_narration_attachment_ids( $this->post_id );
+
+		$this->assertCount( 1, $remaining );
+		$this->assertSame( max( array_merge( $orphans, $remaining ) ), $remaining[0] );
+		$this->assertSame( $remaining[0], $data['attachment_id'] );
+		$this->assertSame( $remaining[0], Post_Voice_Post_Meta::get_attachment_id( $this->post_id ) );
+		$this->assertNotEmpty( $data['url'] );
+	}
+
+	public function test_leaves_audio_the_author_attached_themselves_alone(): void {
+		$authors_own = self::factory()->attachment->create_object(
+			array(
+				'file'           => 'interview.mp3',
+				'post_parent'    => $this->post_id,
+				'post_mime_type' => 'audio/mpeg',
+			)
+		);
+
+		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
+		$request->set_param( 'language', 'portuguese' );
+		$request->set_param( 'voice', 'alba' );
+		$request->set_param( 'source_hash', str_repeat( 'a', 64 ) );
+		$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
+
+		rest_get_server()->dispatch( $request );
+
+		$this->assertNotNull( get_post( $authors_own ), 'Media the plugin did not create must survive.' );
+	}
 }

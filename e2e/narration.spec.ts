@@ -99,8 +99,38 @@ test.describe( 'Post Voice — narration generation', () => {
 		await page
 			.getByRole( 'button', { name: 'Save narration', exact: true } )
 			.click( { timeout: 120_000 } );
+		// Counting only once the panel is back to its saved state: the deletion of
+		// the superseded attachment happens inside the request this button is
+		// waiting on, and counting mid-flight sees both files and fails at random.
+		await expect(
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
+		).toBeVisible( { timeout: 120_000 } );
 
-		const mediaBefore = await requestUtils.rest( { path: '/wp/v2/media' } );
+		const postId = await page.evaluate( () =>
+			(
+				window as unknown as {
+					wp: {
+						data: {
+							select: ( s: string ) => {
+								getCurrentPostId: () => number;
+							};
+						};
+					};
+				}
+			 ).wp.data
+				.select( 'core/editor' )
+				.getCurrentPostId()
+		);
+		// Scoped to this post, and unpaginated: the shared media listing defaults
+		// to ten items, so counting it globally measures other tests as much as
+		// this one.
+		const attachmentsFor = () =>
+			requestUtils.rest( {
+				path: '/wp/v2/media',
+				params: { parent: postId, per_page: 100 },
+			} );
+
+		expect( await attachmentsFor() ).toHaveLength( 1 );
 
 		await page
 			.getByRole( 'button', { name: 'Generate again', exact: true } )
@@ -108,9 +138,11 @@ test.describe( 'Post Voice — narration generation', () => {
 		await page
 			.getByRole( 'button', { name: 'Save narration', exact: true } )
 			.click( { timeout: 120_000 } );
+		await expect(
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
+		).toBeVisible( { timeout: 120_000 } );
 
-		const mediaAfter = await requestUtils.rest( { path: '/wp/v2/media' } );
-		expect( mediaAfter.length ).toBe( mediaBefore.length );
+		expect( await attachmentsFor() ).toHaveLength( 1 );
 	} );
 
 	test( 'audio generated before a text edit is marked out of date once saved', async ( {
@@ -288,6 +320,63 @@ test.describe( 'Post Voice — narration generation', () => {
 			path: `/wp/v2/posts/${ postId }`,
 		} );
 		expect( post.meta._narration_voice ).toBe( 'javert' );
+	} );
+
+	test( 'a double-click on Save leaves one audio file, not two', async ( {
+		admin,
+		editor,
+		page,
+		requestUtils,
+	} ) => {
+		// Reported from manual testing: saving sometimes produced two audio files
+		// for one post, and the player picked the older one. Both clicks land in
+		// the same JavaScript task, so React has not yet unmounted the button and
+		// both handlers ran; each request then read the attachment meta before the
+		// other wrote it, so neither deleted the other's upload.
+		await createNarratableDraft( admin, editor, 'Double save' );
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
+		).toBeVisible( { timeout: 120_000 } );
+
+		const postId = await page.evaluate( () =>
+			( window as any ).wp.data.select( 'core/editor' ).getCurrentPostId()
+		);
+
+		await page.evaluate( () => {
+			const button = Array.from(
+				document.querySelectorAll( 'button' )
+			).find(
+				( candidate ) =>
+					candidate.textContent?.trim() === 'Save narration'
+			) as HTMLButtonElement;
+			button.click();
+			button.click();
+		} );
+
+		await expect(
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
+		).toBeVisible( { timeout: 120_000 } );
+
+		const attachments = await requestUtils.rest( {
+			path: '/wp/v2/media',
+			params: { parent: postId, per_page: 100 },
+		} );
+		expect( attachments ).toHaveLength( 1 );
+
+		// And the post points at the file that survived, so the player cannot end
+		// up on an older recording.
+		const post = await requestUtils.rest( {
+			path: `/wp/v2/posts/${ postId }`,
+		} );
+		expect( post.meta._narration_attachment_id ).toBe(
+			attachments[ 0 ].id
+		);
 	} );
 
 	test( 'author can cancel generation mid-flight', async ( {

@@ -20,9 +20,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Post_Voice_Post_Meta {
 
 	public const ATTACHMENT_ID = '_narration_attachment_id';
-	public const LANGUAGE      = '_narration_language';
-	public const VOICE         = '_narration_voice';
-	public const SOURCE_HASH   = '_narration_source_hash';
+
+	/**
+	 * Marker written on every attachment this plugin creates.
+	 *
+	 * Lets the endpoint recognise its own audio among a post's attachments, so
+	 * it can clear out narrations orphaned by an interrupted or concurrent save
+	 * without ever touching media the author uploaded themselves.
+	 */
+	public const ATTACHMENT_MARKER = '_post_voice_narration';
+	public const LANGUAGE          = '_narration_language';
+	public const VOICE             = '_narration_voice';
+	public const SOURCE_HASH       = '_narration_source_hash';
 
 	/**
 	 * Gate meta writes on the post's own edit capability.
@@ -74,6 +83,45 @@ class Post_Voice_Post_Meta {
 		update_post_meta( $post_id, self::LANGUAGE, $language );
 		update_post_meta( $post_id, self::VOICE, $voice );
 		update_post_meta( $post_id, self::SOURCE_HASH, $source_hash );
+	}
+
+	/**
+	 * Claim an attachment as a narration this plugin produced.
+	 *
+	 * @param int $attachment_id Attachment to mark.
+	 */
+	public static function mark_attachment( int $attachment_id ): void {
+		update_post_meta( $attachment_id, self::ATTACHMENT_MARKER, 1 );
+	}
+
+	/**
+	 * Every narration attachment currently hanging off a post, oldest first.
+	 *
+	 * Ordered by ID because attachment IDs are monotonic: the highest is always
+	 * the most recently created, which is the one an author means by "the
+	 * narration I just made". Post dates would tie at one-second resolution.
+	 *
+	 * @param int $post_id Post to inspect.
+	 * @return int[]
+	 */
+	public static function get_narration_attachment_ids( int $post_id ): array {
+		return array_map(
+			'intval',
+			get_posts(
+				array(
+					'post_type'              => 'attachment',
+					'post_status'            => 'inherit',
+					'post_parent'            => $post_id,
+					'posts_per_page'         => -1,
+					'orderby'                => 'ID',
+					'order'                  => 'ASC',
+					'fields'                 => 'ids',
+					'meta_key'               => self::ATTACHMENT_MARKER, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Bounded by one post's own attachments, and the alternative is trusting a single meta value that concurrent saves have already been shown to lose.
+					'no_found_rows'          => true,
+					'update_post_term_cache' => false,
+				)
+			)
+		);
 	}
 
 	/**
