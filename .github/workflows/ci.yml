@@ -68,7 +68,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx wp-env start
-      - run: npx playwright install --with-deps chromium
+      # The headless shell is named explicitly: the wp-scripts base Playwright
+      # config asks for it, and it has not always come along with `chromium`.
+      - run: npx playwright install --with-deps chromium chromium-headless-shell
       - run: npm run test:e2e
       - if: always()
         uses: actions/upload-artifact@v4
