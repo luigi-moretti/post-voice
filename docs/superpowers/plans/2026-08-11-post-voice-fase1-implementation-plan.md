@@ -4044,6 +4044,37 @@ the code but in the gates that were supposed to be watching it.
     now. `audit-check-composer.mjs` needed no change — `composer audit` returns
     advisories indexed by package, so it already counted pairs.
 
+39. **PHP coverage was measurable locally all along, and it was failing.** It had
+    been reported as "only CI can tell" because the host has no coverage driver
+    and wp-env's image ships none. Neither is a real obstacle: a throwaway
+    `php:8.2-cli` container with pcov, the repository and wp-env's
+    `tests-WordPress` mounted, joined to wp-env's own Docker network, runs the
+    suite exactly as CI does. `npm run test:php:coverage`
+    (`scripts/run-php-coverage.sh`) now does this in one command. Two traps
+    worth writing down: `--network host` does not reach the published MySQL port
+    under Docker Desktop, where "host" means the VM — join the compose network
+    and address `tests-mysql` instead; and mounting a helper script from /tmp is
+    refused with "mounts denied", so the runner is passed to `sh -c`.
+
+    First measurement: **74.49%, against the spec's 85% floor.** The CI unit job
+    would have failed. Cross-checked under Xdebug, which agreed line for line,
+    so it was not a pcov artifact — and worth ruling out, because two class
+    methods showed zero executions while their call site in the REST endpoint
+    showed six. The explanation is the `@covers` annotation on each test class:
+    coverage is credited only to the class under test, so everything the REST
+    tests drive *through* `Post_Voice_Post_Meta` counts for nothing. That is the
+    annotation working as intended — it is what keeps a coverage number from
+    being inflated by incidental execution — and it means `mark_attachment()`
+    and `get_narration_attachment_ids()` had no unit tests of their own.
+
+    Closed by writing them, plus the editor-enqueue tests Task 15 had deferred
+    to a manual smoke check as "brittle to fabricate". They are not brittle:
+    `set_current_screen( 'post' )` and a fabricated `narration-editor.asset.php`
+    cover the enqueue, the wrong-post-type early return, and the never-built
+    early return, with the real asset file moved aside and restored so the test
+    behaves the same on a developer's machine and on CI, which never builds.
+    Six new tests, 30 total, **90.28%**.
+
 Also left open by explicit decision: **model-download progress as a percentage**
 (spec, "Fluxo de dados" step 3, "download do modelo % + síntese %"). The first
 generation shows "Preparing…" with an indeterminate bar while ~190MB downloads,

@@ -18,7 +18,8 @@
 		"build:dev": "wp-scripts build --mode=development",
 		"refresh:php": "./scripts/refresh-php.sh",
 		"prepare": "husky",
-		"i18n:check": "./scripts/check-pot.sh"
+		"i18n:check": "./scripts/check-pot.sh",
+		"test:php:coverage": "./scripts/run-php-coverage.sh"
 	},
 	"devDependencies": {
 		"@axe-core/playwright": "^4.10.0",
