@@ -24,6 +24,7 @@ import {
 	formatBytes,
 	LANGUAGE_BUNDLE_BYTES,
 } from './storage-check';
+import { isWasmSupported } from './environment';
 import { encodeMp3 } from './mp3-encoder';
 import { saveNarration } from './narration-api';
 import { MiniPlayer } from './mini-player';
@@ -42,6 +43,17 @@ const LANGUAGE_LABELS: Record< string, string > = {
 	portuguese: 'Português',
 	spanish: 'Español',
 };
+
+/**
+ * Shown both as the panel's standing warning and as the error thrown if
+ * anything reaches the engine anyway. A function, not a constant, so the string
+ * is translated when it is rendered rather than when the bundle loads.
+ */
+const WASM_UNAVAILABLE_MESSAGE = () =>
+	__(
+		'This browser cannot run WebAssembly, which narration needs. Try another browser, or ask an administrator whether a security policy is blocking it.',
+		'post-voice'
+	);
 
 type PanelState =
 	| 'idle'
@@ -68,6 +80,10 @@ function NarrationPanel() {
 		null
 	);
 	const [ isStale, setIsStale ] = useState( false );
+	// Lazily, once per mount: the answer cannot change while the editor is open,
+	// and computing it at module scope would run in every editor session,
+	// including the ones that never open this panel.
+	const [ wasmSupported ] = useState( isWasmSupported );
 	const [ elapsedSeconds, setElapsedSeconds ] = useState( 0 );
 
 	const previewBlobRef = useRef< Blob | null >( null );
@@ -196,6 +212,14 @@ function NarrationPanel() {
 	 * disk space *before* spending ~190MB of bandwidth rather than after.
 	 */
 	const ensureEngine = useCallback( async (): Promise< PocketTtsEngine > => {
+		// The buttons are already disabled without wasm, but disabled buttons are
+		// UX, not a guarantee: this path is also reached from the voice sample, and
+		// a re-render could land a click before the state settles. Refusing here
+		// keeps the failure a sentence instead of an ONNX Runtime stack trace.
+		if ( ! wasmSupported ) {
+			throw new Error( WASM_UNAVAILABLE_MESSAGE() );
+		}
+
 		// `crypto.subtle` only exists in a secure context. On a plain-HTTP site it
 		// is undefined, so hashing throws and staleness detection breaks. Check up
 		// front rather than failing mid-generation after the model has downloaded.
@@ -237,7 +261,7 @@ function NarrationPanel() {
 		}
 
 		return engineRef.current;
-	}, [ language ] );
+	}, [ language, wasmSupported ] );
 
 	/**
 	 * Store a synthesised sample phrase as a playable URL for the current
@@ -506,6 +530,12 @@ function NarrationPanel() {
 						</div>
 					) }
 
+					{ ! wasmSupported && (
+						<Notice status="warning" isDismissible={ false }>
+							{ WASM_UNAVAILABLE_MESSAGE() }
+						</Notice>
+					) }
+
 					{ isAutoDraft && (
 						<Notice status="warning" isDismissible={ false }>
 							{ __(
@@ -702,7 +732,7 @@ function NarrationPanel() {
 										isSampling ? undefined : 'controls-play'
 									}
 									isBusy={ isSampling }
-									disabled={ isSampling }
+									disabled={ isSampling || ! wasmSupported }
 									onClick={ playSample }
 									label={ sprintf(
 										/* translators: %s: voice name, e.g. "alba". */
@@ -747,7 +777,9 @@ function NarrationPanel() {
 										: 'secondary'
 								}
 								onClick={ startGeneration }
-								disabled={ isAutoDraft || isSampling }
+								disabled={
+									isAutoDraft || isSampling || ! wasmSupported
+								}
 								__next40pxDefaultSize
 							>
 								{ existing || previewUrl

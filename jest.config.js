@@ -26,6 +26,7 @@ module.exports = {
 	},
 	transformIgnorePatterns: [ '/node_modules/(?!@breezystack/lamejs)' ],
 	collectCoverageFrom: [
+		'features/narration/editor/environment.ts',
 		'features/narration/editor/extract-narratable-text.ts',
 		'features/narration/editor/source-hash.ts',
 		'features/narration/editor/rtf-calibration.ts',

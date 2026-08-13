@@ -16,7 +16,9 @@
 		"audit:composer": "node scripts/audit-check-composer.mjs",
 		"test:php": "./scripts/run-php-tests.sh",
 		"build:dev": "wp-scripts build --mode=development",
-		"refresh:php": "./scripts/refresh-php.sh"
+		"refresh:php": "./scripts/refresh-php.sh",
+		"prepare": "husky",
+		"i18n:check": "./scripts/check-pot.sh"
 	},
 	"devDependencies": {
 		"@axe-core/playwright": "^4.10.0",
@@ -34,17 +36,27 @@
 		"@wordpress/notices": "^5.53.0",
 		"@wordpress/plugins": "^7.53.0",
 		"@wordpress/scripts": "^30.0.0",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.4.0",
 		"prettier": "npm:wp-prettier@^3.0.3",
 		"typescript": "^5.6.0"
 	},
 	"dependencies": {
 		"@breezystack/lamejs": "^1.2.7"
 	},
+	"lint-staged": {
+		"*.{js,ts,tsx}": "wp-scripts lint-js",
+		"*.php": "./vendor/bin/phpcs"
+	},
 	"overrides": {
+		"@babel/core": "^7.26.10",
 		"adm-zip": "^0.6.0",
 		"linkify-it": "^6.1.0",
 		"markdown-it": "^15.0.0",
 		"minimatch": "^10.2.6",
+		"test-exclude": {
+			"minimatch": "^3.1.2"
+		},
 		"serialize-javascript": "^7.1.0",
 		"uuid": "^11.1.1",
 		"@opentelemetry/core": "^2.8.0",

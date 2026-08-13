@@ -44,6 +44,21 @@ jobs:
       - run: npm run test:php -- --coverage-clover=coverage/clover.xml
       - run: php scripts/check-coverage-threshold.php coverage/clover.xml 85
 
+  # Its own job rather than a step on `lint`: this one needs wp-env (WP-CLI does
+  # the extraction) and a development build, and a stale .pot should read as a
+  # translation problem, not as a lint failure.
+  i18n:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npx wp-env start
+      - run: npm run i18n:check
+      - if: always()
+        run: npx wp-env stop
+
   e2e:
     runs-on: ubuntu-latest
     steps:
