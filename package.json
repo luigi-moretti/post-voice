@@ -45,7 +45,7 @@
 		"@breezystack/lamejs": "^1.2.7"
 	},
 	"lint-staged": {
-		"*.{js,ts,tsx}": "wp-scripts lint-js",
+		"*.{js,cjs,mjs,ts,tsx}": "wp-scripts lint-js",
 		"*.php": "./vendor/bin/phpcs"
 	},
 	"overrides": {
