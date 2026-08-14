@@ -238,26 +238,26 @@ A concatenação soma os comprimentos primeiro, aloca **um** `Float32Array` do
 tamanho final e escreve cada segmento com `.set(offset)`. Concatenar por spread
 dobraria o pico de memória, que num post de 10 minutos já é ~57 MB.
 
-### Compatibilidade do hash com a Fase 1
+### Hash: um caminho só, sem compatibilidade com a Fase 1
 
-Trocar o que entra no hash invalida todo `_narration_source_hash` já gravado: na
-primeira vez que o autor abrisse um post narrado na Fase 1, o badge viraria "pode
-estar desatualizado" para um áudio que está perfeitamente atualizado. Isso é
-migração silenciosa de dado, e cai em cima de quem já usa o plugin.
+Trocar o que entra no hash invalida todo `_narration_source_hash` já gravado: um
+post narrado na Fase 1 passaria a exibir "pode estar desatualizado" para um áudio
+que está atualizado.
 
-**Decisão: o caso degenerado continua produzindo o hash da Fase 1.** Quando o
-post não tem bloco excluído, nem idioma marcado, nem entrada de dicionário
-aplicável, o hash é calculado sobre exatamente a mesma string de antes — o texto
-filtrado, com espaços colapsados. Só quando existe alguma marcação ou
-substituição o hash passa a ser calculado sobre o JSON dos segmentos resolvidos.
+**Decisão (14/08/2026): aceitar isso, e não construir compatibilidade.** O
+plugin não tem base instalada — a distribuição é privada e ninguém além do autor
+o executa — e os posts de teste existentes serão apagados antes de validar esta
+fase. Preservar o hash antigo no caso sem marcação custaria dois caminhos de
+serialização e um teste de valor fixo, para proteger dados que não existem.
 
-Custo: dois caminhos de serialização e um teste que fixa o hash conhecido de um
-post sem marcação. Em troca, quem atualiza o plugin não vê nenhum post mudar de
-estado sozinho.
+Consequência registrada, para não ser reaberta como bug: **qualquer narração
+gerada antes desta fase aparece como possivelmente desatualizada.** Se o plugin
+ganhar usuários antes desta fase ir para produção, essa decisão precisa ser
+reaberta — aí a compatibilidade do caso degenerado volta a valer o custo.
 
-O JSON dos segmentos usa ordem de campo fixa (`text`, depois `language`), com o
-idioma já resolvido — nunca `null`. Serialização instável mudaria o hash sem que
-o post mudasse.
+O hash é sempre calculado sobre o JSON dos segmentos resolvidos, com ordem de
+campo fixa (`text`, depois `language`) e o idioma já resolvido — nunca `null`.
+Serialização instável mudaria o hash sem que o post mudasse.
 
 ### Calibração, ETA e cancelamento
 
@@ -421,8 +421,8 @@ como pré-condição de merge.
 span inline; fusão de vizinhos do mesmo idioma; dicionário — palavra inteira, sem
 case, com acento, termo contendo caractere de regex, precedência post-sobre-global,
 filtro por idioma; substituição vazia rejeitada; hash muda quando o dicionário
-muda; **hash de post sem marcação bate com o valor conhecido da Fase 1**;
-mapeamento de locale; idioma desconhecido caindo no padrão do post; nenhum
+muda; hash estável entre chamadas para os mesmos segmentos; mapeamento de
+locale; idioma desconhecido caindo no padrão do post; nenhum
 segmento desabilitando a geração; agrupamento por idioma preservando a ordem de
 remontagem; ETA somando grupos com o RTF de cada bundle.
 
@@ -485,8 +485,6 @@ não string traduzível.
 - Marcar um idioma ainda não baixado avisa o custo (~199 MB) antes da geração;
   storage insuficiente bloqueia antes do download.
 - Site com locale não-lusófono abre o painel no idioma do próprio locale.
-- Post narrado na Fase 1, sem nenhuma marcação nova, continua com o badge
-  "Atualizado" depois da atualização do plugin.
 - Extração + dicionário + hash de um post de 64 KB ficam abaixo de 50 ms no teste
   de teto.
 - CI verde (lint, unit, e2e, i18n, audit), gates de cobertura inalterados.
