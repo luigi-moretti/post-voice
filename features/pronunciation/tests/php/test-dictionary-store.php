@@ -12,8 +12,8 @@ declare(strict_types=1);
  */
 class Test_Post_Voice_Dictionary_Store extends WP_UnitTestCase {
 
-	protected function setUp(): void {
-		parent::setUp();
+	public function set_up(): void {
+		parent::set_up();
 
 		// WP_UnitTestCase unregisters every meta key between tests, so the
 		// plugin's own `init` registration from bootstrap does not survive.
@@ -25,6 +25,14 @@ class Test_Post_Voice_Dictionary_Store extends WP_UnitTestCase {
 
 		$this->assertArrayHasKey( Post_Voice_Dictionary_Store::META, $registered );
 		$this->assertSame( array(), $registered[ Post_Voice_Dictionary_Store::META ]['default'] );
+
+		// The property that actually carries the security weight: this is what
+		// stops an unsanitised block-editor meta write from ever reaching the
+		// database, so the wiring is only meaningful if this assertion holds.
+		$this->assertSame(
+			array( Post_Voice_Dictionary_Store::class, 'sanitize' ),
+			$registered[ Post_Voice_Dictionary_Store::META ]['sanitize_callback']
+		);
 	}
 
 	public function test_sanitize_keeps_a_complete_entry(): void {
@@ -81,6 +89,41 @@ class Test_Post_Voice_Dictionary_Store extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( array(), $result );
+	}
+
+	public function test_sanitize_keeps_the_valid_entries_around_an_invalid_one(): void {
+		$result = Post_Voice_Dictionary_Store::sanitize(
+			array(
+				array(
+					'term'        => 'one',
+					'replacement' => 'um',
+					'language'    => 'portuguese',
+				),
+				array(
+					'term'        => 'two',
+					'replacement' => '',
+					'language'    => 'portuguese',
+				),
+				array(
+					'term'        => 'three',
+					'replacement' => 'tres',
+					'language'    => 'portuguese',
+				),
+				array(
+					'term'        => 'four',
+					'replacement' => 'quatro',
+					'language'    => 'portuguese',
+				),
+			)
+		);
+
+		// A single malformed row must not cost the author the other three: an
+		// early `return array()` on the first bad entry would pass every other
+		// test in this file but fail this one.
+		$this->assertSame(
+			array( 'one', 'three', 'four' ),
+			array_column( $result, 'term' )
+		);
 	}
 
 	public function test_sanitize_strips_tags_from_both_fields(): void {
@@ -155,8 +198,47 @@ class Test_Post_Voice_Dictionary_Store extends WP_UnitTestCase {
 		$this->assertSame( 'ONNX', Post_Voice_Dictionary_Store::get_global()[0]['term'] );
 	}
 
+	public function test_get_global_sanitises_a_row_written_directly(): void {
+		// Bypasses sanitize_callback entirely, the way a migration or a direct
+		// database edit would. A stub that returned the raw option untouched
+		// would still pass every other test in this file but fail this one.
+		update_option(
+			Post_Voice_Dictionary_Store::OPTION,
+			array(
+				array(
+					'term'        => 'BYD',
+					'replacement' => 'Bi Iou Di',
+					'language'    => 'klingon',
+				),
+			)
+		);
+
+		$this->assertSame( array(), Post_Voice_Dictionary_Store::get_global() );
+	}
+
 	public function test_get_for_post_returns_an_empty_array_when_unset(): void {
 		$post_id = self::factory()->post->create();
+
+		$this->assertSame( array(), Post_Voice_Dictionary_Store::get_for_post( $post_id ) );
+	}
+
+	public function test_get_for_post_sanitises_a_row_written_directly(): void {
+		$post_id = self::factory()->post->create();
+
+		// Bypasses sanitize_callback entirely, the way a migration or a direct
+		// database edit would. A stub that returned the raw meta untouched would
+		// still pass every other test in this file but fail this one.
+		update_post_meta(
+			$post_id,
+			Post_Voice_Dictionary_Store::META,
+			array(
+				array(
+					'term'        => 'BYD',
+					'replacement' => '',
+					'language'    => 'portuguese',
+				),
+			)
+		);
 
 		$this->assertSame( array(), Post_Voice_Dictionary_Store::get_for_post( $post_id ) );
 	}
