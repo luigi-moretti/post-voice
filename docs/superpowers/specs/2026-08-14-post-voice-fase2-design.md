@@ -151,6 +151,22 @@ Segmentos vizinhos com o mesmo idioma resolvido são fundidos antes da síntese.
 Sem isso, três frases seguidas em inglês viram três sínteses e a prosódia quebra
 em cada emenda.
 
+**Valor de idioma desconhecido** — em `pvLanguage` ou em `data-pv-lang` — cai no
+idioma padrão do post, com aviso no painel. O atributo vive no `post_content`,
+que sobrevive a downgrade de plugin e a edição manual do banco: confiar nele sem
+validar contra `SUPPORTED_LANGUAGES` mandaria um bundle inexistente para o
+worker.
+
+**Nenhum segmento** (autor excluiu todos os blocos, ou o post só tem blocos
+não-narráveis) desabilita o botão de gerar, com a explicação no painel. Sem essa
+guarda a geração seguiria para o worker com texto vazio.
+
+**Padrões sincronizados (`core/block`)** ficam fora, como já ficavam na Fase 1: o
+conteúdo deles não está na árvore de blocos do post e não vira segmento. Marcar
+um bloco dentro de um padrão sincronizado alteraria o padrão em todos os posts
+que o usam — não é o que o autor espera de um ajuste feito neste post. Fica como
+limitação conhecida, não como bug.
+
 ### Idioma padrão do post
 
 `class-assets.php` passa o locale do site mapeado para bundle:
@@ -186,8 +202,14 @@ Mesma forma nos dois escopos:
   caracteres, substituição ≤ 200. A lista viaja para o editor de todo mundo que
   abre um post; option sem teto é payload sem fim.
 
+Substituição vazia é rejeitada na validação. Apagar um termo da narração é
+função da exclusão de bloco ou da não-marcação, não do dicionário — aceitar
+vazio criaria duas maneiras de sumir com texto, e a silenciosa seria a difícil
+de depurar.
+
 Aplicação: para cada segmento, usa as entradas cujo idioma é o idioma resolvido
-daquele segmento. Casamento por palavra inteira, sem distinção de maiúsculas,
+daquele segmento. O dicionário não é aplicado à amostra de voz, que continua
+sendo a frase fixa por bundle da Fase 1. Casamento por palavra inteira, sem distinção de maiúsculas,
 com fronteira Unicode-aware (letra acentuada conta como letra). Termo de várias
 palavras é permitido.
 
@@ -216,6 +238,47 @@ A concatenação soma os comprimentos primeiro, aloca **um** `Float32Array` do
 tamanho final e escreve cada segmento com `.set(offset)`. Concatenar por spread
 dobraria o pico de memória, que num post de 10 minutos já é ~57 MB.
 
+### Compatibilidade do hash com a Fase 1
+
+Trocar o que entra no hash invalida todo `_narration_source_hash` já gravado: na
+primeira vez que o autor abrisse um post narrado na Fase 1, o badge viraria "pode
+estar desatualizado" para um áudio que está perfeitamente atualizado. Isso é
+migração silenciosa de dado, e cai em cima de quem já usa o plugin.
+
+**Decisão: o caso degenerado continua produzindo o hash da Fase 1.** Quando o
+post não tem bloco excluído, nem idioma marcado, nem entrada de dicionário
+aplicável, o hash é calculado sobre exatamente a mesma string de antes — o texto
+filtrado, com espaços colapsados. Só quando existe alguma marcação ou
+substituição o hash passa a ser calculado sobre o JSON dos segmentos resolvidos.
+
+Custo: dois caminhos de serialização e um teste que fixa o hash conhecido de um
+post sem marcação. Em troca, quem atualiza o plugin não vê nenhum post mudar de
+estado sozinho.
+
+O JSON dos segmentos usa ordem de campo fixa (`text`, depois `language`), com o
+idioma já resolvido — nunca `null`. Serialização instável mudaria o hash sem que
+o post mudasse.
+
+### Calibração, ETA e cancelamento
+
+A Fase 1 mede o RTF do dispositivo com uma síntese de aquecimento depois de
+carregar o bundle, e usa esse número para estimar o tempo total, avisar em
+dispositivo lento e pedir confirmação acima do limiar de texto longo. Com dois
+bundles isso muda em três pontos:
+
+- **RTF é medido por bundle**, no aquecimento de cada um. Os bundles têm o mesmo
+  tamanho e a mesma arquitetura, mas medir é mais barato que supor — o
+  aquecimento já acontece de qualquer forma ao carregar.
+- **A ETA soma os grupos**: para cada idioma, caracteres daquele grupo × RTF
+  medido dele. Enquanto o segundo bundle ainda não carregou, o grupo dele entra
+  na ETA com o RTF do primeiro, marcado como estimativa.
+- **O download entra na ETA**, não só a síntese. Baixar 199 MB numa conexão
+  modesta pode passar do tempo da própria síntese de um post curto, e a Fase 1 já
+  estabeleceu que o autor recebe o número antes de decidir.
+
+A confirmação de texto longo e o botão Cancelar continuam iguais; cancelar entre
+grupos descarta tudo, pelo mesmo motivo do áudio parcial na tabela de erros.
+
 ### Metas e REST
 
 - `_narration_language` — continua sendo o idioma **padrão** do post.
@@ -226,8 +289,10 @@ dobraria o pico de memória, que num post de 10 minutos já é ~57 MB.
 - `_narration_voice` e `_narration_attachment_id` — inalteradas.
 
 O endpoint `POST /wp-json/post-voice/v1/posts/{post_id}/narration` ganha o campo
-`languages`. Cada valor é validado contra `ALLOWED_LANGUAGES` no servidor, e
-`language` precisa estar contido em `languages`. Rejeição: 400
+`languages`, string com os códigos separados por vírgula (o corpo é
+`multipart/form-data`, onde campo repetido depende de convenção de parser — uma
+string é inequívoca). Cada valor é validado contra `ALLOWED_LANGUAGES` no
+servidor, e `language` precisa estar contido em `languages`. Rejeição: 400
 `post_voice_invalid_language`. A regra da Fase 1 vale igual — controle
 desabilitado no painel é UX, não garantia.
 
@@ -252,6 +317,15 @@ não-elegível mostra a explicação, sem controle.
 submenu dos cinco idiomas. Trecho marcado ganha sublinhado pontilhado e o código
 do idioma sobrescrito, visível sem precisar selecionar — senão o autor esquece
 que marcou. Reaplicar o mesmo idioma remove a marcação.
+
+O formato é registrado só para os tipos de bloco elegíveis (`tagName` restrito
+via a lista da Fase 1). Deixá-lo disponível numa legenda de imagem ofereceria uma
+marcação que nunca vira áudio — controle que promete e não cumpre.
+
+**Amostra de voz:** continua usando o idioma padrão do post, não os idiomas
+marcados. A amostra existe para julgar timbre, e o timbre é da voz, não do
+bundle; sintetizar uma amostra por idioma marcado multiplicaria a espera pelo
+mesmo julgamento.
 
 **Painel Narração:** o card de status passa a listar os idiomas usados
 ("Português + Inglês · voz alba"). Ganha a seção *Pronúncia deste post* — tabela
@@ -324,6 +398,13 @@ Vale tudo da Fase 1, mais:
   alternação.
 - A tela global exige `manage_options`; o dicionário do post, `edit_post` —
   mesma capability que já governa gerar narração.
+- A option é por site. Numa rede multisite cada site tem o próprio dicionário,
+  sem dicionário de rede — consistente com a Fase 1, que já declarou multisite
+  fora de escopo.
+- `_narration_dictionary` é post meta comum, fora do sistema de revisões do WP:
+  desfazer uma edição do post não desfaz uma edição do dicionário dele. Aceito —
+  a lista é curta e visível no painel, e revisionar meta exigiria registrá-la no
+  ciclo de revisões só por isso.
 
 **Risco a verificar na implementação, não depois:** `<span data-pv-lang>`
 atravessa `wp_kses` quando quem salva não tem `unfiltered_html` (Author,
@@ -339,8 +420,11 @@ como pré-condição de merge.
 **Jest (funções puras):** extração com bloco excluído, com idioma de bloco e com
 span inline; fusão de vizinhos do mesmo idioma; dicionário — palavra inteira, sem
 case, com acento, termo contendo caractere de regex, precedência post-sobre-global,
-filtro por idioma; hash muda quando o dicionário muda; mapeamento de locale;
-agrupamento por idioma preservando a ordem de remontagem.
+filtro por idioma; substituição vazia rejeitada; hash muda quando o dicionário
+muda; **hash de post sem marcação bate com o valor conhecido da Fase 1**;
+mapeamento de locale; idioma desconhecido caindo no padrão do post; nenhum
+segmento desabilitando a geração; agrupamento por idioma preservando a ordem de
+remontagem; ETA somando grupos com o RTF de cada bundle.
 
 **Teto de performance (Jest):** post sintético de 64 KB, ~240 segmentos,
 dicionário de 200 entradas — extração + dicionário + hash abaixo de **50 ms**.
@@ -401,6 +485,8 @@ não string traduzível.
 - Marcar um idioma ainda não baixado avisa o custo (~199 MB) antes da geração;
   storage insuficiente bloqueia antes do download.
 - Site com locale não-lusófono abre o painel no idioma do próprio locale.
+- Post narrado na Fase 1, sem nenhuma marcação nova, continua com o badge
+  "Atualizado" depois da atualização do plugin.
 - Extração + dicionário + hash de um post de 64 KB ficam abaixo de 50 ms no teste
   de teto.
 - CI verde (lint, unit, e2e, i18n, audit), gates de cobertura inalterados.
