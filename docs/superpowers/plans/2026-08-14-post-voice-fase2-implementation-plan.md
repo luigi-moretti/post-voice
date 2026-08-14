@@ -398,9 +398,15 @@ describe( 'applyDictionary', () => {
 	} );
 
 	it( 'never re-applies an entry to its own replacement', () => {
+		// The replacement contains the term, so a second pass would keep growing it.
+		// Deliberately not a single letter: matching is case-insensitive, so a term
+		// of "A" would also rewrite every standalone "a" in the text and this test
+		// would be about something else.
 		expect(
-			applyDictionary( 'a A vira AA', 'portuguese', [ pt( 'A', 'AA' ) ] )
-		).toBe( 'a AA vira AA' );
+			applyDictionary( 'a BYD hoje', 'portuguese', [
+				pt( 'BYD', 'BYD Motors' ),
+			] )
+		).toBe( 'a BYD Motors hoje' );
 	} );
 
 	it( 'returns the text untouched when no entry applies', () => {
