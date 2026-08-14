@@ -109,10 +109,14 @@ class Test_Post_Voice_Settings_Page extends WP_UnitTestCase {
 	 * keeps every other warning live.
 	 */
 	private static function fire_admin_init(): void {
-		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Not debug code: a narrowly-scoped, restored handler that swallows one specific, unrelated core warning (see the docblock above).
-		set_error_handler(
-			static function ( int $errno, string $errstr ): bool {
-				return (bool) preg_match( '/headers already sent/', $errstr );
+		$previous = null;
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Not debug code: a narrowly-scoped, restored handler that swallows one specific, unrelated core warning (see the docblock above) and delegates everything else — including PHPUnit's own warning-to-exception converter — to whatever handler was already installed.
+		$previous = set_error_handler(
+			static function ( int $errno, string $errstr, string $errfile = '', int $errline = 0 ) use ( &$previous ) {
+				if ( preg_match( '/headers already sent/', $errstr ) ) {
+					return true;
+				}
+				return $previous ? $previous( $errno, $errstr, $errfile, $errline ) : false;
 			}
 		);
 		try {
