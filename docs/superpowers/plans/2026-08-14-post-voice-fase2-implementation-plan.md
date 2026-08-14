@@ -1364,7 +1364,7 @@ styling will live on."
 
 **Interfaces:**
 - Consumes: `Post_Voice_Dictionary_Store::get_global()`.
-- Produces: the `postVoiceData` JS global, shape `{ dictionary: Entry[], siteLanguage: string }`.
+- Produces: the `postVoiceData` JS global, shape `{ dictionary: Entry[], siteLanguage: string, canManageOptions: boolean }` — all three keys in ONE `wp_localize_script` call, and one test each. Every test that calls `enqueue_editor_assets()` must first call the class's existing `with_asset_file()` helper: the enqueue returns early when `build/narration-editor.asset.php` is missing, and CI's unit job never runs a build, so a test without it passes locally and fails in CI.
 
 - [ ] **Step 1: Write the failing test**
 
