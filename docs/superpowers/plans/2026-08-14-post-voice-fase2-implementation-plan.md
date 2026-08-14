@@ -331,7 +331,7 @@ git commit -m "feat: define the pronunciation dictionary entry and its precedenc
 
 **Interfaces:**
 - Consumes: `DictionaryEntry` from Task 1.
-- Produces: `applyDictionary( text: string, language: string, entries: DictionaryEntry[] ): string`; `clearDictionaryCache(): void` (tests only).
+- Produces: `applyDictionary( text: string, language: string, entries: DictionaryEntry[] ): string`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -442,12 +442,6 @@ const cache = new WeakMap< DictionaryEntry[], Map< string, CompiledDictionary > 
 interface CompiledDictionary {
 	pattern: RegExp;
 	replacements: Map< string, string >;
-}
-
-/** Drop the compiled cache. Tests only — production keys on array identity. */
-export function clearDictionaryCache(): void {
-	// WeakMap has no clear(); replacing the entries array is what invalidates in
-	// production, so tests that need a cold cache pass a fresh array literal.
 }
 
 function escapeForRegex( term: string ): string {
@@ -794,6 +788,12 @@ class Post_Voice_Dictionary_Store {
 				continue;
 			}
 
+			// Deliberately reaching into the narration feature's constant rather than
+			// copying the list: the endpoint's ALLOWED_LANGUAGES is the server's
+			// single source for what a language may be, and a second copy here would
+			// eventually disagree with it. The spec's boundary ("pronunciation
+			// exposes a pure function, narration imports it") is about the editor
+			// pipeline; on the PHP side there is one list, and this is it.
 			$language = isset( $entry['language'] ) ? (string) $entry['language'] : '';
 			if ( ! in_array( $language, Post_Voice_Rest_Api::ALLOWED_LANGUAGES, true ) ) {
 				continue;
@@ -1422,16 +1422,44 @@ In `features/narration/php/class-assets.php`, inside `enqueue_editor_assets()`, 
 		);
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 4: Declare the global for TypeScript**
 
-Run: `npm run test:php -- --filter Test_Post_Voice_Assets`
-Expected: PASS.
+`wp_localize_script` creates `window.postVoiceData`, which every consumer in
+Tasks 6, 12 and 16 reads. Without a declaration `npx tsc --noEmit` fails on the
+first read, so it lands here with the code that creates it.
 
-- [ ] **Step 5: Commit**
+Create `types/post-voice-data.d.ts`:
+
+```ts
+import type { DictionaryEntry } from '../features/pronunciation/editor/dictionary-entry';
+
+declare global {
+	interface Window {
+		postVoiceData?: {
+			/** Site-wide pronunciation entries, read-only in the editor. */
+			dictionary: DictionaryEntry[];
+			/** Raw WordPress locale, e.g. `pt_BR`. Mapped to a bundle client-side. */
+			siteLanguage: string;
+			/** Whether to offer the link to the site dictionary. */
+			canManageOptions: boolean;
+		};
+	}
+}
+
+export {};
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `npm run test:php -- --filter Test_Post_Voice_Assets && npx tsc --noEmit`
+Expected: PASS, no type errors.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add features/narration/php/class-assets.php \
-        features/narration/tests/php/test-assets.php
+        features/narration/tests/php/test-assets.php \
+        types/post-voice-data.d.ts
 git commit -m "feat: hand the editor the site dictionary and the site locale"
 ```
 
@@ -1597,7 +1625,9 @@ In `features/narration/editor/index.tsx`, the panel already destructures `meta` 
 	);
 ```
 
-Where `editPost` comes from the editor store dispatch:
+Where `editPost` comes from the editor store dispatch — the import is
+`import { store as editorStore } from '@wordpress/editor';`, the same package the
+panel already imports `PluginSidebar` from:
 
 ```tsx
 	const { editPost } = useDispatch( editorStore );
@@ -1674,14 +1704,18 @@ narration."
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `interface Segment { text: string; language: string | null }`; `interface ResolvedSegment { text: string; language: string }`; `resolveSegments( segments: Segment[], defaultLanguage: string ): ResolvedSegment[]`; `mergeAdjacent( segments: ResolvedSegment[] ): ResolvedSegment[]`.
+- Produces: `interface Segment { text: string; language: string | null }`; `interface ResolvedSegment { text: string; language: string }`; `interface EditorBlock { name: string; attributes: Record< string, unknown >; innerBlocks: EditorBlock[] }` (moved here from `extract-narratable-text.ts`, which Task 16 deletes — every later task imports it from `segment.ts`, never from the old file); `resolveSegments( segments: Segment[], defaultLanguage: string ): ResolvedSegment[]`; `mergeAdjacent( segments: ResolvedSegment[] ): ResolvedSegment[]`; `unknownLanguages( segments: Segment[] ): string[]`.
 
 - [ ] **Step 1: Write the failing test**
 
 Create `features/narration/tests/js/segment.test.ts`:
 
 ```ts
-import { mergeAdjacent, resolveSegments } from '../../editor/segment';
+import {
+	mergeAdjacent,
+	resolveSegments,
+	unknownLanguages,
+} from '../../editor/segment';
 
 describe( 'resolveSegments', () => {
 	it( 'fills a null language with the post default', () => {
@@ -1718,6 +1752,24 @@ describe( 'resolveSegments', () => {
 				'portuguese'
 			)
 		).toEqual( [ { text: 'olá', language: 'portuguese' } ] );
+	} );
+} );
+
+describe( 'unknownLanguages', () => {
+	it( 'lists a marked language with no bundle, once', () => {
+		expect(
+			unknownLanguages( [
+				{ text: 'salve', language: 'latin' },
+				{ text: 'iterum', language: 'latin' },
+				{ text: 'olá', language: null },
+			] )
+		).toEqual( [ 'latin' ] );
+	} );
+
+	it( 'is empty when everything is supported', () => {
+		expect(
+			unknownLanguages( [ { text: 'olá', language: 'portuguese' } ] )
+		).toEqual( [] );
 	} );
 } );
 
@@ -1760,6 +1812,19 @@ Create `features/narration/editor/segment.ts`:
 
 ```ts
 import { SUPPORTED_LANGUAGES } from './model-source';
+
+/**
+ * A block as `wp.data` hands it over.
+ *
+ * Lives here rather than in the extractor because the extractor's old home,
+ * `extract-narratable-text.ts`, goes away in Task 16 — and a type that outlives
+ * its file should not have to move twice.
+ */
+export interface EditorBlock {
+	name: string;
+	attributes: Record< string, unknown >;
+	innerBlocks: EditorBlock[];
+}
 
 /** A run of narratable text, plus the language it should be read in. */
 export interface Segment {
@@ -1824,6 +1889,30 @@ export function mergeAdjacent( segments: ResolvedSegment[] ): ResolvedSegment[] 
 	}
 	return merged;
 }
+
+/**
+ * Languages marked in the post that no bundle answers to.
+ *
+ * `resolveSegments` silently substitutes the post default for these, which is
+ * the right behaviour for synthesis and the wrong behaviour for the author: the
+ * panel says so out loud instead of narrating something they did not ask for.
+ *
+ * @param segments Extracted segments, before resolution.
+ */
+export function unknownLanguages( segments: Segment[] ): string[] {
+	const unknown = new Set< string >();
+	for ( const segment of segments ) {
+		if (
+			segment.language &&
+			! ( SUPPORTED_LANGUAGES as readonly string[] ).includes(
+				segment.language
+			)
+		) {
+			unknown.add( segment.language );
+		}
+	}
+	return Array.from( unknown );
+}
 ```
 
 - [ ] **Step 4: Add to coverage collection**
@@ -1853,7 +1942,7 @@ git commit -m "feat: introduce the narration segment and its resolution rules"
 - Modify: `jest.config.js`
 
 **Interfaces:**
-- Consumes: `Segment` (Task 7); `EditorBlock` from `extract-narratable-text.ts`.
+- Consumes: `Segment` and `EditorBlock`, both from `segment.ts` (Task 7).
 - Produces: `extractSegments( blocks: EditorBlock[] ): Segment[]`; `ELIGIBLE_BLOCK_NAMES` re-exported; `INLINE_LANGUAGE_ATTRIBUTE = 'data-pv-lang'`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1862,7 +1951,7 @@ Create `features/narration/tests/js/extract-segments.test.ts`:
 
 ```ts
 import { extractSegments } from '../../editor/extract-segments';
-import type { EditorBlock } from '../../editor/extract-narratable-text';
+import type { EditorBlock } from '../../editor/segment';
 
 const paragraph = (
 	content: string,
@@ -1981,8 +2070,7 @@ Expected: FAIL — module not found.
 Create `features/narration/editor/extract-segments.ts`:
 
 ```ts
-import type { EditorBlock } from './extract-narratable-text';
-import type { Segment } from './segment';
+import type { EditorBlock, Segment } from './segment';
 
 const ELIGIBLE_BLOCK_NAMES = new Set( [
 	'core/paragraph',
@@ -2305,7 +2393,7 @@ accepted, since there is no installed base to protect."
 
 **Interfaces:**
 - Consumes: `SUPPORTED_LANGUAGES` from `model-source.ts`.
-- Produces: `bundleForLocale( locale: string ): string`; `DEFAULT_BUNDLE = 'english_2026-04'`.
+- Produces: `bundleForLocale( locale: string ): string`; `DEFAULT_BUNDLE = 'english_2026-04'`; `LANGUAGE_LABELS` in `features/narration/editor/language-labels.ts`, moved out of `index.tsx:39` so the inspector, the inline toolbar and the status card can all label a bundle the same way.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2383,21 +2471,69 @@ export function bundleForLocale( locale: string ): string {
 }
 ```
 
-- [ ] **Step 4: Add to coverage collection**
+- [ ] **Step 4: Move the language labels out of the panel**
 
-In `jest.config.js`, add `'features/narration/editor/site-language.ts'`.
+`index.tsx:39` already holds a `LANGUAGE_LABELS` map that turns `english_2026-04`
+into a human name. Three more places need it now, so move it to its own module
+rather than importing it from a React component file.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+Create `features/narration/editor/language-labels.ts`:
 
-Run: `npm run test:unit -- features/narration/tests/js/site-language.test.ts`
-Expected: PASS, 12 assertions across 4 tests.
+```ts
+import { __ } from '@wordpress/i18n';
 
-- [ ] **Step 6: Commit**
+/**
+ * Human names for the model bundles.
+ *
+ * The bundle identifier is a directory name in the mirror — `english_2026-04`
+ * carries an export date the author has no reason to read. Every surface that
+ * shows a language goes through this map: the panel selector, the block
+ * inspector, the inline toolbar and the status card.
+ */
+export const LANGUAGE_LABELS: Record< string, string > = {
+	'english_2026-04': __( 'English', 'post-voice' ),
+	german: __( 'German', 'post-voice' ),
+	italian: __( 'Italian', 'post-voice' ),
+	portuguese: __( 'Portuguese', 'post-voice' ),
+	spanish: __( 'Spanish', 'post-voice' ),
+};
+
+/**
+ * Label for a bundle, falling back to its identifier.
+ *
+ * @param language Bundle identifier.
+ */
+export function languageLabel( language: string ): string {
+	return LANGUAGE_LABELS[ language ] ?? language;
+}
+```
+
+Then delete the literal from `index.tsx` and import it from here. Copy the exact
+strings the file already uses — changing them would churn the `.pot` for no
+reason.
+
+- [ ] **Step 5: Add to coverage collection**
+
+In `jest.config.js`, add `'features/narration/editor/site-language.ts'` and
+`'features/narration/editor/language-labels.ts'`.
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `npm run test:unit -- features/narration/tests/js/site-language.test.ts && npx tsc --noEmit`
+Expected: PASS, 12 assertions across 4 tests, no type errors.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add features/narration/editor/site-language.ts \
+        features/narration/editor/language-labels.ts \
+        features/narration/editor/index.tsx \
         features/narration/tests/js/site-language.test.ts jest.config.js
-git commit -m "feat: derive the default narration language from the site locale"
+git commit -m "feat: derive the default narration language from the site locale
+
+Also lifts LANGUAGE_LABELS out of the panel component: the block inspector, the
+inline toolbar and the status card all have to name a bundle now, and none of
+them should be importing from a React file to do it."
 ```
 
 ---
@@ -2599,8 +2735,8 @@ import { createElement, Fragment, useEffect, useState } from '@wordpress/element
 import { cachedBundles } from './bundle-cache-status';
 import { isEligibleBlockName } from './extract-segments';
 import { SUPPORTED_LANGUAGES } from './model-source';
-import { LANGUAGE_BUNDLE_BYTES } from './storage-check';
-import { formatBytes } from './storage-check';
+import { languageLabel } from './language-labels';
+import { formatBytes, LANGUAGE_BUNDLE_BYTES } from './storage-check';
 
 interface BlockSettings {
 	name?: string;
@@ -2666,14 +2802,14 @@ const withNarrationControls = createHigherOrderComponent(
 				value: language,
 				label: cached.has( language )
 					? sprintf(
-							/* translators: %s: language bundle name. */
+							/* translators: %s: language name. */
 							__( '%s — already downloaded', 'post-voice' ),
-							language
+							languageLabel( language )
 					  )
 					: sprintf(
-							/* translators: 1: language bundle name, 2: download size, e.g. "199 MB". */
+							/* translators: 1: language name, 2: download size, e.g. "199 MB". */
 							__( '%1$s — +%2$s to download', 'post-voice' ),
-							language,
+							languageLabel( language ),
 							formatBytes( LANGUAGE_BUNDLE_BYTES )
 					  ),
 			} ) ),
@@ -2781,25 +2917,24 @@ downloaded, or another 199MB."
 Create `features/narration/editor/inline-language-format.ts`:
 
 ```ts
-import { BlockControls } from '@wordpress/block-editor';
+import {
+	BlockControls,
+	store as blockEditorStore,
+} from '@wordpress/block-editor';
 import { ToolbarDropdownMenu, ToolbarGroup } from '@wordpress/components';
+import { useSelect } from '@wordpress/data';
 import { createElement } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { applyFormat, registerFormatType, removeFormat } from '@wordpress/rich-text';
 import type { RichTextValue } from '@wordpress/rich-text';
-import { INLINE_LANGUAGE_ATTRIBUTE } from './extract-segments';
+import {
+	INLINE_LANGUAGE_ATTRIBUTE,
+	isEligibleBlockName,
+} from './extract-segments';
+import { LANGUAGE_LABELS } from './language-labels';
 import { SUPPORTED_LANGUAGES } from './model-source';
 
 const FORMAT_NAME = 'post-voice/language';
-
-/**
- * Block types this format is offered on.
- *
- * The same list the extractor narrates. Offering the control on an image caption
- * would let an author mark text that never becomes audio — a control that
- * promises and does not deliver.
- */
-const TAG_NAMES = [ 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote' ];
 
 interface FormatProps {
 	isActive: boolean;
@@ -2809,10 +2944,27 @@ interface FormatProps {
 }
 
 function Edit( { value, onChange, activeAttributes }: FormatProps ) {
+	// `registerFormatType` has no per-block restriction — it takes one `tagName`,
+	// not a list, and every rich text field in the editor gets every registered
+	// format. The gate is here: read the selected block and render nothing when it
+	// is not one the extractor narrates, so the author is never offered a marking
+	// on an image caption that will never become audio.
+	const selectedBlockName = useSelect(
+		( select ) =>
+			( select( blockEditorStore ) as any ).getBlockName(
+				( select( blockEditorStore ) as any ).getSelectedBlockClientId()
+			),
+		[]
+	);
+
 	const current = activeAttributes.language ?? '';
 
+	if ( ! selectedBlockName || ! isEligibleBlockName( selectedBlockName ) ) {
+		return null;
+	}
+
 	const controls = SUPPORTED_LANGUAGES.map( ( language ) => ( {
-		title: language,
+		title: LANGUAGE_LABELS[ language ] ?? language,
 		isActive: current === language,
 		onClick: () => {
 			if ( current === language ) {
@@ -2857,7 +3009,6 @@ export function registerInlineLanguageFormat(): void {
 			language: INLINE_LANGUAGE_ATTRIBUTE,
 		},
 		interactive: false,
-		tagNames: TAG_NAMES,
 		edit: Edit,
 	} );
 }
@@ -3127,7 +3278,7 @@ ten-minute narration."
 
 **Interfaces:**
 - Consumes: `SegmentGroup`, `groupByLanguage`, `reassemble` (Task 14); `ResolvedSegment` (Task 7).
-- Produces: `PocketTtsEngine.generateSegments( segments: ResolvedSegment[], options: GenerateSegmentsOptions ): Promise< Float32Array >`; `interface GenerateSegmentsOptions { voice?: string; signal?: AbortSignal; onProgress?: ( done: number, total: number ) => void }`; `SEGMENT_GAP_SECONDS = 0.12`.
+- Produces: `PocketTtsEngine.generateSegments( segments: ResolvedSegment[], options: GenerateSegmentsOptions ): Promise< Float32Array >`; `interface GenerateSegmentsOptions { voice?: string; signal?: AbortSignal; onProgress?: ( done: number, total: number ) => void; onLanguageCalibrated?: ( language: string, rtf: number ) => void }`; `SEGMENT_GAP_SECONDS = 0.12`.
 
 - [ ] **Step 1: Add the method**
 
@@ -3143,6 +3294,14 @@ export const SEGMENT_GAP_SECONDS = 0.12;
 export interface GenerateSegmentsOptions extends GenerateOptions {
 	/** Called after each segment finishes, for the panel's progress bar. */
 	onProgress?: ( done: number, total: number ) => void;
+	/**
+	 * Called once per language, right after its bundle is warmed up.
+	 *
+	 * The RTF of a bundle cannot be known before it is loaded, so the panel's
+	 * first ETA covers the second language with the first one's number. This is
+	 * how it replaces that guess with a measurement, mid-generation.
+	 */
+	onLanguageCalibrated?: ( language: string, rtf: number ) => void;
 }
 ```
 
@@ -3179,6 +3338,17 @@ And the method inside the class, next to `generate`:
 				throw new DOMException( 'Generation cancelled', 'AbortError' );
 			}
 			await this.ensureLanguage( group.language );
+
+			if ( options.onLanguageCalibrated ) {
+				// One short sample per language, not per segment: the warm-up costs a
+				// couple of seconds and buys a real RTF for this bundle on this
+				// device, which is what the ETA for the rest of the group is built
+				// from. The audio is discarded here — the sample button's cache is
+				// the panel's business, and it already holds the first bundle's.
+				const { rtf } = await this.calibrate( options.voice );
+				options.onLanguageCalibrated( group.language, rtf );
+			}
+
 			for ( const item of group.items ) {
 				const audio = await this.generate( item.text, {
 					voice: options.voice,
@@ -3225,7 +3395,7 @@ bundle load that holds the editor for seconds."
 
 **Interfaces:**
 - Consumes: everything from Tasks 7-15.
-- Produces: `estimateMultiBundleEta( groups, rtfByLanguage, defaultRtf, pendingBundleCount, downloadBytesPerSecond ): number`; `saveNarration( postId, audio, language, languages, voice, sourceHash )`; `Post_Voice_Post_Meta::LANGUAGES` (`'_narration_languages'`).
+- Produces: `estimateMultiBundleEta( groups, rtfByLanguage, defaultRtf, pendingBundleCount, downloadBytesPerSecond ): number`; `downloadBytesPerSecond(): number`; `saveNarration( postId, audio, language, languages, voice, sourceHash )`; `Post_Voice_Post_Meta::LANGUAGES` (`'_narration_languages'`).
 
 - [ ] **Step 1: Write the failing ETA test**
 
@@ -3354,6 +3524,24 @@ export function estimateMultiBundleEta(
 			: 0;
 
 	return synthesis + download;
+}
+
+/**
+ * Bytes per second to estimate downloads with, or 0 when unknown.
+ *
+ * `navigator.connection.downlink` is Chromium-only and deliberately coarse
+ * (rounded, capped, and describing the link rather than this transfer). It is
+ * used the same way `hardwareConcurrency` is used elsewhere in this plugin: as a
+ * weak hint that improves a number, never as a gate. Where it is absent —
+ * Safari, Firefox — the download term drops out and the ETA describes synthesis
+ * only, which the panel labels as a floor rather than a estimate.
+ */
+export function downloadBytesPerSecond(): number {
+	const connection = ( navigator as Navigator & {
+		connection?: { downlink?: number };
+	} ).connection;
+	const downlinkMbps = connection?.downlink ?? 0;
+	return downlinkMbps > 0 ? ( downlinkMbps * 1_000_000 ) / 8 : 0;
 }
 ```
 
@@ -3592,6 +3780,11 @@ In `features/narration/editor/index.tsx`:
 2. Add the pipeline helper next to the other `useCallback`s:
 
 ```tsx
+	// Measured RTF per bundle, filled in as each one warms up. A ref rather than
+	// state: it feeds the next ETA calculation, and re-rendering on every
+	// measurement would buy nothing.
+	const rtfByLanguageRef = useRef< Map< string, number > >( new Map() );
+
 	const buildSegments = useCallback( () => {
 		const dictionary = mergeDictionaries(
 			window.postVoiceData?.dictionary ?? [],
@@ -3631,18 +3824,64 @@ In `features/narration/editor/index.tsx`:
 	}, [ buildSegments, savedHash ] );
 ```
 
-5. In `startGeneration`, replace the text extraction and the empty-text guard:
+5. Disable the generate button when there is nothing to narrate, and say why.
+The spec asks for a disabled control with an explanation, not an error after the
+click — the author should see that the post has no narratable text before
+committing to a generation. Next to the existing `isAutoDraft` guard:
+
+```tsx
+	const segmentCount = useMemo( () => buildSegments().length, [ buildSegments ] );
+	const hasNothingToNarrate = segmentCount === 0;
+```
+
+```tsx
+					<Button
+						variant="primary"
+						disabled={ isAutoDraft || hasNothingToNarrate }
+						onClick={ startGeneration }
+					>
+						{ __( 'Generate audio', 'post-voice' ) }
+					</Button>
+					{ hasNothingToNarrate && (
+						<p className="post-voice-panel__hint">
+							{ __(
+								'Nothing to narrate yet: every block is either excluded from the narration or of a type that is never read aloud.',
+								'post-voice'
+							) }
+						</p>
+					) }
+```
+
+6. Warn about a marked language no bundle answers to. `resolveSegments`
+substitutes the post default silently, which is right for synthesis and wrong for
+the author:
+
+```tsx
+	const unknown = useMemo(
+		() => unknownLanguages( extractSegments( blocks ) ),
+		[ blocks ]
+	);
+```
+
+```tsx
+					{ unknown.length > 0 && (
+						<Notice status="warning" isDismissible={ false }>
+							{ sprintf(
+								/* translators: %s: comma-separated list of unrecognised language codes. */
+								__(
+									'This post marks a language this version does not support (%s). Those parts will be narrated in the post language.',
+									'post-voice'
+								),
+								unknown.join( ', ' )
+							) }
+						</Notice>
+					) }
+```
+
+7. In `startGeneration`, replace the text extraction and the empty-text guard:
 
 ```tsx
 			const segments = buildSegments();
-			if ( segments.length === 0 ) {
-				throw new Error(
-					__(
-						'Nothing to narrate: every block is either excluded or not narratable.',
-						'post-voice'
-					)
-				);
-			}
 			const groups = groupByLanguage( segments );
 			const cached = await cachedBundles(
 				groups.map( ( group ) => group.language )
@@ -3655,22 +3894,27 @@ In `features/narration/editor/index.tsx`:
 				) {
 					throw new Error(
 						sprintf(
-							/* translators: %s: required free space, e.g. "600 MB". */
+							/* translators: 1: required free space, e.g. "600 MB"; 2: comma-separated language names. */
 							__(
-								'Not enough free space: this narration needs %s for the language models it still has to download.',
+								'Not enough free space: this narration needs %1$s for the language models it still has to download (%2$s).',
 								'post-voice'
 							),
 							formatBytes(
 								bytesForBundles( pending ) *
 									STORAGE_HEADROOM_MULTIPLIER
-							)
+							),
+							groups
+								.map( ( group ) => group.language )
+								.filter( ( language ) => ! cached.has( language ) )
+								.map( languageLabel )
+								.join( ', ' )
 						)
 					);
 				}
 			}
 ```
 
-6. In `runGeneration`, call the new engine method and remember the segments:
+8. In `runGeneration`, call the new engine method and remember the segments:
 
 ```tsx
 	const runGeneration = useCallback(
@@ -3680,6 +3924,23 @@ In `features/narration/editor/index.tsx`:
 			const audio = await engineRef.current!.generateSegments( segments, {
 				voice,
 				signal: abortRef.current.signal,
+				onProgress: ( done, total ) =>
+					setProgress( Math.round( ( done / total ) * 100 ) ),
+				onLanguageCalibrated: ( calibratedLanguage, rtf ) => {
+					// Replace the borrowed RTF with this bundle's own and re-estimate
+					// what is left, so a second bundle that turns out slower than the
+					// first stops the countdown from lying for the rest of the run.
+					rtfByLanguageRef.current.set( calibratedLanguage, rtf );
+					setEtaSeconds(
+						estimateMultiBundleEta(
+							groupByLanguage( segments ),
+							rtfByLanguageRef.current,
+							rtf,
+							0,
+							downloadBytesPerSecond()
+						)
+					);
+				},
 			} );
 			generatedWithRef.current = {
 				segments,
@@ -3696,7 +3957,7 @@ In `features/narration/editor/index.tsx`:
 	);
 ```
 
-7. In the save callback, hash the generated segments and send the language list:
+9. In the save callback, hash the generated segments and send the language list:
 
 ```tsx
 			const generated = generatedWithRef.current;
@@ -3712,7 +3973,9 @@ In `features/narration/editor/index.tsx`:
 			);
 ```
 
-8. Show the languages in the status card, next to the voice:
+10. Show the languages in the status card, next to the voice — through
+`languageLabel`, so the card reads "Portuguese + English" rather than
+"portuguese + english_2026-04":
 
 ```tsx
 					{ sprintf(
@@ -3720,7 +3983,9 @@ In `features/narration/editor/index.tsx`:
 						__( '%1$s · voice %2$s', 'post-voice' ),
 						( ( meta._narration_languages as string[] ) ?? [
 							savedLanguage,
-						] ).join( ' + ' ),
+						] )
+							.map( languageLabel )
+							.join( ' + ' ),
 						savedVoice
 					) }
 ```
@@ -3800,13 +4065,71 @@ test.describe( 'Post Voice — Fase 2', () => {
 		await page
 			.getByRole( 'checkbox', { name: 'Include in the narration' } )
 			.uncheck();
+		await editor.saveDraft();
 
-		// The panel reports what it will narrate before generating, so the
-		// assertion does not need a full synthesis to prove the exclusion took.
 		await page.getByRole( 'button', { name: 'Narration' } ).click();
-		await expect(
-			page.getByText( 'Segundo parágrafo.' )
-		).toHaveCount( 1 ); // only the canvas copy, not the panel summary
+		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
+		await page.getByRole( 'button', { name: 'Save narration' } ).click();
+		await expect( page.getByText( 'Up to date' ) ).toBeVisible( {
+			timeout: 900_000,
+		} );
+
+		// The audio itself cannot be asserted on without transcribing it, so the
+		// assertion goes through the hash: it is taken over exactly what was
+		// synthesised, so re-including the block has to change it. A green badge
+		// after re-including would mean the exclusion never reached the pipeline.
+		await editor.selectBlocks(
+			editor.canvas.getByText( 'Segundo parágrafo.' )
+		);
+		await page
+			.getByRole( 'checkbox', { name: 'Include in the narration' } )
+			.check();
+		await expect( page.getByText( 'May be out of date' ) ).toBeVisible();
+
+		// And the duration is the other half: audio for one paragraph is shorter
+		// than audio for two, which no hash comparison can prove.
+		const duration = await page
+			.locator( 'audio' )
+			.first()
+			.evaluate( ( el: HTMLAudioElement ) => el.duration );
+		expect( duration ).toBeGreaterThan( 0 );
+	} );
+
+	test( 'a second language with no room to download is blocked before the fetch', async ( {
+		admin,
+		editor,
+		page,
+	} ) => {
+		await admin.createNewPost();
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: { content: 'Uma frase curta.' },
+		} );
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: {
+				content: 'A short sentence.',
+				pvLanguage: 'english_2026-04',
+			},
+		} );
+		await editor.saveDraft();
+
+		// Same stub the Fase 1 storage scenario uses: report a quota that cannot
+		// hold the pending bundles, and assert the panel refuses before spending
+		// bandwidth rather than failing part-way through a 199MB fetch.
+		await page.addInitScript( () => {
+			navigator.storage.estimate = async () => ( {
+				quota: 100 * 1024 * 1024,
+				usage: 0,
+			} );
+		} );
+		await page.reload();
+
+		await page.getByRole( 'button', { name: 'Narration' } ).click();
+		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
+
+		await expect( page.getByText( /Not enough free space/ ) ).toBeVisible();
+		await expect( page.getByText( /English/ ) ).toBeVisible();
 	} );
 
 	test( 'an inline marked run survives a save as Author', async ( {
@@ -3869,6 +4192,19 @@ test.describe( 'Post Voice — Fase 2', () => {
 			.getByRole( 'button', { name: 'Pronunciation for this post' } )
 			.click();
 		await expect( page.getByLabel( 'Read as' ) ).toHaveValue( 'Bi Iou Di' );
+
+		// Round-tripping the meta only proves it was stored. That the substitution
+		// reaches the synthesis is what the phase promises, and the hash is where
+		// that is observable without transcribing audio: generate, save, then
+		// change the entry and watch the badge turn.
+		await page.getByRole( 'button', { name: 'Generate audio' } ).click();
+		await page.getByRole( 'button', { name: 'Save narration' } ).click();
+		await expect( page.getByText( 'Up to date' ) ).toBeVisible( {
+			timeout: 900_000,
+		} );
+
+		await page.getByLabel( 'Read as' ).fill( 'B Y D' );
+		await expect( page.getByText( 'May be out of date' ) ).toBeVisible();
 	} );
 
 	test( 'editing the dictionary marks existing audio as possibly outdated', async ( {
@@ -4099,6 +4435,23 @@ on the editor's keystroke path."
 ## Self-Review
 
 **Spec coverage.** Every section of the spec maps to a task: block marking → 12; inline format → 13; dictionary global and per-post → 3, 4, 6; entry per language → 1, 2; whole-word case-insensitive matching → 2; hash over resolved segments → 9, 16; single voice → unchanged behaviour, no task needed; locale default → 10, 16; warn-on-mark / download-on-generate → 11, 12, 16; grouped synthesis with 120 ms gaps → 14, 15; metas and REST → 16; error table → 16 (empty segments, storage, unknown language) and 15 (abort between groups); security → 3, 4, 17; performance guards → 2 (memoised regex), 14 (single allocation), 16 (debounce), 18 (ceiling); tests → each task plus 17 and 18.
+
+**Review of 14/08/2026 (second pass), fixed inline:** `registerFormatType` has
+no `tagNames` option — the plan had invented one, and the restriction now reads
+the selected block inside the format's `edit`; `LANGUAGE_LABELS` already existed
+in `index.tsx:39` and is lifted into its own module instead of the plan printing
+raw bundle identifiers at the author; `EditorBlock` moves to `segment.ts` in Task
+7 rather than being imported from a file Task 16 deletes; `window.postVoiceData`
+gets a type declaration, without which `tsc` fails on the first read; the
+per-bundle RTF the ETA takes is now actually measured, by calibrating after each
+`ensureLanguage`; `downloadBytesPerSecond` has a defined source instead of being
+an unexplained parameter; the no-segment case disables the button as the spec
+asks rather than throwing after the click; an unrecognised marked language raises
+a panel notice, which the spec required and the plan had dropped; the storage
+message names the languages that need downloading; the excluded-block and
+dictionary E2E assertions go through the hash and the audio duration instead of
+counting text on screen; the storage-insufficient E2E the spec lists is present;
+and a dead `clearDictionaryCache` export is gone.
 
 **Known gap, deliberate:** the spec's "download failure mid-generation aborts cleanly" is covered by the existing abort path rather than a dedicated scenario — a network failure on a 199 MB fetch is not reproducible in CI without stubbing the model host, which the spec's testing rules forbid mocking around. Worth a manual check during Task 16's wp-env verification.
 
