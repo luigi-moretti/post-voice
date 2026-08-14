@@ -116,6 +116,66 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 		$this->assertFalse( wp_script_is( 'post-voice-editor', 'enqueued' ) );
 	}
 
+	public function test_editor_assets_localise_the_global_dictionary(): void {
+		update_option(
+			Post_Voice_Dictionary_Store::OPTION,
+			array(
+				array(
+					'term'        => 'BYD',
+					'replacement' => 'Bi Iou Di',
+					'language'    => 'portuguese',
+				),
+			)
+		);
+		set_current_screen( 'post' );
+		$this->with_asset_file();
+
+		Post_Voice_Assets::enqueue_editor_assets();
+		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
+
+		$this->assertIsString( $data );
+		$this->assertStringContainsString( 'Bi Iou Di', $data );
+	}
+
+	public function test_editor_assets_localise_the_site_language(): void {
+		set_current_screen( 'post' );
+		$this->with_asset_file();
+
+		Post_Voice_Assets::enqueue_editor_assets();
+		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
+
+		$this->assertIsString( $data );
+		$this->assertStringContainsString( 'siteLanguage', $data );
+		$this->assertStringContainsString( get_locale(), $data );
+	}
+
+	public function test_editor_assets_localise_can_manage_options(): void {
+		set_current_screen( 'post' );
+		$this->with_asset_file();
+
+		// Test as administrator — should have manage_options capability.
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		Post_Voice_Assets::enqueue_editor_assets();
+		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
+
+		$this->assertIsString( $data );
+		$this->assertStringContainsString( 'canManageOptions', $data );
+		$this->assertStringContainsString( '"canManageOptions":"1"', $data );
+
+		// Reset scripts to test again.
+		$GLOBALS['wp_scripts'] = new WP_Scripts();
+
+		// Test as subscriber — should not have manage_options capability.
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'subscriber' ) ) );
+		Post_Voice_Assets::enqueue_editor_assets();
+		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
+
+		$this->assertIsString( $data );
+		$this->assertStringContainsString( 'canManageOptions', $data );
+		// wp_localize_script converts false to empty string in JSON.
+		$this->assertStringContainsString( '"canManageOptions":""', $data );
+	}
+
 	/**
 	 * Path of a build entry's asset manifest.
 	 *
@@ -161,37 +221,6 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 
 		rename( $this->asset_file( $entry ), $this->asset_file( $entry ) . '.testbak' );
 		$this->hidden_asset_files[] = $entry;
-	}
-
-	public function test_editor_assets_localise_the_global_dictionary(): void {
-		update_option(
-			Post_Voice_Dictionary_Store::OPTION,
-			array(
-				array(
-					'term'        => 'BYD',
-					'replacement' => 'Bi Iou Di',
-					'language'    => 'portuguese',
-				),
-			)
-		);
-		set_current_screen( 'post' );
-
-		Post_Voice_Assets::enqueue_editor_assets();
-		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
-
-		$this->assertIsString( $data );
-		$this->assertStringContainsString( 'Bi Iou Di', $data );
-	}
-
-	public function test_editor_assets_localise_the_site_language(): void {
-		set_current_screen( 'post' );
-
-		Post_Voice_Assets::enqueue_editor_assets();
-		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
-
-		$this->assertIsString( $data );
-		$this->assertStringContainsString( 'siteLanguage', $data );
-		$this->assertStringContainsString( get_locale(), $data );
 	}
 
 	public function tear_down(): void {
