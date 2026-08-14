@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-13T22:08:17+00:00\n"
+"POT-Creation-Date: 2026-08-14T02:28:09+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -54,42 +54,58 @@ msgstr ""
 msgid "Close player"
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:70
+#: features/narration/php/class-rest-api.php:80
 msgid "Your role does not have permission to add media. Ask an administrator."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:86
+#: features/narration/php/class-rest-api.php:96
 msgid "Narration is only available for posts."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:94
+#: features/narration/php/class-rest-api.php:104
 msgid "Save the post before generating narration."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:115
+#: features/narration/php/class-rest-api.php:130
+msgid "Your role does not have permission to edit this post."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:139
+msgid "Your role does not have permission to delete this audio. Ask an administrator."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:167
+msgid "This post has no narration to remove."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:201
 msgid "No audio file was received."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:124
+#: features/narration/php/class-rest-api.php:210
 msgid "Unsupported narration language."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:133
+#: features/narration/php/class-rest-api.php:219
 msgid "Unsupported narration voice."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:142
+#: features/narration/php/class-rest-api.php:228
 msgid "Malformed source hash."
 msgstr ""
 
 #. translators: %s: title of the post being narrated.
-#: features/narration/php/class-rest-api.php:207
+#: features/narration/php/class-rest-api.php:293
 #, php-format
 msgid "Narration — %s"
 msgstr ""
 
 #: build/narration-editor.js:19
 msgid "Failed to save narration."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Failed to remove narration."
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -182,6 +198,18 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "Up to date"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Remove"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Remove narration?"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Remove this narration? The audio file leaves the Media Library and the player disappears from the site."
 msgstr ""
 
 #: build/narration-editor.js:19

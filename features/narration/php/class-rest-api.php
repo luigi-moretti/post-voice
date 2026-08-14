@@ -36,17 +36,27 @@ class Post_Voice_Rest_Api {
 	 * Register the single narration route.
 	 */
 	public static function register_routes(): void {
+		$args = array(
+			'id' => array(
+				'validate_callback' => static fn( $value ) => is_numeric( $value ),
+			),
+		);
+
 		register_rest_route(
 			self::REST_NAMESPACE,
 			self::ROUTE,
 			array(
-				'methods'             => WP_REST_Server::CREATABLE,
-				'callback'            => array( self::class, 'handle_save_narration' ),
-				'permission_callback' => array( self::class, 'check_permission' ),
-				'args'                => array(
-					'id' => array(
-						'validate_callback' => static fn( $value ) => is_numeric( $value ),
-					),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( self::class, 'handle_save_narration' ),
+					'permission_callback' => array( self::class, 'check_permission' ),
+					'args'                => $args,
+				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => array( self::class, 'handle_delete_narration' ),
+					'permission_callback' => array( self::class, 'check_delete_permission' ),
+					'args'                => $args,
 				),
 			)
 		);
@@ -97,6 +107,82 @@ class Post_Voice_Rest_Api {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Authorise removing a post's narration.
+	 *
+	 * Editing the post is not enough. This deletes files from the Media Library,
+	 * and WordPress treats that as its own permission — a role can be allowed to
+	 * write posts without being allowed to destroy media. Every narration about
+	 * to go is checked individually, because `delete_post` on an attachment
+	 * depends on who uploaded it.
+	 *
+	 * @param WP_REST_Request $request Incoming request.
+	 * @return true|WP_Error
+	 */
+	public static function check_delete_permission( WP_REST_Request $request ) {
+		$post_id = (int) $request->get_param( 'id' );
+
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			return new WP_Error(
+				'post_voice_forbidden',
+				__( 'Your role does not have permission to edit this post.', 'post-voice' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		foreach ( Post_Voice_Post_Meta::get_narration_attachment_ids( $post_id ) as $attachment_id ) {
+			if ( ! current_user_can( 'delete_post', $attachment_id ) ) {
+				return new WP_Error(
+					'post_voice_forbidden',
+					__( 'Your role does not have permission to delete this audio. Ask an administrator.', 'post-voice' ),
+					array( 'status' => 403 )
+				);
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Remove a post's narration: the audio files and the meta pointing at them.
+	 *
+	 * Deletes by marker, never by the ID in `_narration_attachment_id`: that meta
+	 * is REST-writable by anyone who can edit the post, so trusting it would let
+	 * an author aim this endpoint at someone else's media. Same rule as the
+	 * cleanup hook, for the same reason.
+	 *
+	 * @param WP_REST_Request $request Incoming request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function handle_delete_narration( WP_REST_Request $request ) {
+		$post_id    = (int) $request->get_param( 'id' );
+		$narrations = Post_Voice_Post_Meta::get_narration_attachment_ids( $post_id );
+		$had_meta   = (bool) Post_Voice_Post_Meta::get_attachment_id( $post_id );
+
+		if ( ! $narrations && ! $had_meta ) {
+			return new WP_Error(
+				'post_voice_no_narration',
+				__( 'This post has no narration to remove.', 'post-voice' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		foreach ( $narrations as $attachment_id ) {
+			wp_delete_attachment( $attachment_id, true );
+		}
+
+		// Also runs when the list was empty: a narration saved before the marker
+		// existed leaves meta pointing at audio this endpoint will not delete, and
+		// leaving that meta behind would keep the panel and the frontend player
+		// advertising audio the author just asked to be rid of.
+		Post_Voice_Post_Meta::clear( $post_id );
+
+		return new WP_REST_Response(
+			array( 'deleted' => count( $narrations ) ),
+			200
+		);
 	}
 
 	/**

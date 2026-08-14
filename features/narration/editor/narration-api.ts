@@ -48,11 +48,39 @@ export async function saveNarration(
 			body: formData,
 		} );
 	} catch ( error ) {
-		// apiFetch rejects with the parsed REST error body, not an Error instance,
-		// so callers reading `.message` would otherwise get `undefined`.
-		const message = ( error as { message?: string } )?.message;
-		throw new Error(
-			message || __( 'Failed to save narration.', 'post-voice' )
+		throw asError( error, __( 'Failed to save narration.', 'post-voice' ) );
+	}
+}
+
+/**
+ * Delete the post's narration: the audio files and the meta pointing at them.
+ *
+ * @param postId Post to strip.
+ */
+export async function deleteNarration( postId: number ): Promise< void > {
+	try {
+		await apiFetch( {
+			path: `/post-voice/v1/posts/${ postId }/narration`,
+			method: 'DELETE',
+		} );
+	} catch ( error ) {
+		throw asError(
+			error,
+			__( 'Failed to remove narration.', 'post-voice' )
 		);
 	}
+}
+
+/**
+ * Turn whatever apiFetch rejected with into a real Error.
+ *
+ * It rejects with the parsed REST error body, not an Error instance, so callers
+ * reading `.message` on it would otherwise get `undefined`.
+ *
+ * @param error    Rejection value from apiFetch.
+ * @param fallback Message to use when the body carries none.
+ */
+function asError( error: unknown, fallback: string ): Error {
+	const message = ( error as { message?: string } )?.message;
+	return new Error( message || fallback );
 }

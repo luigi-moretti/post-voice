@@ -26,7 +26,7 @@ import {
 } from './storage-check';
 import { isWasmSupported } from './environment';
 import { encodeMp3 } from './mp3-encoder';
-import { saveNarration } from './narration-api';
+import { deleteNarration, saveNarration } from './narration-api';
 import { MiniPlayer } from './mini-player';
 import { VOICES, DEFAULT_VOICE, isVoice } from './voice-catalog';
 
@@ -70,6 +70,7 @@ type PanelState =
 	| 'generating'
 	| 'sampling'
 	| 'saving'
+	| 'removing'
 	| 'error';
 
 interface ExistingNarration {
@@ -88,6 +89,7 @@ function NarrationPanel() {
 		null
 	);
 	const [ isStale, setIsStale ] = useState( false );
+	const [ isConfirmingRemoval, setIsConfirmingRemoval ] = useState( false );
 	// Lazily, once per mount: the answer cannot change while the editor is open,
 	// and computing it at module scope would run in every editor session,
 	// including the ones that never open this panel.
@@ -546,6 +548,26 @@ function NarrationPanel() {
 		}
 	}, [ blocks, language, postId, setPreview, voice ] );
 
+	const removeNarration = useCallback( async () => {
+		setError( null );
+		setState( 'removing' );
+		try {
+			await deleteNarration( postId );
+			setIsConfirmingRemoval( false );
+			// The editor's cached post meta still names the attachment that no
+			// longer exists, exactly as it still names the old one after a save.
+			// The panel trusts its own state over that cache, and a reload reads
+			// the cleared meta from the server.
+			setExisting( null );
+			setIsStale( false );
+			setState( 'idle' );
+		} catch ( err ) {
+			setIsConfirmingRemoval( false );
+			setState( 'error' );
+			setError( ( err as Error ).message );
+		}
+	}, [ postId ] );
+
 	// Elapsed-time ticker for the generating state's countdown. The mockup shows a
 	// determinate bar and "~Ns remaining", and the RTF calibration exists precisely
 	// to make that estimate; the worker itself reports no progress.
@@ -567,7 +589,12 @@ function NarrationPanel() {
 	// Sampling is deliberately not "busy": it must not tear down the panel around
 	// the author. The selectors stay on screen and merely go inert, so the voice
 	// they just clicked is still visible while its sample is being synthesised.
-	const isBusy = state !== 'idle' && state !== 'error' && ! isSampling;
+	// `removing` is excluded for the same reason as sampling: tearing the card
+	// off screen mid-request would take the confirmation the author just used
+	// with it, leaving an empty panel and no sign that anything is happening.
+	const isRemoving = state === 'removing';
+	const isBusy =
+		state !== 'idle' && state !== 'error' && ! isSampling && ! isRemoving;
 	const isGenerating = state === 'generating' || state === 'calibrating';
 	// Nothing has been downloaded yet, so the first sample pays for the model.
 	const needsModelDownload = ! engineRef.current;
@@ -753,6 +780,68 @@ function NarrationPanel() {
 								</span>
 							</div>
 							<MiniPlayer src={ existing.url } />
+
+							{ /*
+							 * Inside the card, because it acts on the audio the card
+							 * describes — the approved variant C. Text rather than a
+							 * trash icon: the label is what makes it findable, by eye
+							 * and by screen reader alike.
+							 */ }
+							{ ! isConfirmingRemoval && (
+								<div className="post-voice-panel__card-actions">
+									<Button
+										variant="link"
+										isDestructive
+										onClick={ () =>
+											setIsConfirmingRemoval( true )
+										}
+									>
+										{ __( 'Remove', 'post-voice' ) }
+									</Button>
+								</div>
+							) }
+
+							{ /*
+							 * Confirmed in place rather than through a modal. Unlike
+							 * discarding an unsaved preview, this destroys a file and
+							 * takes the player off the site for readers, so it asks —
+							 * but a ConfirmDialog would dim the whole editor for an
+							 * action scoped to one post.
+							 */ }
+							{ isConfirmingRemoval && (
+								<div
+									className="post-voice-panel__confirm"
+									role="alertdialog"
+									aria-label={ __(
+										'Remove narration?',
+										'post-voice'
+									) }
+								>
+									<p className="post-voice-panel__confirm-text">
+										{ __(
+											'Remove this narration? The audio file leaves the Media Library and the player disappears from the site.',
+											'post-voice'
+										) }
+									</p>
+									<div className="post-voice-panel__actions">
+										<Button
+											variant="primary"
+											isDestructive
+											onClick={ removeNarration }
+										>
+											{ __( 'Remove', 'post-voice' ) }
+										</Button>
+										<Button
+											variant="tertiary"
+											onClick={ () =>
+												setIsConfirmingRemoval( false )
+											}
+										>
+											{ __( 'Cancel', 'post-voice' ) }
+										</Button>
+									</div>
+								</div>
+							) }
 						</div>
 					) }
 

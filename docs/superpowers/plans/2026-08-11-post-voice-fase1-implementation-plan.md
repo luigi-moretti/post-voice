@@ -4157,6 +4157,49 @@ the panel displays. Worth doing, worth doing on purpose.
 
 ---
 
+## Revision 2026-08-13 (d) — removing a narration
+
+46. **There was no way to remove a saved narration from the editor.** Found in
+    manual testing. With audio present the panel offered listening or generating
+    another; going back to "no audio" meant leaving the post, opening the Media
+    Library and working out which attachment was the narration. A sweep of the
+    spec for remover/excluir/apagar/deletar found no mention of the action in the
+    panel, and the "Fora (fases 2/3)" list does not exclude it either — a gap,
+    like the voice selector, not a decision.
+
+    Judged in scope for Fase 1 on the spec's own terms: the error table already
+    promises the state ("painel volta a mostrar 'sem áudio'") without offering a
+    door to it; it is the same trap as finding 25, where the preview offered only
+    "Save" until Discard was added; and the plumbing — `clear()`, the marker, both
+    cleanup hooks — already existed and was tested.
+
+    Approved shape, from `assets/2026-08-13-narration-removal-options.html`:
+    variant **C** (a text button inside the status card, right-aligned under the
+    player) with confirmation **1** (inline, in place of the button). C because
+    the control belongs to the card describing the audio it destroys, and a word
+    beats an icon for both discovery and screen readers; inline because
+    `ConfirmDialog` would dim the whole editor for an action scoped to one post.
+
+    Server side is `DELETE /post-voice/v1/posts/{id}/narration`, registered as a
+    second endpoint on the existing route. Two rules carried over rather than
+    reinvented: it deletes by marker, never by `_narration_attachment_id` (that
+    meta is REST-writable, which is exactly what made finding 40 exploitable),
+    and it checks `delete_post` on each attachment, because removing media is its
+    own permission — a Contributor who owns the post still cannot delete an
+    editor's upload, and there is a test for precisely that. It also always
+    clears the four meta keys, including when there was nothing to delete:
+    otherwise meta orphaned by a hand-deleted attachment would keep the panel and
+    the frontend advertising audio the author just asked to be rid of.
+
+    Six PHPUnit tests and an E2E that proves the round trip through the browser:
+    generate, save, publish, *confirm the player renders*, return to the editor,
+    remove, and find the panel empty, the media listing empty and the player gone
+    from the site. One wrinkle worth remembering: after publishing, the
+    post-publish panel covers the sidebar and swallows clicks, so the scenario
+    re-enters the editor by URL.
+
+---
+
 Also left open by explicit decision: **model-download progress as a percentage**
 (spec, "Fluxo de dados" step 3, "download do modelo % + síntese %"). The first
 generation shows "Preparing…" with an indeterminate bar while ~190MB downloads,

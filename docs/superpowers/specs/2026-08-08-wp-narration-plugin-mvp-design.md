@@ -265,6 +265,30 @@ Lacuna do spec original, não decisão: escolha de voz não aparecia nem no esco
 
 **Guarda espelhada no server**, mesma lógica do idioma: `ALLOWED_VOICES` no REST, 400 `post_voice_invalid_voice`. Controle desabilitado no painel é UX, não garantia — o endpoint é alcançável direto e o valor acaba em post meta que o frontend confia.
 
+### Remover a narração pelo editor (emenda de 2026-08-13)
+
+Segunda lacuna do spec original, achada em teste manual: **não existe como remover uma narração salva sem sair do editor.** Com áudio existente, o painel oferece ouvir ou gerar outro — nunca voltar a "sem áudio". Não foi decisão: uma varredura do documento por remover/excluir/apagar/deletar não acha nenhuma menção a essa ação no painel, e a lista "Fora (fases 2/3)" também não a exclui. Todos os caminhos de remoção previstos são efeito colateral de outra coisa: gerar de novo (que continua deixando áudio), deletar o post, ou deletar o attachment na Media Library.
+
+**Decisão: entra na Fase 1.** Três motivos, todos internos ao próprio spec:
+
+1. O estado já é prometido e não tem porta. A tabela de "Tratamento de erro" diz que, deletado o attachment pela Media Library, o "painel volta a mostrar 'sem áudio'". Esse estado existe, funciona e é testado — só não há como alcançá-lo de dentro do editor. O caminho atual exige sair do post, abrir a Media Library e identificar qual attachment é a narração.
+2. É o mesmo aprisionamento que já corrigimos uma vez. O preview só oferecia "Salvar narração", então quem não gostasse do resultado não tinha saída a não ser persistir; viramos isso com o botão Descartar. O estado salvo tem a forma idêntica.
+3. O encanamento inteiro já existe e é coberto por teste: `Post_Voice_Post_Meta::clear()`, o marker `_post_voice_narration` e os dois hooks simétricos. Falta a rota e o botão.
+
+**Servidor:** `DELETE /wp-json/post-voice/v1/posts/{post_id}/narration` — apaga o attachment e limpa as quatro metas. Duas regras herdadas do resto do endpoint: só remove attachment que carrega o marker (mídia que o autor anexou por conta nunca é tocada, mesma proteção da varredura de duplicados), e a capability não é só `edit_post` — apagar arquivo da Media Library é permissão própria, checada sobre o attachment.
+
+**Confirmação: obrigatória**, ao contrário do Descartar do preview. O item "Preview em memória" acima dispensa confirmação com o argumento de que "nada foi persistido ainda, não há perda real de dado" — o que argumenta pelo oposto aqui: o arquivo sai da Media Library e a narração desaparece do frontend para os leitores.
+
+Mockups (fonte + screenshot), com três posições para o botão e dois padrões de confirmação:
+- [`assets/2026-08-13-narration-removal-options.html`](assets/2026-08-13-narration-removal-options.html) — interativo.
+- [`assets/2026-08-13-narration-removal-options.png`](assets/2026-08-13-narration-removal-options.png) — screenshot renderizado.
+
+**Formato aprovado (13 ago 2026): variante C + confirmação 1** — botão de texto "Remover", alinhado à direita **dentro do card de status**, logo abaixo do player; ao ser clicado vira uma confirmação inline no próprio lugar, com o texto da consequência e os botões Remover/Cancelar.
+
+Por que C e não as outras duas: o botão pertence ao card que descreve o áudio que ele apaga (A fica no rodapé, longe do objeto, e empilha dois botões de largura cheia que competem entre si), e um rótulo em texto ganha de um ícone tanto em descoberta quanto em leitor de tela — B custaria zero de altura, mas dependeria de tooltip e poria uma lixeira colada num badge verde de status.
+
+Por que confirmação inline e não modal: `ConfirmDialog` traria foco preso e Esc de graça, mas escurece o editor inteiro para uma ação de um post só. A caixa inline cabe no painel, não sequestra a tela e tem espaço para dizer o que importa — que o arquivo sai da Media Library e o leitor perde o player. Contrapartida aceita: ela empurra o conteúdo abaixo enquanto está aberta.
+
 **Nota de compatibilidade entre fases:** customização visual do player (Fase 3) não mora nesse painel — é configuração de site/tema, não por post; vai pra uma tela de Configurações separada do plugin (ver seção abaixo). Highlight de palavra (Fase 3) não deve exigir card novo aqui — é automático uma vez que o áudio é gerado com timestamps.
 
 ### Editor (TypeScript/React)

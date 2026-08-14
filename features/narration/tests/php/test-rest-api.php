@@ -310,4 +310,109 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 
 		$this->assertNotNull( get_post( $authors_own ), 'Media the plugin did not create must survive.' );
 	}
+
+	public function test_removing_narration_deletes_the_audio_and_clears_the_meta(): void {
+		$attachment_id = $this->save_a_narration();
+
+		$response = rest_get_server()->dispatch(
+			new WP_REST_Request( 'DELETE', "/post-voice/v1/posts/{$this->post_id}/narration" )
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 1, $response->get_data()['deleted'] );
+		$this->assertNull( get_post( $attachment_id ) );
+		$this->assertSame( 0, Post_Voice_Post_Meta::get_attachment_id( $this->post_id ) );
+		$this->assertSame( '', get_post_meta( $this->post_id, Post_Voice_Post_Meta::LANGUAGE, true ) );
+		$this->assertSame( '', get_post_meta( $this->post_id, Post_Voice_Post_Meta::VOICE, true ) );
+		$this->assertSame( '', get_post_meta( $this->post_id, Post_Voice_Post_Meta::SOURCE_HASH, true ) );
+	}
+
+	public function test_removing_narration_leaves_audio_the_author_attached_themselves(): void {
+		$authors_own = self::factory()->attachment->create_object(
+			array(
+				'file'           => 'interview.mp3',
+				'post_parent'    => $this->post_id,
+				'post_mime_type' => 'audio/mpeg',
+			)
+		);
+		$this->save_a_narration();
+
+		rest_get_server()->dispatch(
+			new WP_REST_Request( 'DELETE', "/post-voice/v1/posts/{$this->post_id}/narration" )
+		);
+
+		$this->assertNotNull( get_post( $authors_own ) );
+	}
+
+	public function test_removing_narration_clears_meta_left_by_a_vanished_attachment(): void {
+		// Meta from before the marker existed, or pointing at audio someone
+		// removed by hand. Nothing to delete, but the panel and the frontend
+		// player would keep advertising narration until the meta goes too.
+		Post_Voice_Post_Meta::save( $this->post_id, 999999, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+
+		$response = rest_get_server()->dispatch(
+			new WP_REST_Request( 'DELETE', "/post-voice/v1/posts/{$this->post_id}/narration" )
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 0, $response->get_data()['deleted'] );
+		$this->assertSame( 0, Post_Voice_Post_Meta::get_attachment_id( $this->post_id ) );
+	}
+
+	public function test_removing_nothing_reports_404(): void {
+		$response = rest_get_server()->dispatch(
+			new WP_REST_Request( 'DELETE', "/post-voice/v1/posts/{$this->post_id}/narration" )
+		);
+
+		$this->assertSame( 404, $response->get_status() );
+		$this->assertSame( 'post_voice_no_narration', $response->as_error()->get_error_code() );
+	}
+
+	public function test_removing_narration_refused_for_a_user_who_cannot_edit_the_post(): void {
+		$this->save_a_narration();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'subscriber' ) ) );
+
+		$response = rest_get_server()->dispatch(
+			new WP_REST_Request( 'DELETE', "/post-voice/v1/posts/{$this->post_id}/narration" )
+		);
+
+		$this->assertSame( 403, $response->get_status() );
+		$this->assertSame( 'post_voice_forbidden', $response->as_error()->get_error_code() );
+	}
+
+	public function test_removing_narration_refused_when_the_user_cannot_delete_the_audio(): void {
+		// Deleting media is its own permission. A Contributor can edit their own
+		// draft — so `edit_post` alone would have let this through — but WordPress
+		// does not let them delete an attachment an editor uploaded.
+		$attachment_id  = $this->save_a_narration();
+		$contributor_id = self::factory()->user->create( array( 'role' => 'contributor' ) );
+		wp_update_post(
+			array(
+				'ID'          => $this->post_id,
+				'post_author' => $contributor_id,
+				'post_status' => 'draft',
+			)
+		);
+		wp_set_current_user( $contributor_id );
+
+		$response = rest_get_server()->dispatch(
+			new WP_REST_Request( 'DELETE', "/post-voice/v1/posts/{$this->post_id}/narration" )
+		);
+
+		$this->assertSame( 403, $response->get_status() );
+		$this->assertNotNull( get_post( $attachment_id ) );
+	}
+
+	/**
+	 * Save one narration through the endpoint and return its attachment ID.
+	 */
+	private function save_a_narration(): int {
+		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
+		$request->set_param( 'language', 'portuguese' );
+		$request->set_param( 'voice', 'alba' );
+		$request->set_param( 'source_hash', str_repeat( 'a', 64 ) );
+		$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
+
+		return rest_get_server()->dispatch( $request )->get_data()['attachment_id'];
+	}
 }

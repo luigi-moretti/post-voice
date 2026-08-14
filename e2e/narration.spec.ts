@@ -83,6 +83,92 @@ test.describe( 'Post Voice — narration generation', () => {
 		);
 	} );
 
+	test( 'a saved narration can be removed, taking the player off the site', async ( {
+		admin,
+		editor,
+		page,
+		requestUtils,
+	} ) => {
+		await createNarratableDraft( admin, editor, 'Narration removal' );
+		await editor.openDocumentSettingsSidebar();
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Save narration', exact: true } )
+			.click( { timeout: 120_000 } );
+		await expect(
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
+		).toBeVisible();
+		await editor.publishPost();
+
+		const postId = await page.evaluate( () =>
+			(
+				window as unknown as {
+					wp: {
+						data: {
+							select: ( s: string ) => {
+								getCurrentPostId: () => number;
+							};
+						};
+					};
+				}
+			 ).wp.data
+				.select( 'core/editor' )
+				.getCurrentPostId()
+		);
+
+		// Prove the player is there before removing it, otherwise the assertion at
+		// the end passes just as well on a narration that never rendered.
+		await page.goto( `/?p=${ postId }` );
+		await expect( page.locator( '.post-voice-player audio' ) ).toHaveCount(
+			1
+		);
+
+		// Back to the editor by URL rather than by history: after publishing, the
+		// post-publish panel sits over the sidebar and swallows clicks meant for
+		// the panel underneath.
+		await admin.visitAdminPage(
+			'post.php',
+			`post=${ postId }&action=edit`
+		);
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+
+		await page
+			.getByRole( 'button', { name: 'Remove', exact: true } )
+			.click();
+		// Confirmation first: this destroys a file, unlike discarding a preview.
+		await expect(
+			page.getByText( 'Remove this narration?' )
+		).toBeVisible();
+		await page
+			.getByRole( 'button', { name: 'Remove', exact: true } )
+			.click();
+
+		// Back to the empty state, without a reload.
+		await expect(
+			page.getByRole( 'button', { name: 'Generate audio', exact: true } )
+		).toBeVisible();
+		await expect(
+			page.getByText( 'No audio generated yet.' )
+		).toBeVisible();
+
+		// And gone for readers, not merely hidden in the editor.
+		const media = await requestUtils.rest( {
+			path: '/wp/v2/media',
+			params: { parent: postId, per_page: 100 },
+		} );
+		expect( media ).toHaveLength( 0 );
+
+		await page.goto( `/?p=${ postId }` );
+		await expect( page.locator( '.post-voice-player' ) ).toHaveCount( 0 );
+	} );
+
 	test( 'regenerating replaces the previous attachment without leaving an orphan', async ( {
 		admin,
 		editor,

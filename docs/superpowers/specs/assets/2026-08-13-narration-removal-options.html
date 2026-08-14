@@ -1,0 +1,433 @@
+<h2>Remover a narração pelo editor — onde fica o botão</h2>
+<p class="subtitle">
+  Hoje, existindo áudio, o painel oferece duas saídas: <b>ouvir</b> ou <b>gerar outro</b>. Não há como voltar a "sem áudio"
+  sem sair do editor, abrir a Media Library e adivinhar qual attachment é a narração. A spec descreve esse estado
+  (<i>"painel volta a mostrar 'sem áudio'"</i>) mas nunca deu uma porta pra ele.
+  Duas decisões independentes abaixo: <b>onde</b> o botão mora e <b>como</b> ele confirma.
+  Tudo aqui funciona — clique pra ver o painel voltar ao estado vazio, e use "recarregar estado" pra repetir.
+</p>
+
+<p class="subtitle" style="border-left: 3px solid #007017; background: #edfaef; padding: 10px 14px; border-radius: 0 4px 4px 0;">
+  <b>Decidido (13 ago 2026): variante C + confirmação 1.</b> Botão de texto dentro do card de status, que vira
+  confirmação inline no próprio lugar. C ganhou de A por ficar junto do objeto que apaga, e de B por usar palavra
+  em vez de ícone — descoberta e leitor de tela. A confirmação inline ganhou do modal porque escurecer o editor
+  inteiro é peso demais para uma ação de um post; o texto dela diz o que importa, que o leitor perde o player.
+</p>
+
+<style>
+  body { margin: 0; padding: 2rem 1.5rem 4rem; background: #f0f0f1; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #1e1e1e; }
+  h2 { max-width: 62rem; margin: 0 auto .5rem; font-size: 20px; }
+  p.subtitle { max-width: 62rem; margin: 0 auto 1.5rem; font-size: 13px; line-height: 1.6; color: #555; }
+
+  .vs-wrap { max-width: 68rem; margin: 0 auto; }
+  .vs-wrap * { box-sizing: border-box; }
+  .vs-row { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; justify-content: center; }
+  .vs-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .vs-col-title { text-align: center; font-size: 12px; font-weight: 600; color: #757575; text-transform: uppercase; letter-spacing: .5px; }
+  .vs-col-note { font-size: 11.5px; color: #757575; line-height: 1.5; max-width: 280px; text-align: center; }
+  .vs-opt-title { font-size: 15px; font-weight: 700; margin: 2.5rem 0 .25rem; max-width: 62rem; margin-left: auto; margin-right: auto; }
+  .vs-opt-sub { font-size: 12.5px; color: #757575; margin: 0 auto 1.25rem; line-height: 1.5; max-width: 62rem; }
+  .vs-reset { display: block; margin: 6px auto 0; background: none; border: 0; color: #3858e9; font-size: 11.5px; cursor: pointer; text-decoration: underline; font-family: inherit; }
+
+  /* painel WP — mesmas medidas do painel real (features/narration/editor/style.scss) */
+  .wp-mock { width: 280px; border: 1px solid #ddd; border-radius: 4px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.1); position: relative; }
+  .wp-mock-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #ddd; }
+  .wp-mock-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .wp-mock-icon { width: 16px; height: 16px; border-radius: 3px; background: #3858e9; display: inline-block; }
+  .wp-mock-close { color: #757575; font-size: 16px; }
+  .wp-mock-body { padding: 14px 12px; font-size: 12.5px; display: flex; flex-direction: column; gap: 12px; }
+
+  .wp-card { display: flex; flex-direction: column; gap: 10px; padding: 10px; border: 1px solid #e0e0e0; border-radius: 4px; }
+  .wp-status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .wp-meta { font-size: 11.5px; color: #757575; }
+  .wp-badge { font-size: 10.5px; padding: 2px 6px; border-radius: 2px; font-weight: 600; background: #edfaef; color: #007017; }
+
+  .wp-field-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #757575; margin-bottom: 4px; font-weight: 600; }
+  .wp-select { width: 100%; padding: 6px 8px; border: 1px solid #949494; border-radius: 2px; background: #fff; font-size: 13px; font-family: inherit; color: #1e1e1e; }
+
+  .wp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 7px 10px; border-radius: 2px; font-size: 13px; font-family: inherit; font-weight: 500; cursor: pointer; border: 1px solid transparent; }
+  .wp-btn.secondary { background: #fff; color: #3858e9; border-color: #3858e9; }
+  .wp-btn.tertiary { background: transparent; color: #3858e9; }
+  .wp-btn.destructive-link { background: transparent; color: #b32d2e; font-weight: 400; text-decoration: underline; }
+  .wp-btn.destructive-solid { background: #b32d2e; color: #fff; }
+  .wp-btn.small { width: auto; padding: 4px 8px; font-size: 12px; }
+  .wp-icon-btn { border: 0; background: transparent; color: #757575; cursor: pointer; padding: 2px 4px; border-radius: 2px; font-size: 14px; line-height: 1; }
+  .wp-icon-btn:hover { color: #b32d2e; background: #f6e7e7; }
+  .wp-hint { font-size: 11.5px; color: #757575; line-height: 1.45; }
+  .wp-row-right { display: flex; justify-content: flex-end; }
+
+  /* mini player */
+  .wp-player { display: flex; align-items: center; gap: 8px; }
+  .wp-play { width: 30px; height: 30px; border-radius: 50%; background: #3858e9; color: #fff; border: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; flex: 0 0 auto; }
+  .wp-track { flex: 1 1 auto; height: 4px; border-radius: 2px; background: #e0e0e0; position: relative; }
+  .wp-track::before { content: ""; position: absolute; left: 0; top: -3px; width: 10px; height: 10px; border-radius: 50%; background: #3858e9; }
+  .wp-time { font-size: 11px; color: #757575; flex: 0 0 auto; }
+
+  /* confirmação inline */
+  .wp-confirm-inline { border: 1px solid #b32d2e; background: #fcf0f1; border-radius: 4px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .wp-confirm-text { font-size: 12px; line-height: 1.45; }
+  .wp-confirm-actions { display: flex; gap: 8px; }
+  .wp-confirm-actions .wp-btn { width: auto; flex: 1 1 auto; }
+
+  /* confirmação modal */
+  .wp-modal-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .wp-modal { background: #fff; border-radius: 4px; padding: 14px; box-shadow: 0 4px 20px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 10px; }
+  .wp-modal-title { font-size: 13px; font-weight: 700; }
+
+  .is-hidden { display: none !important; }
+
+  table.cmp { max-width: 62rem; margin: 2.5rem auto 0; border-collapse: collapse; font-size: 12.5px; background: #fff; }
+  table.cmp th, table.cmp td { border: 1px solid #e0e0e0; padding: 8px 10px; text-align: left; vertical-align: top; line-height: 1.5; }
+  table.cmp th { background: #f6f7f7; font-weight: 600; }
+  .note { max-width: 62rem; margin: 2rem auto 0; font-size: 12.5px; line-height: 1.6; color: #555; border-left: 3px solid #3858e9; background: #f0f4ff; padding: 10px 14px; border-radius: 0 4px 4px 0; }
+</style>
+
+<div class="vs-wrap">
+
+  <p class="vs-opt-title">Onde o botão mora</p>
+  <p class="vs-opt-sub">
+    Os três partem do mesmo painel real: card de status com data, badge e player; seletores; "Gerar novamente" no rodapé.
+    Nenhum deles move o que já existe de lugar.
+  </p>
+
+  <div class="vs-row">
+
+    <!-- ============ A ============ -->
+    <div class="vs-col">
+      <div class="vs-col-title">A — rodapé do painel</div>
+      <div class="wp-mock" data-panel="a">
+        <div class="wp-mock-header">
+          <span class="wp-mock-title"><span class="wp-mock-icon"></span> Narração</span>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="state-full">
+            <div class="wp-card" style="margin-bottom:12px">
+              <div class="wp-status-row">
+                <span class="wp-meta">Gerado em 12 ago, 23:09</span>
+                <span class="wp-badge">Atualizado</span>
+              </div>
+              <div class="wp-player">
+                <button class="wp-play">▶</button><span class="wp-track"></span><span class="wp-time">12:57</span>
+              </div>
+            </div>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Idioma</div>
+              <select class="wp-select"><option>Português</option></select>
+            </div>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Voz</div>
+              <select class="wp-select"><option>alba</option></select>
+            </div>
+            <button class="wp-btn secondary" style="margin-bottom:8px">Gerar novamente</button>
+            <button class="wp-btn destructive-link" data-remove="a">Remover narração</button>
+          </div>
+          <div class="state-empty is-hidden">
+            <p class="wp-hint" style="margin:0 0 12px">Nenhum áudio gerado ainda.</p>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Idioma</div>
+              <select class="wp-select"><option>Português</option></select>
+            </div>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Voz</div>
+              <select class="wp-select"><option>alba</option></select>
+            </div>
+            <button class="wp-btn secondary">Gerar áudio</button>
+          </div>
+        </div>
+      </div>
+      <p class="vs-col-note">Separado do card que ele apaga. Some junto com os seletores quando o painel está ocupado.</p>
+      <button class="vs-reset" data-reset="a">recarregar estado</button>
+    </div>
+
+    <!-- ============ B ============ -->
+    <div class="vs-col">
+      <div class="vs-col-title">B — ícone no card</div>
+      <div class="wp-mock" data-panel="b">
+        <div class="wp-mock-header">
+          <span class="wp-mock-title"><span class="wp-mock-icon"></span> Narração</span>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="state-full">
+            <div class="wp-card" style="margin-bottom:12px">
+              <div class="wp-status-row">
+                <span class="wp-meta">Gerado em 12 ago, 23:09</span>
+                <span style="display:flex;align-items:center;gap:6px">
+                  <span class="wp-badge">Atualizado</span>
+                  <button class="wp-icon-btn" data-remove="b" title="Remover narração" aria-label="Remover narração">🗑</button>
+                </span>
+              </div>
+              <div class="wp-player">
+                <button class="wp-play">▶</button><span class="wp-track"></span><span class="wp-time">12:57</span>
+              </div>
+            </div>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Idioma</div>
+              <select class="wp-select"><option>Português</option></select>
+            </div>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Voz</div>
+              <select class="wp-select"><option>alba</option></select>
+            </div>
+            <button class="wp-btn secondary">Gerar novamente</button>
+          </div>
+          <div class="state-empty is-hidden">
+            <p class="wp-hint" style="margin:0 0 12px">Nenhum áudio gerado ainda.</p>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Idioma</div>
+              <select class="wp-select"><option>Português</option></select>
+            </div>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Voz</div>
+              <select class="wp-select"><option>alba</option></select>
+            </div>
+            <button class="wp-btn secondary">Gerar áudio</button>
+          </div>
+        </div>
+      </div>
+      <p class="vs-col-note">Encostado no objeto que apaga, custo zero de altura. Só ícone: precisa de tooltip e <code>aria-label</code>, e some pra quem varre o painel lendo texto.</p>
+      <button class="vs-reset" data-reset="b">recarregar estado</button>
+    </div>
+
+    <!-- ============ C ============ -->
+    <div class="vs-col">
+      <div class="vs-col-title">C — link dentro do card</div>
+      <div class="wp-mock" data-panel="c">
+        <div class="wp-mock-header">
+          <span class="wp-mock-title"><span class="wp-mock-icon"></span> Narração</span>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="state-full">
+            <div class="wp-card" style="margin-bottom:12px">
+              <div class="wp-status-row">
+                <span class="wp-meta">Gerado em 12 ago, 23:09</span>
+                <span class="wp-badge">Atualizado</span>
+              </div>
+              <div class="wp-player">
+                <button class="wp-play">▶</button><span class="wp-track"></span><span class="wp-time">12:57</span>
+              </div>
+              <div class="wp-row-right">
+                <button class="wp-btn destructive-link small" data-remove="c">Remover</button>
+              </div>
+            </div>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Idioma</div>
+              <select class="wp-select"><option>Português</option></select>
+            </div>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Voz</div>
+              <select class="wp-select"><option>alba</option></select>
+            </div>
+            <button class="wp-btn secondary">Gerar novamente</button>
+          </div>
+          <div class="state-empty is-hidden">
+            <p class="wp-hint" style="margin:0 0 12px">Nenhum áudio gerado ainda.</p>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Idioma</div>
+              <select class="wp-select"><option>Português</option></select>
+            </div>
+            <div style="margin-bottom:12px">
+              <div class="wp-field-label">Voz</div>
+              <select class="wp-select"><option>alba</option></select>
+            </div>
+            <button class="wp-btn secondary">Gerar áudio</button>
+          </div>
+        </div>
+      </div>
+      <p class="vs-col-note">Dentro do card, com rótulo em texto. Custa uma linha de altura e divide atenção com "Gerar novamente".</p>
+      <button class="vs-reset" data-reset="c">recarregar estado</button>
+    </div>
+
+  </div>
+
+  <p class="vs-opt-title">Como ele confirma</p>
+  <p class="vs-opt-sub">
+    Aqui, diferente do "Descartar" do preview, existe dado persistido: o arquivo sai da Media Library e a narração
+    desaparece do frontend pros leitores. A spec justificou <i>não</i> confirmar o descarte do preview justamente porque
+    "nada foi persistido ainda" — o que argumenta pelo oposto neste caso. Os dois padrões abaixo confirmam; a diferença é o custo.
+  </p>
+
+  <div class="vs-row">
+
+    <div class="vs-col">
+      <div class="vs-col-title">1 — inline, no lugar do botão</div>
+      <div class="wp-mock" data-panel="d">
+        <div class="wp-mock-header">
+          <span class="wp-mock-title"><span class="wp-mock-icon"></span> Narração</span>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="state-full">
+            <div class="wp-card" style="margin-bottom:12px">
+              <div class="wp-status-row">
+                <span class="wp-meta">Gerado em 12 ago, 23:09</span>
+                <span class="wp-badge">Atualizado</span>
+              </div>
+              <div class="wp-player">
+                <button class="wp-play">▶</button><span class="wp-track"></span><span class="wp-time">12:57</span>
+              </div>
+            </div>
+            <button class="wp-btn secondary" style="margin-bottom:8px">Gerar novamente</button>
+            <button class="wp-btn destructive-link" data-confirm-inline="d">Remover narração</button>
+            <div class="wp-confirm-inline is-hidden" data-inline-box="d">
+              <span class="wp-confirm-text">Remover a narração deste post? O arquivo sai da Media Library e o player some do site.</span>
+              <div class="wp-confirm-actions">
+                <button class="wp-btn destructive-solid" data-remove="d">Remover</button>
+                <button class="wp-btn tertiary" data-cancel-inline="d">Cancelar</button>
+              </div>
+            </div>
+          </div>
+          <div class="state-empty is-hidden">
+            <p class="wp-hint" style="margin:0 0 12px">Nenhum áudio gerado ainda.</p>
+            <button class="wp-btn secondary">Gerar áudio</button>
+          </div>
+        </div>
+      </div>
+      <p class="vs-col-note">Não sequestra o foco da tela, cabe no painel, e o texto explica a consequência. Empurra o conteúdo abaixo pra baixo enquanto está aberto.</p>
+      <button class="vs-reset" data-reset="d">recarregar estado</button>
+    </div>
+
+    <div class="vs-col">
+      <div class="vs-col-title">2 — modal (ConfirmDialog)</div>
+      <div class="wp-mock" data-panel="e">
+        <div class="wp-mock-header">
+          <span class="wp-mock-title"><span class="wp-mock-icon"></span> Narração</span>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="state-full">
+            <div class="wp-card" style="margin-bottom:12px">
+              <div class="wp-status-row">
+                <span class="wp-meta">Gerado em 12 ago, 23:09</span>
+                <span class="wp-badge">Atualizado</span>
+              </div>
+              <div class="wp-player">
+                <button class="wp-play">▶</button><span class="wp-track"></span><span class="wp-time">12:57</span>
+              </div>
+            </div>
+            <button class="wp-btn secondary" style="margin-bottom:8px">Gerar novamente</button>
+            <button class="wp-btn destructive-link" data-confirm-modal="e">Remover narração</button>
+          </div>
+          <div class="state-empty is-hidden">
+            <p class="wp-hint" style="margin:0 0 12px">Nenhum áudio gerado ainda.</p>
+            <button class="wp-btn secondary">Gerar áudio</button>
+          </div>
+        </div>
+        <div class="wp-modal-scrim is-hidden" data-modal="e">
+          <div class="wp-modal">
+            <span class="wp-modal-title">Remover narração?</span>
+            <span class="wp-confirm-text">O arquivo sai da Media Library e o player some do site. Não dá pra desfazer.</span>
+            <div class="wp-confirm-actions">
+              <button class="wp-btn destructive-solid" data-remove="e">Remover</button>
+              <button class="wp-btn tertiary" data-cancel-modal="e">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="vs-col-note">Componente pronto do <code>@wordpress/components</code>, com foco preso e Esc de graça. Escurece o editor inteiro para uma ação de um post só.</p>
+      <button class="vs-reset" data-reset="e">recarregar estado</button>
+    </div>
+
+  </div>
+
+  <table class="cmp">
+    <tr><th style="width:14%">Variante</th><th style="width:29%">A favor</th><th style="width:29%">Contra</th><th style="width:28%">Custo</th></tr>
+    <tr>
+      <td><b>A</b> — rodapé</td>
+      <td>Rótulo em texto, largura cheia, impossível não ver. Fora do caminho de quem só quer ouvir.</td>
+      <td>Longe do card que apaga. No painel real fica logo abaixo de "Gerar novamente", e dois botões empilhados de largura cheia competem.</td>
+      <td>1 botão</td>
+    </tr>
+    <tr>
+      <td><b>B</b> — ícone no card</td>
+      <td>Encostado no objeto. Zero altura extra. Padrão que o WP usa em listas de mídia.</td>
+      <td>Só ícone: descoberta depende de hover/tooltip, e lixeira ao lado de um badge verde de status é vizinhança estranha.</td>
+      <td>1 ícone + tooltip</td>
+    </tr>
+    <tr>
+      <td><b>C</b> — link no card</td>
+      <td>Dentro do card, com palavra em vez de desenho. Hierarquia clara: ação secundária do áudio.</td>
+      <td>Uma linha a mais no card. Rótulo curto ("Remover") pode ler como "remover o quê?" fora de contexto.</td>
+      <td>1 botão pequeno</td>
+    </tr>
+    <tr>
+      <td><b>1</b> — confirmação inline</td>
+      <td>Sem modal, sem armadilha de foco a construir, texto explica o efeito no site.</td>
+      <td>Empurra o layout enquanto aberta.</td>
+      <td>1 estado a mais no painel</td>
+    </tr>
+    <tr>
+      <td><b>2</b> — modal</td>
+      <td><code>ConfirmDialog</code> pronto: foco preso, Esc, a11y resolvida por quem mantém o componente.</td>
+      <td>Peso visual alto pra ação de um post.</td>
+      <td>1 componente + 1 estado</td>
+    </tr>
+  </table>
+
+  <p class="note">
+    <b>Nota de implementação, igual pra qualquer variante.</b> O botão chama uma rota nova
+    <code>DELETE /post-voice/v1/posts/{id}/narration</code>, que apaga o attachment e limpa as quatro metas.
+    O encanamento já existe e é testado — <code>Post_Voice_Post_Meta::clear()</code>, o marker
+    <code>_post_voice_narration</code> e os dois hooks simétricos — então o servidor precisa só da rota e da checagem
+    de capability própria pra apagar mídia (não basta <code>edit_post</code>: apagar arquivo é outra permissão).
+    E vale a mesma regra do resto do endpoint: só apaga o que carrega o marker, nunca mídia que o autor anexou por conta.
+  </p>
+
+</div>
+
+<script>
+  function panel( id ) { return document.querySelector( '[data-panel="' + id + '"]' ); }
+
+  document.querySelectorAll( '[data-remove]' ).forEach( ( button ) => {
+    button.addEventListener( 'click', () => {
+      const p = panel( button.dataset.remove );
+      p.querySelector( '.state-full' ).classList.add( 'is-hidden' );
+      p.querySelector( '.state-empty' ).classList.remove( 'is-hidden' );
+      const modal = p.querySelector( '[data-modal]' );
+      if ( modal ) { modal.classList.add( 'is-hidden' ); }
+      const inline = p.querySelector( '[data-inline-box]' );
+      if ( inline ) { inline.classList.add( 'is-hidden' ); }
+    } );
+  } );
+
+  document.querySelectorAll( '[data-confirm-inline]' ).forEach( ( button ) => {
+    button.addEventListener( 'click', () => {
+      button.classList.add( 'is-hidden' );
+      panel( button.dataset.confirmInline ).querySelector( '[data-inline-box]' ).classList.remove( 'is-hidden' );
+    } );
+  } );
+  document.querySelectorAll( '[data-cancel-inline]' ).forEach( ( button ) => {
+    button.addEventListener( 'click', () => {
+      const p = panel( button.dataset.cancelInline );
+      p.querySelector( '[data-inline-box]' ).classList.add( 'is-hidden' );
+      p.querySelector( '[data-confirm-inline]' ).classList.remove( 'is-hidden' );
+    } );
+  } );
+
+  document.querySelectorAll( '[data-confirm-modal]' ).forEach( ( button ) => {
+    button.addEventListener( 'click', () => {
+      panel( button.dataset.confirmModal ).querySelector( '[data-modal]' ).classList.remove( 'is-hidden' );
+    } );
+  } );
+  document.querySelectorAll( '[data-cancel-modal]' ).forEach( ( button ) => {
+    button.addEventListener( 'click', () => {
+      panel( button.dataset.cancelModal ).querySelector( '[data-modal]' ).classList.add( 'is-hidden' );
+    } );
+  } );
+
+  document.querySelectorAll( '[data-reset]' ).forEach( ( button ) => {
+    button.addEventListener( 'click', () => {
+      const p = panel( button.dataset.reset );
+      p.querySelector( '.state-full' ).classList.remove( 'is-hidden' );
+      p.querySelector( '.state-empty' ).classList.add( 'is-hidden' );
+      const modal = p.querySelector( '[data-modal]' );
+      if ( modal ) { modal.classList.add( 'is-hidden' ); }
+      const inline = p.querySelector( '[data-inline-box]' );
+      if ( inline ) { inline.classList.add( 'is-hidden' ); }
+      const trigger = p.querySelector( '[data-confirm-inline]' );
+      if ( trigger ) { trigger.classList.remove( 'is-hidden' ); }
+    } );
+  } );
+</script>
