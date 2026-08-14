@@ -163,6 +163,37 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 		$this->hidden_asset_files[] = $entry;
 	}
 
+	public function test_editor_assets_localise_the_global_dictionary(): void {
+		update_option(
+			Post_Voice_Dictionary_Store::OPTION,
+			array(
+				array(
+					'term'        => 'BYD',
+					'replacement' => 'Bi Iou Di',
+					'language'    => 'portuguese',
+				),
+			)
+		);
+		set_current_screen( 'post' );
+
+		Post_Voice_Assets::enqueue_editor_assets();
+		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
+
+		$this->assertIsString( $data );
+		$this->assertStringContainsString( 'Bi Iou Di', $data );
+	}
+
+	public function test_editor_assets_localise_the_site_language(): void {
+		set_current_screen( 'post' );
+
+		Post_Voice_Assets::enqueue_editor_assets();
+		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
+
+		$this->assertIsString( $data );
+		$this->assertStringContainsString( 'siteLanguage', $data );
+		$this->assertStringContainsString( get_locale(), $data );
+	}
+
 	public function tear_down(): void {
 		foreach ( $this->fabricated_asset_files as $entry ) {
 			unlink( $this->asset_file( $entry ) );
