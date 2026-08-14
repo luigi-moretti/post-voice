@@ -124,6 +124,14 @@ class Post_Voice_Rest_Api {
 	public static function check_delete_permission( WP_REST_Request $request ) {
 		$post_id = (int) $request->get_param( 'id' );
 
+		if ( 'post' !== get_post_type( $post_id ) ) {
+			return new WP_Error(
+				'post_voice_unsupported_post_type',
+				__( 'Narration is only available for posts.', 'post-voice' ),
+				array( 'status' => 400 )
+			);
+		}
+
 		if ( ! current_user_can( 'edit_post', $post_id ) ) {
 			return new WP_Error(
 				'post_voice_forbidden',
@@ -133,7 +141,7 @@ class Post_Voice_Rest_Api {
 		}
 
 		foreach ( Post_Voice_Post_Meta::get_narration_attachment_ids( $post_id ) as $attachment_id ) {
-			if ( ! current_user_can( 'delete_post', $attachment_id ) ) {
+			if ( ! self::can_destroy_narration( $attachment_id ) ) {
 				return new WP_Error(
 					'post_voice_forbidden',
 					__( 'Your role does not have permission to delete this audio. Ask an administrator.', 'post-voice' ),
@@ -169,8 +177,19 @@ class Post_Voice_Rest_Api {
 			);
 		}
 
+		$deleted = 0;
 		foreach ( $narrations as $attachment_id ) {
-			wp_delete_attachment( $attachment_id, true );
+			// Re-checked here, not just in the permission callback: a save landing
+			// between the two would otherwise put an attachment in this list that
+			// nobody authorised. And the count reports what actually went, not what
+			// was intended — wp_delete_attachment() returns false when the delete
+			// fails, and calling that a success would be a lie the panel repeats.
+			if ( ! self::can_destroy_narration( $attachment_id ) ) {
+				continue;
+			}
+			if ( wp_delete_attachment( $attachment_id, true ) ) {
+				++$deleted;
+			}
 		}
 
 		// Also runs when the list was empty: a narration saved before the marker
@@ -180,7 +199,7 @@ class Post_Voice_Rest_Api {
 		Post_Voice_Post_Meta::clear( $post_id );
 
 		return new WP_REST_Response(
-			array( 'deleted' => count( $narrations ) ),
+			array( 'deleted' => $deleted ),
 			200
 		);
 	}
@@ -318,9 +337,24 @@ class Post_Voice_Rest_Api {
 		Post_Voice_Post_Meta::mark_attachment( $attachment_id );
 
 		// Narrations saved before the marker existed carry none, so claim the one
-		// the meta already points at. Without this it would survive the sweep
-		// below as if it were media the author uploaded.
-		if ( $previous_attachment_id && $previous_attachment_id !== $attachment_id ) {
+		// the meta already points at — but only after proving it is plausibly this
+		// plugin's own audio and that the caller could destroy it anyway.
+		//
+		// `_narration_attachment_id` is REST-writable by anyone who can edit the
+		// post, so an unguarded claim here was a delete-anything hole wearing a
+		// different hat: point the meta at media an editor uploaded to this post,
+		// save a narration, and the marker planted below made that file a
+		// legitimate target for the sweep, which force-deletes without asking
+		// anyone's permission. The capability check is the one that matters; the
+		// structural checks keep the marker off objects that were never audio.
+		if (
+			$previous_attachment_id
+			&& $previous_attachment_id !== $attachment_id
+			&& 'attachment' === get_post_type( $previous_attachment_id )
+			&& (int) get_post_field( 'post_parent', $previous_attachment_id ) === $post_id
+			&& 'audio/mpeg' === get_post_mime_type( $previous_attachment_id )
+			&& self::can_destroy_narration( $previous_attachment_id )
+		) {
 			Post_Voice_Post_Meta::mark_attachment( $previous_attachment_id );
 		}
 
@@ -371,11 +405,29 @@ class Post_Voice_Rest_Api {
 		$keep = max( $narrations );
 
 		foreach ( $narrations as $narration_id ) {
-			if ( $narration_id !== $keep ) {
+			// Skipping rather than deleting when the caller lacks the capability:
+			// the marker is a strong signal, not proof, and this path and the
+			// DELETE endpoint must not disagree about who may destroy media. A
+			// skipped file stays in the Media Library, which is recoverable; a
+			// wrongly deleted one is not.
+			if ( $narration_id !== $keep && self::can_destroy_narration( $narration_id ) ) {
 				wp_delete_attachment( $narration_id, true );
 			}
 		}
 
 		return $keep;
+	}
+
+	/**
+	 * Whether the current user may destroy this narration file.
+	 *
+	 * One helper for both paths on purpose. The save-time sweep and the DELETE
+	 * endpoint remove the same objects for the same reason, and when only one of
+	 * them checked, the unchecked one became the exploit.
+	 *
+	 * @param int $attachment_id Attachment about to be deleted.
+	 */
+	private static function can_destroy_narration( int $attachment_id ): bool {
+		return current_user_can( 'delete_post', $attachment_id );
 	}
 }

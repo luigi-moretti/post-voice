@@ -113,6 +113,13 @@ function NarrationPanel() {
 	const previewUrlRef = useRef< string | null >( null );
 	const abortRef = useRef< AbortController | null >( null );
 	const savingRef = useRef( false );
+	const removingRef = useRef( false );
+	// Focused when the inline confirmation opens. Replacing the trigger with an
+	// alertdialog left focus on a button that no longer existed, so it fell back
+	// to <body>: a keyboard user lost their place and a screen reader announced a
+	// dialog with nothing in it focused. The container takes focus rather than a
+	// button inside it, which is what makes a screen reader read the dialog out.
+	const confirmRef = useRef< HTMLDivElement | null >( null );
 	const engineRef = useRef< PocketTtsEngine | null >( null );
 	// One `<audio>` reused for every sample, so clicking a second voice stops the
 	// first instead of layering two voices on top of each other.
@@ -400,6 +407,9 @@ function NarrationPanel() {
 
 	const startGeneration = useCallback( async () => {
 		setError( null );
+		// Generating unmounts the card the confirmation lives in; leaving the flag
+		// set brought it back, already open, when the preview was discarded.
+		setIsConfirmingRemoval( false );
 		setState( 'calibrating' );
 		try {
 			const text = extractNarratableText( blocks );
@@ -549,6 +559,13 @@ function NarrationPanel() {
 	}, [ blocks, language, postId, setPreview, voice ] );
 
 	const removeNarration = useCallback( async () => {
+		// Same guard, same reason as saving: two clicks in one JavaScript task
+		// both run this before React re-renders. The second DELETE found nothing
+		// left and answered 404, so a removal that worked ended in a red error.
+		if ( removingRef.current ) {
+			return;
+		}
+		removingRef.current = true;
 		setError( null );
 		setState( 'removing' );
 		try {
@@ -565,8 +582,38 @@ function NarrationPanel() {
 			setIsConfirmingRemoval( false );
 			setState( 'error' );
 			setError( ( err as Error ).message );
+		} finally {
+			removingRef.current = false;
 		}
 	}, [ postId ] );
+
+	// Escape backs out of the confirmation. It lives on the buttons rather than on
+	// the alertdialog wrapper because that wrapper is a plain div — jsx-a11y is
+	// right that key handlers do not belong there — and focus is on one of these
+	// two the whole time the confirmation is open.
+	const cancelRemovalOnEscape = useCallback( ( event: { key: string } ) => {
+		if ( event.key === 'Escape' ) {
+			setIsConfirmingRemoval( false );
+		}
+	}, [] );
+
+	// Focus follows the confirmation, which replaced the button that opened it.
+	// Without this, focus sat on an unmounted button and fell back to <body>: a
+	// keyboard user loses their place, and a screen reader announces an
+	// alertdialog with nothing inside it focused.
+	useEffect( () => {
+		if ( ! isConfirmingRemoval ) {
+			return;
+		}
+		// One frame late, deliberately. Focusing straight from the effect loses a
+		// race with the editor, which restores focus of its own accord after the
+		// click that unmounted the trigger — the call runs, and focus is on <body>
+		// a tick later anyway.
+		const frame = window.requestAnimationFrame(
+			() => confirmRef.current?.focus()
+		);
+		return () => window.cancelAnimationFrame( frame );
+	}, [ isConfirmingRemoval ] );
 
 	// Elapsed-time ticker for the generating state's countdown. The mockup shows a
 	// determinate bar and "~Ns remaining", and the RTF calibration exists precisely
@@ -810,6 +857,8 @@ function NarrationPanel() {
 							 */ }
 							{ isConfirmingRemoval && (
 								<div
+									ref={ confirmRef }
+									tabIndex={ -1 }
 									className="post-voice-panel__confirm"
 									role="alertdialog"
 									aria-label={ __(
@@ -825,14 +874,19 @@ function NarrationPanel() {
 									</p>
 									<div className="post-voice-panel__actions">
 										<Button
+											onKeyDown={ cancelRemovalOnEscape }
 											variant="primary"
 											isDestructive
+											isBusy={ isRemoving }
+											disabled={ isRemoving }
 											onClick={ removeNarration }
 										>
 											{ __( 'Remove', 'post-voice' ) }
 										</Button>
 										<Button
 											variant="tertiary"
+											onKeyDown={ cancelRemovalOnEscape }
+											disabled={ isRemoving }
 											onClick={ () =>
 												setIsConfirmingRemoval( false )
 											}
@@ -931,7 +985,7 @@ function NarrationPanel() {
 						<>
 							<Button
 								variant={
-									isStale && ! previewUrl
+									isStale && existing && ! previewUrl
 										? 'primary'
 										: 'secondary'
 								}
@@ -945,7 +999,7 @@ function NarrationPanel() {
 									? __( 'Generate again', 'post-voice' )
 									: __( 'Generate audio', 'post-voice' ) }
 							</Button>
-							{ isStale && ! previewUrl && (
+							{ isStale && existing && ! previewUrl && (
 								<p className="post-voice-panel__hint">
 									{ __(
 										'The post text changed since the last generation.',

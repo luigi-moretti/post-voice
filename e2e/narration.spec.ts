@@ -454,6 +454,65 @@ test.describe( 'Post Voice — narration generation', () => {
 		expect( new Set( [ first, second, third ] ).size ).toBe( 3 );
 	} );
 
+	test( 'the removal confirmation takes focus, backs out on Escape, and survives a double-click', async ( {
+		admin,
+		editor,
+		page,
+	} ) => {
+		await createNarratableDraft( admin, editor, 'Removal confirmation' );
+		await editor.openDocumentSettingsSidebar();
+		await page
+			.getByRole( 'button', { name: 'Narration', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Save narration', exact: true } )
+			.click( { timeout: 120_000 } );
+		await expect(
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
+		).toBeVisible();
+
+		// The trigger unmounts when the confirmation replaces it, so without
+		// moving focus deliberately it falls back to <body> — a keyboard user
+		// loses their place and a screen reader announces an alertdialog with
+		// nothing focused inside it. axe cannot see this; only pressing keys can.
+		await page
+			.getByRole( 'button', { name: 'Remove', exact: true } )
+			.click();
+		await expect( page.getByRole( 'alertdialog' ) ).toBeFocused();
+
+		await page.keyboard.press( 'Tab' );
+		await page.keyboard.press( 'Escape' );
+		await expect( page.getByRole( 'alertdialog' ) ).toHaveCount( 0 );
+		await expect(
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
+		).toBeVisible();
+
+		// Reopen and double-click: the second DELETE used to find nothing left,
+		// answer 404, and paint an error over a removal that had worked.
+		await page
+			.getByRole( 'button', { name: 'Remove', exact: true } )
+			.click();
+		await page.evaluate( () => {
+			const button = Array.from(
+				document.querySelectorAll< HTMLButtonElement >(
+					'.post-voice-panel__confirm button'
+				)
+			).find( ( candidate ) => candidate.textContent === 'Remove' );
+			button?.click();
+			button?.click();
+		} );
+
+		await expect(
+			page.getByRole( 'button', { name: 'Generate audio', exact: true } )
+		).toBeVisible();
+		await expect(
+			page.locator( '.components-notice.is-error' )
+		).toHaveCount( 0 );
+	} );
+
 	test( 'a double-click on Save leaves one audio file, not two', async ( {
 		admin,
 		editor,

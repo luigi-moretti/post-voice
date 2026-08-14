@@ -403,6 +403,93 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		$this->assertNotNull( get_post( $attachment_id ) );
 	}
 
+	public function test_saving_does_not_claim_media_the_meta_was_pointed_at(): void {
+		// The save path's mirror of the delete-anything hole. An editor uploads an
+		// image while editing this post, so it is parented here but owned by them.
+		// The author points `_narration_attachment_id` — REST-writable with nothing
+		// but `edit_post` — at it, then saves a narration through the normal UI.
+		// Marking that file made it a legitimate target for the sweep below, which
+		// force-deletes without asking whether the caller could delete anything.
+		$owner_id  = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		$victim_id = self::factory()->attachment->create_object(
+			array(
+				'file'           => 'editors-photo.jpg',
+				'post_parent'    => $this->post_id,
+				'post_mime_type' => 'image/jpeg',
+				'post_author'    => $owner_id,
+			)
+		);
+
+		$author_id = self::factory()->user->create( array( 'role' => 'author' ) );
+		wp_update_post(
+			array(
+				'ID'          => $this->post_id,
+				'post_author' => $author_id,
+			)
+		);
+		wp_set_current_user( $author_id );
+		Post_Voice_Post_Meta::save( $this->post_id, $victim_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+
+		$this->save_a_narration();
+
+		$this->assertNotNull( get_post( $victim_id ), 'Media the caller cannot delete must survive a save.' );
+		$this->assertSame(
+			'',
+			get_post_meta( $victim_id, Post_Voice_Post_Meta::ATTACHMENT_MARKER, true ),
+			'The plugin must not claim media it did not create.'
+		);
+	}
+
+	public function test_removing_does_not_delete_media_the_meta_was_pointed_at(): void {
+		// Same forgery against the DELETE endpoint. Deleting by marker is the
+		// property the endpoint is built on, and only a real attachment can prove
+		// it: a dangling ID would pass even if the code deleted whatever it named.
+		$victim_id = self::factory()->attachment->create_object(
+			array(
+				'file'           => 'editors-photo.jpg',
+				'post_parent'    => $this->post_id,
+				'post_mime_type' => 'image/jpeg',
+			)
+		);
+		Post_Voice_Post_Meta::save( $this->post_id, $victim_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+
+		$response = rest_get_server()->dispatch(
+			new WP_REST_Request( 'DELETE', "/post-voice/v1/posts/{$this->post_id}/narration" )
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 0, $response->get_data()['deleted'] );
+		$this->assertNotNull( get_post( $victim_id ) );
+	}
+
+	public function test_the_sweep_leaves_marked_audio_the_caller_cannot_delete(): void {
+		// Belt and braces behind the guard above: even if something marks an
+		// attachment the caller does not own, the sweep must refuse to destroy it.
+		$owner_id   = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		$foreign_id = self::factory()->attachment->create_object(
+			array(
+				'file'           => 'someone-elses.mp3',
+				'post_parent'    => $this->post_id,
+				'post_mime_type' => 'audio/mpeg',
+				'post_author'    => $owner_id,
+			)
+		);
+		Post_Voice_Post_Meta::mark_attachment( $foreign_id );
+
+		$author_id = self::factory()->user->create( array( 'role' => 'author' ) );
+		wp_update_post(
+			array(
+				'ID'          => $this->post_id,
+				'post_author' => $author_id,
+			)
+		);
+		wp_set_current_user( $author_id );
+
+		$this->save_a_narration();
+
+		$this->assertNotNull( get_post( $foreign_id ) );
+	}
+
 	/**
 	 * Save one narration through the endpoint and return its attachment ID.
 	 */

@@ -4198,6 +4198,69 @@ the panel displays. Worth doing, worth doing on purpose.
     post-publish panel covers the sidebar and swallows clicks, so the scenario
     re-enters the editor by URL.
 
+## Revision 2026-08-13 (e) — second code review
+
+A second reviewer read the branch before the PR. It confirmed the first review's
+fixes hold — including that their regression tests fail when the guard is
+reverted — and then found that the delete-anything hole had been closed on one
+path and left open on the other.
+
+47. **The same untrusted-meta hole, still open on the save path.** Finding 40
+    fixed `before_delete_post` and the DELETE endpoint, but not the code that
+    *plants* the marker. `handle_save_narration()` read `_narration_attachment_id`
+    — REST-writable with nothing but `edit_post` — and marked whatever it named,
+    so the sweep, which had no capability check at all, then force-deleted it.
+
+    Reachable by a plain Author: an editor uploads an image while editing the
+    author's post, so it is parented there and owned by them; the author points
+    the meta at it over `/wp/v2/posts/<id>`, saves a narration through the normal
+    UI, and the file is destroyed. Core would never allow it — Authors lack
+    `delete_others_posts` — and the plugin's own DELETE endpoint would refuse.
+    The save path handed it over.
+
+    Fixed by claiming the previous attachment only when it is plausibly this
+    plugin's audio (an attachment, parented here, `audio/mpeg`) *and* the caller
+    could destroy it, and by making the sweep skip anything the caller cannot
+    `delete_post`. Both paths now go through one `can_destroy_narration()`, so
+    they cannot drift apart again — which is how this happened.
+
+    Two regression tests, and both were confirmed to fail with the guard removed
+    rather than assumed to: forged meta aimed at an administrator's image
+    survives a save and never acquires the marker, and a marked-but-foreign
+    attachment survives the sweep.
+
+    Lesson restated, because writing it down once was not enough: every read of
+    `Post_Voice_Post_Meta::get_attachment_id()` is a read of attacker-controlled
+    input. There are three, and the other two only decide whether to render.
+
+48. **Double-clicking Remove painted an error over a removal that worked.** The
+    second DELETE found nothing left, got the 404, and landed in the catch. The
+    save path had learned this already; the removal path did not inherit it.
+    `removingRef` now guards re-entry, and the confirm button shows busy.
+49. **The stale hint outlived the narration.** `removeNarration` cannot clear the
+    editor's cached meta, so `savedHash` survived and the next keystroke set
+    `isStale` again — leaving "The post text changed since the last generation."
+    and a primary-styled Generate button on a post with no audio at all. The hint
+    and the variant are now gated on `existing` too. Deliberately not doing the
+    heavier fix of writing cleared meta back through `editPost()`: that marks the
+    post dirty over a change the server already persisted.
+50. **The inline confirmation dropped focus and had no Escape.** Replacing the
+    trigger with an `alertdialog` left focus on an unmounted button, so it fell
+    back to `<body>`. The spec knowingly traded away `ConfirmDialog`'s focus trap,
+    but "no trap" is not "focus lost". The container takes focus on open and
+    Escape closes it. Two things learned in the process: `ref` on a
+    `@wordpress/components` `Button` did not reach the DOM node, and focusing
+    straight from the effect loses a race with the editor's own focus
+    restoration — one `requestAnimationFrame` late lands. Covered by an E2E,
+    since axe sees semantics and not interaction.
+51. **Smaller items from the same review:** the DELETE endpoint now has the
+    post-type guard its POST twin already had; the delete loop re-checks the
+    capability it was granted in the permission callback, closing a narrow
+    TOCTOU and removing a duplicate query; `deleted` counts attachments that
+    actually went rather than attachments intended to go; and opening the
+    confirmation then generating no longer leaves it armed to reappear when the
+    preview is discarded.
+
 ---
 
 Also left open by explicit decision: **model-download progress as a percentage**
