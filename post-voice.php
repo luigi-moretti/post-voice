@@ -33,11 +33,13 @@ require_once POST_VOICE_PATH . 'features/narration/php/class-rest-api.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-attachment-cleanup.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-assets.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-frontend-render.php';
+require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-store.php';
 
 add_action(
 	'init',
 	static function (): void {
 		Post_Voice_Post_Meta::register();
+		Post_Voice_Dictionary_Store::register();
 	}
 );
 

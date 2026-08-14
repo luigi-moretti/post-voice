@@ -8,6 +8,7 @@
                 PHPUnit silently discovers nothing and reports success.
             -->
             <directory suffix=".php">features/narration/tests/php</directory>
+            <directory suffix=".php">features/pronunciation/tests/php</directory>
         </testsuite>
     </testsuites>
     <coverage>
@@ -16,6 +17,7 @@
         </include>
         <exclude>
             <directory suffix=".php">features/narration/tests</directory>
+            <directory suffix=".php">features/pronunciation/tests</directory>
         </exclude>
         <report>
             <clover outputFile="coverage/clover.xml"/>
