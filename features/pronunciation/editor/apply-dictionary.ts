@@ -29,20 +29,7 @@ function escapeForRegex( term: string ): string {
  * @return A RegExp that matches these terms surrounded by word boundaries.
  */
 function boundedPattern( terms: string[] ): RegExp {
-	// Expand terms to include case variants: multi-character uppercase terms
-	// should match both uppercase and lowercase versions.
-	const expandedTerms = terms.flatMap( ( term ) => {
-		if (
-			term.length > 1 &&
-			term === term.toUpperCase() &&
-			/[A-Z]/u.test( term )
-		) {
-			return [ term, term.toLowerCase() ];
-		}
-		return [ term ];
-	} );
-
-	const alternation = expandedTerms
+	const alternation = terms
 		// Longest first: with "machine" and "machine learning" both present, the
 		// shorter one would otherwise win and leave " learning" unspoken-for.
 		.sort( ( a, b ) => b.length - a.length )
@@ -50,7 +37,7 @@ function boundedPattern( terms: string[] ): RegExp {
 		.join( '|' );
 	return new RegExp(
 		`(?<![\\p{L}\\p{N}_])(?:${ alternation })(?![\\p{L}\\p{N}_])`,
-		'gu'
+		'giu'
 	);
 }
 
