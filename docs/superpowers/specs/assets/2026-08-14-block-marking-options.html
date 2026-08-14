@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Post Voice — Fase 2: onde marcar o bloco (A/B/C/D)</title>
+		<style>
+			:root {
+				--wp-blue: #3858e9;
+				--wp-blue-dark: #2145e6;
+				--gray-900: #1e1e1e;
+				--gray-700: #2f2f2f;
+				--gray-600: #757575;
+				--gray-400: #949494;
+				--gray-300: #ddd;
+				--gray-200: #e0e0e0;
+				--gray-100: #f0f0f0;
+				--gray-050: #f6f7f7;
+				--red: #cc1818;
+				--green: #007017;
+				--amber: #8a6116;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+					Roboto, Oxygen-Sans, Ubuntu, Cantarell, 'Helvetica Neue',
+					sans-serif;
+				color: var(--gray-900);
+				background: #fff;
+				font-size: 13px;
+			}
+
+			/* ---------- chrome do documento (não faz parte do mockup) ---------- */
+			.doc-head {
+				padding: 20px 24px 12px;
+				border-bottom: 1px solid var(--gray-200);
+			}
+			.doc-head h1 {
+				margin: 0 0 4px;
+				font-size: 18px;
+			}
+			.doc-head p {
+				margin: 0;
+				color: var(--gray-600);
+				max-width: 80ch;
+				line-height: 1.5;
+			}
+			.tabs {
+				display: flex;
+				gap: 8px;
+				padding: 12px 24px 0;
+				flex-wrap: wrap;
+			}
+			.tab {
+				appearance: none;
+				border: 1px solid var(--gray-300);
+				background: #fff;
+				border-radius: 2px 2px 0 0;
+				border-bottom: none;
+				padding: 8px 14px;
+				font: inherit;
+				cursor: pointer;
+				color: var(--gray-700);
+			}
+			.tab[aria-selected='true'] {
+				background: var(--gray-900);
+				color: #fff;
+				border-color: var(--gray-900);
+			}
+			.option-note {
+				padding: 12px 24px;
+				background: var(--gray-050);
+				border-top: 1px solid var(--gray-300);
+				border-bottom: 1px solid var(--gray-300);
+				line-height: 1.5;
+			}
+			.option-note strong {
+				display: block;
+				margin-bottom: 2px;
+			}
+			.option-note span {
+				color: var(--gray-600);
+			}
+
+			/* ---------- editor simulado ---------- */
+			.editor {
+				display: grid;
+				grid-template-columns: 1fr 300px;
+				min-height: 620px;
+			}
+			.editor-header {
+				grid-column: 1 / -1;
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				height: 48px;
+				padding: 0 12px;
+				border-bottom: 1px solid var(--gray-200);
+				background: #fff;
+			}
+			.editor-header .logo {
+				width: 28px;
+				height: 28px;
+				border-radius: 2px;
+				background: var(--gray-900);
+				color: #fff;
+				display: grid;
+				place-items: center;
+				font-weight: 700;
+				font-size: 12px;
+			}
+			.editor-header .title {
+				font-weight: 600;
+			}
+			.editor-header .spacer {
+				flex: 1;
+			}
+			.pill-btn {
+				border: 1px solid var(--gray-300);
+				background: #fff;
+				border-radius: 2px;
+				padding: 5px 10px;
+				cursor: default;
+				color: var(--gray-700);
+			}
+			.pill-btn.primary {
+				background: var(--wp-blue);
+				border-color: var(--wp-blue);
+				color: #fff;
+			}
+			.pill-btn.active {
+				background: var(--gray-900);
+				border-color: var(--gray-900);
+				color: #fff;
+			}
+
+			.canvas {
+				background: var(--gray-050);
+				padding: 32px 24px 48px;
+				overflow: auto;
+			}
+			.sheet {
+				max-width: 620px;
+				margin: 0 auto;
+				background: #fff;
+				border: 1px solid var(--gray-200);
+				padding: 28px 32px 40px;
+			}
+			.post-title {
+				font-size: 26px;
+				font-weight: 700;
+				margin: 0 0 18px;
+				line-height: 1.25;
+			}
+
+			.block {
+				position: relative;
+				padding: 8px 10px;
+				margin: 2px -10px;
+				border: 1px solid transparent;
+				border-radius: 2px;
+				cursor: pointer;
+				line-height: 1.6;
+			}
+			.block:hover {
+				border-color: var(--gray-300);
+			}
+			.block.selected {
+				border-color: var(--wp-blue);
+				box-shadow: 0 0 0 1px var(--wp-blue);
+			}
+			.block.excluded {
+				opacity: 0.55;
+			}
+			.block.excluded .block-body {
+				text-decoration: line-through;
+				text-decoration-color: var(--gray-400);
+			}
+			.block h2.block-body {
+				font-size: 19px;
+				margin: 0;
+			}
+			.block p.block-body {
+				margin: 0;
+			}
+			.block ul.block-body {
+				margin: 0;
+				padding-left: 20px;
+			}
+			.block blockquote.block-body {
+				margin: 0;
+				padding-left: 14px;
+				border-left: 3px solid var(--gray-300);
+				font-style: italic;
+			}
+			.block pre.block-body {
+				margin: 0;
+				background: var(--gray-100);
+				padding: 10px;
+				font-family: Menlo, Consolas, monospace;
+				font-size: 12px;
+				overflow-x: auto;
+			}
+			.block .fake-image {
+				height: 90px;
+				background: repeating-linear-gradient(
+					45deg,
+					var(--gray-100),
+					var(--gray-100) 10px,
+					#e8e8e8 10px,
+					#e8e8e8 20px
+				);
+				display: grid;
+				place-items: center;
+				color: var(--gray-600);
+			}
+
+			.chip-row {
+				display: flex;
+				gap: 6px;
+				margin-top: 6px;
+				flex-wrap: wrap;
+			}
+			.chip {
+				font-size: 11px;
+				line-height: 1;
+				padding: 4px 7px;
+				border-radius: 10px;
+				border: 1px solid var(--gray-300);
+				color: var(--gray-600);
+				background: #fff;
+				white-space: nowrap;
+			}
+			.chip.lang {
+				border-color: var(--wp-blue);
+				color: var(--wp-blue-dark);
+				background: #f0f3ff;
+			}
+			.chip.off {
+				border-color: #d3a3a3;
+				color: var(--red);
+				background: #fdf1f1;
+			}
+			.chip.na {
+				border-style: dashed;
+			}
+
+			/* toolbar flutuante (opção C) */
+			.block-toolbar {
+				position: absolute;
+				top: -38px;
+				left: -1px;
+				display: flex;
+				align-items: center;
+				background: #fff;
+				border: 1px solid var(--gray-900);
+				border-radius: 2px;
+				height: 34px;
+				box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+				z-index: 5;
+			}
+			.block-toolbar button {
+				appearance: none;
+				border: none;
+				background: none;
+				height: 32px;
+				min-width: 34px;
+				padding: 0 8px;
+				cursor: pointer;
+				font: inherit;
+				color: var(--gray-900);
+				display: inline-flex;
+				align-items: center;
+				gap: 4px;
+			}
+			.block-toolbar button:hover {
+				background: var(--gray-100);
+			}
+			.block-toolbar .sep {
+				width: 1px;
+				height: 20px;
+				background: var(--gray-300);
+			}
+			.block-toolbar .narr {
+				border-left: 2px solid var(--wp-blue);
+			}
+			.toolbar-menu {
+				position: absolute;
+				top: 36px;
+				right: 0;
+				background: #fff;
+				border: 1px solid var(--gray-300);
+				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+				border-radius: 2px;
+				padding: 4px;
+				min-width: 190px;
+				z-index: 6;
+			}
+			.toolbar-menu button {
+				width: 100%;
+				justify-content: flex-start;
+				height: 30px;
+			}
+			.toolbar-menu button[aria-checked='true']::after {
+				content: '✓';
+				margin-left: auto;
+				color: var(--wp-blue-dark);
+			}
+
+			/* ---------- sidebar ---------- */
+			.sidebar {
+				border-left: 1px solid var(--gray-200);
+				background: #fff;
+				display: flex;
+				flex-direction: column;
+				overflow: auto;
+			}
+			.sidebar-tabs {
+				display: flex;
+				border-bottom: 1px solid var(--gray-200);
+			}
+			.sidebar-tabs button {
+				flex: 1;
+				appearance: none;
+				border: none;
+				background: none;
+				padding: 12px 8px;
+				font: inherit;
+				cursor: pointer;
+				color: var(--gray-600);
+				border-bottom: 2px solid transparent;
+			}
+			.sidebar-tabs button[aria-selected='true'] {
+				color: var(--gray-900);
+				font-weight: 600;
+				border-bottom-color: var(--wp-blue);
+			}
+			.panel-section {
+				border-bottom: 1px solid var(--gray-200);
+				padding: 14px 16px;
+			}
+			.panel-section h3 {
+				margin: 0 0 10px;
+				font-size: 12px;
+				text-transform: none;
+				font-weight: 600;
+			}
+			.panel-section.narration h3::before {
+				content: '🔊';
+				margin-right: 6px;
+			}
+			.muted {
+				color: var(--gray-600);
+				line-height: 1.5;
+			}
+			label.field {
+				display: block;
+				margin-bottom: 12px;
+			}
+			label.field > span {
+				display: block;
+				margin-bottom: 4px;
+				font-weight: 500;
+			}
+			select,
+			input[type='text'] {
+				width: 100%;
+				height: 30px;
+				border: 1px solid var(--gray-400);
+				border-radius: 2px;
+				padding: 0 6px;
+				font: inherit;
+				background: #fff;
+			}
+			.toggle-row {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 10px;
+				margin-bottom: 10px;
+			}
+			.switch {
+				position: relative;
+				width: 36px;
+				height: 20px;
+				border-radius: 10px;
+				background: var(--gray-400);
+				border: none;
+				cursor: pointer;
+				flex: none;
+			}
+			.switch[aria-checked='true'] {
+				background: var(--wp-blue);
+			}
+			.switch::after {
+				content: '';
+				position: absolute;
+				top: 2px;
+				left: 2px;
+				width: 16px;
+				height: 16px;
+				border-radius: 50%;
+				background: #fff;
+				transition: transform 0.12s ease;
+			}
+			.switch[aria-checked='true']::after {
+				transform: translateX(16px);
+			}
+			.hint {
+				color: var(--gray-600);
+				font-size: 12px;
+				line-height: 1.45;
+				margin: -4px 0 12px;
+			}
+
+			/* card de status da narração (herdado da Fase 1) */
+			.status-card {
+				border: 1px solid var(--gray-300);
+				border-radius: 2px;
+				padding: 12px;
+				margin-bottom: 12px;
+				background: var(--gray-050);
+			}
+			.status-card .row {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				justify-content: space-between;
+			}
+			.badge {
+				font-size: 11px;
+				padding: 3px 7px;
+				border-radius: 2px;
+				background: #edf7ed;
+				color: var(--green);
+				border: 1px solid #b7e0b7;
+			}
+			.btn-full {
+				display: block;
+				width: 100%;
+				height: 32px;
+				border-radius: 2px;
+				border: 1px solid var(--wp-blue);
+				background: var(--wp-blue);
+				color: #fff;
+				font: inherit;
+				cursor: pointer;
+				margin-top: 4px;
+			}
+			.btn-full.secondary {
+				background: #fff;
+				color: var(--wp-blue-dark);
+			}
+
+			/* lista de blocos (opção B / resumo D) */
+			.block-list {
+				list-style: none;
+				margin: 0;
+				padding: 0;
+				border: 1px solid var(--gray-200);
+				border-radius: 2px;
+			}
+			.block-list li {
+				display: grid;
+				grid-template-columns: 18px 1fr;
+				gap: 8px;
+				padding: 8px;
+				border-bottom: 1px solid var(--gray-200);
+				align-items: start;
+			}
+			.block-list li:last-child {
+				border-bottom: none;
+			}
+			.block-list li > span {
+				min-width: 0;
+			}
+			.block-list li.ineligible {
+				background: var(--gray-050);
+				color: var(--gray-600);
+			}
+			.block-list li.current {
+				outline: 2px solid var(--wp-blue);
+				outline-offset: -2px;
+			}
+			.block-list .kind {
+				font-size: 11px;
+				color: var(--gray-600);
+				display: block;
+			}
+			.block-list .text {
+				display: block;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				max-width: 100%;
+			}
+			.block-list select {
+				height: 26px;
+				margin-top: 5px;
+				font-size: 12px;
+			}
+			.summary-line {
+				display: flex;
+				gap: 6px;
+				flex-wrap: wrap;
+				margin-bottom: 8px;
+			}
+			.link-btn {
+				appearance: none;
+				background: none;
+				border: none;
+				padding: 0;
+				font: inherit;
+				color: var(--wp-blue-dark);
+				text-decoration: underline;
+				cursor: pointer;
+			}
+			.scroll-cap {
+				max-height: 260px;
+				overflow: auto;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="doc-head">
+			<h1>Fase 2 — onde o autor marca o bloco (excluir da narração · idioma do trecho)</h1>
+			<p>
+				Mockup navegável: clique num bloco do post pra selecioná-lo, use os
+				controles e veja o efeito no canvas. Post de exemplo em português com
+				uma citação em inglês, um heading, uma lista, um bloco de código e uma
+				imagem (esses dois últimos já não são narráveis pela regra da Fase 1).
+			</p>
+		</div>
+
+		<div class="tabs" role="tablist" id="tabs">
+			<button class="tab" role="tab" data-opt="A" aria-selected="true">
+				A — Inspector do bloco
+			</button>
+			<button class="tab" role="tab" data-opt="B" aria-selected="false">
+				B — Lista no painel Narração
+			</button>
+			<button class="tab" role="tab" data-opt="C" aria-selected="false">
+				C — Toolbar do bloco
+			</button>
+			<button class="tab" role="tab" data-opt="D" aria-selected="false">
+				D — Inspector + resumo no painel
+			</button>
+		</div>
+
+		<div class="option-note" id="note"></div>
+
+		<div class="editor">
+			<div class="editor-header">
+				<span class="logo">PV</span>
+				<span class="title">Por que a BYD virou a montadora mais vendida</span>
+				<span class="spacer"></span>
+				<button class="pill-btn">Salvar rascunho</button>
+				<button class="pill-btn primary">Publicar</button>
+				<button class="pill-btn active" id="sidebar-toggle">🔊 Narração</button>
+			</div>
+
+			<div class="canvas">
+				<div class="sheet">
+					<h1 class="post-title">
+						Por que a BYD virou a montadora mais vendida
+					</h1>
+					<div id="blocks"></div>
+				</div>
+			</div>
+
+			<aside class="sidebar" id="sidebar"></aside>
+		</div>
+
+		<script>
+			const LANGS = [
+				{ value: '', label: 'Padrão do post (Português)' },
+				{ value: 'english_2026-04', label: 'Inglês' },
+				{ value: 'spanish', label: 'Espanhol' },
+				{ value: 'german', label: 'Alemão' },
+				{ value: 'italian', label: 'Italiano' },
+			];
+			const LANG_SHORT = {
+				'english_2026-04': 'EN',
+				spanish: 'ES',
+				german: 'DE',
+				italian: 'IT',
+			};
+
+			const blocks = [
+				{
+					id: 'b1',
+					kind: 'Parágrafo',
+					tag: 'p',
+					eligible: true,
+					included: true,
+					lang: '',
+					text: 'A BYD terminou o trimestre à frente de todas as concorrentes no mercado brasileiro, e a diferença não veio de um único modelo.',
+				},
+				{
+					id: 'b2',
+					kind: 'Título',
+					tag: 'h2',
+					eligible: true,
+					included: true,
+					lang: '',
+					text: 'O que mudou na estratégia',
+				},
+				{
+					id: 'b3',
+					kind: 'Citação',
+					tag: 'blockquote',
+					eligible: true,
+					included: true,
+					lang: 'english_2026-04',
+					text: '“We are not selling cars, we are selling batteries with wheels attached.”',
+				},
+				{
+					id: 'b4',
+					kind: 'Lista',
+					tag: 'ul',
+					eligible: true,
+					included: true,
+					lang: '',
+					items: [
+						'Preço de entrada abaixo dos concorrentes híbridos',
+						'Rede de concessionárias triplicada em 18 meses',
+					],
+				},
+				{
+					id: 'b5',
+					kind: 'Código',
+					tag: 'pre',
+					eligible: false,
+					included: false,
+					lang: '',
+					text: 'const share = sales.byd / sales.total; // 0.21',
+				},
+				{
+					id: 'b6',
+					kind: 'Parágrafo',
+					tag: 'p',
+					eligible: true,
+					included: false,
+					lang: '',
+					text: 'Leia também: nossa análise completa do mercado de elétricos, atualizada toda semana.',
+				},
+				{
+					id: 'b7',
+					kind: 'Imagem',
+					tag: 'img',
+					eligible: false,
+					included: false,
+					lang: '',
+					text: 'gráfico-vendas-2026.png',
+				},
+			];
+
+			const NOTES = {
+				A: [
+					'A — Inspector do bloco (block attribute)',
+					'Seleciona o bloco → o painel de ajustes dele ganha a seção “Narração”. O estado vira atributo do bloco, salvo no post_content pelo próprio Gutenberg: sem meta nova, sobrevive a copiar/colar e a revisões. Custo: registrar os atributos em blocos de terceiros por filtro.',
+				],
+				B: [
+					'B — Lista no painel Narração',
+					'Todos os blocos elegíveis numa lista só, com checkbox e idioma por linha. Boa visão geral de post longo, sem caçar bloco por bloco. Custo: o estado precisa de meta própria indexada por bloco — reordenar ou apagar bloco pode dessincronizar.',
+				],
+				C: [
+					'C — Toolbar do bloco',
+					'Botões na barra flutuante do bloco selecionado: alternar narração e escolher idioma. O alcance mais curto do mouse; em compensação, dois controles disputam uma barra apertada e ícone sem rótulo é menos descobrível.',
+				],
+				D: [
+					'D — Inspector + resumo no painel',
+					'O controle real fica no inspector (fonte da verdade, como em A) e o painel Narração mostra um resumo somente-leitura, com atalho pra pular até o bloco. Mais superfície pra construir, melhor revisão antes de gerar.',
+				],
+			};
+
+			let option = 'A';
+			let selected = 'b3';
+			let toolbarMenu = false;
+
+			const $blocks = document.getElementById('blocks');
+			const $sidebar = document.getElementById('sidebar');
+			const $note = document.getElementById('note');
+
+			function langLabel(v) {
+				return LANGS.find((l) => l.value === v)?.label ?? v;
+			}
+			function narrated(b) {
+				return b.eligible && b.included;
+			}
+
+			function renderNote() {
+				const [title, body] = NOTES[option];
+				$note.innerHTML = `<strong>${title}</strong><span>${body}</span>`;
+			}
+
+			function blockBodyHtml(b) {
+				if (b.tag === 'ul') {
+					return `<ul class="block-body">${b.items
+						.map((i) => `<li>${i}</li>`)
+						.join('')}</ul>`;
+				}
+				if (b.tag === 'img') {
+					return `<div class="fake-image">🖼 ${b.text}</div>`;
+				}
+				return `<${b.tag} class="block-body">${b.text}</${b.tag}>`;
+			}
+
+			function toolbarHtml(b) {
+				const langMenu = toolbarMenu
+					? `<div class="toolbar-menu">${LANGS.map(
+							(l) =>
+								`<button data-lang="${l.value}" aria-checked="${
+									b.lang === l.value
+								}">${l.label}</button>`
+					  ).join('')}</div>`
+					: '';
+				return `<div class="block-toolbar">
+					<button title="Transformar">¶ ▾</button>
+					<button title="Alinhar">≡</button>
+					<button title="Negrito"><b>B</b></button>
+					<span class="sep"></span>
+					<button class="narr" data-act="toggle" title="${
+						b.included ? 'Excluir da narração' : 'Incluir na narração'
+					}">${b.included ? '🔊' : '🔇'}</button>
+					<button data-act="lang-menu" title="Idioma do trecho">🌐 ${
+						b.lang ? LANG_SHORT[b.lang] : 'PT'
+					} ▾</button>
+					<span class="sep"></span>
+					<button title="Mais opções">⋮</button>
+					${langMenu}
+				</div>`;
+			}
+
+			function renderBlocks() {
+				$blocks.innerHTML = blocks
+					.map((b) => {
+						const chips = [];
+						if (!b.eligible) {
+							chips.push(
+								`<span class="chip na">não narrável (${b.kind.toLowerCase()})</span>`
+							);
+						} else if (!b.included) {
+							chips.push(`<span class="chip off">fora da narração</span>`);
+						} else if (b.lang) {
+							chips.push(
+								`<span class="chip lang">narrado em ${langLabel(
+									b.lang
+								)}</span>`
+							);
+						}
+						const cls = [
+							'block',
+							b.id === selected ? 'selected' : '',
+							b.eligible && !b.included ? 'excluded' : '',
+						]
+							.filter(Boolean)
+							.join(' ');
+						const toolbar =
+							option === 'C' && b.id === selected && b.eligible
+								? toolbarHtml(b)
+								: '';
+						return `<div class="${cls}" data-id="${b.id}">
+							${toolbar}
+							${blockBodyHtml(b)}
+							${chips.length ? `<div class="chip-row">${chips.join('')}</div>` : ''}
+						</div>`;
+					})
+					.join('');
+			}
+
+			function langSelect(b, cls = '') {
+				return `<select class="${cls}" data-role="lang" data-id="${b.id}">${LANGS.map(
+					(l) =>
+						`<option value="${l.value}" ${
+							b.lang === l.value ? 'selected' : ''
+						}>${l.label}</option>`
+				).join('')}</select>`;
+			}
+
+			function inspectorPanel(b) {
+				if (!b.eligible) {
+					return `<div class="panel-section narration">
+						<h3>Narração</h3>
+						<p class="muted">Bloco de ${b.kind.toLowerCase()} não entra na narração —
+						a regra de tipos de bloco (Fase 1) já o exclui, e isso não é ajustável.</p>
+					</div>`;
+				}
+				return `<div class="panel-section narration">
+					<h3>Narração</h3>
+					<div class="toggle-row">
+						<span>Incluir na narração</span>
+						<button class="switch" data-role="toggle" data-id="${b.id}"
+							role="switch" aria-checked="${b.included}"></button>
+					</div>
+					<p class="hint">Desligado, o texto deste bloco não entra no áudio nem no
+					cálculo de “desatualizado”.</p>
+					<label class="field">
+						<span>Idioma deste trecho</span>
+						${langSelect(b)}
+					</label>
+					<p class="hint">${
+						b.lang
+							? 'Um segundo modelo (~190 MB) é baixado na primeira geração com este idioma.'
+							: 'Segue o idioma escolhido no painel Narração.'
+					}</p>
+				</div>`;
+			}
+
+			function statusCard() {
+				return `<div class="status-card">
+					<div class="row">
+						<strong>Áudio gerado em 13 ago</strong>
+						<span class="badge">Atualizado</span>
+					</div>
+					<p class="muted" style="margin:8px 0 0">Português · voz alba · 4:12</p>
+				</div>`;
+			}
+
+			function narrationPanelBase() {
+				return `<div class="panel-section">
+					<h3>Narração do post</h3>
+					${statusCard()}
+					<label class="field"><span>Idioma</span>
+						<select><option>Português</option><option>Inglês</option></select>
+					</label>
+					<label class="field"><span>Voz</span>
+						<select><option>alba</option><option>javert</option></select>
+					</label>
+					<button class="btn-full">Gerar novamente</button>
+				</div>`;
+			}
+
+			function blockListPanel({ readOnly }) {
+				const rows = blocks
+					.map((b) => {
+						const text = b.items ? b.items.join(' · ') : b.text;
+						if (!b.eligible) {
+							return `<li class="ineligible">
+								<span>—</span>
+								<span>
+									<span class="kind">${b.kind} · não narrável</span>
+									<span class="text">${text}</span>
+								</span>
+							</li>`;
+						}
+						const checkbox = readOnly
+							? `<span>${b.included ? '🔊' : '🔇'}</span>`
+							: `<input type="checkbox" data-role="check" data-id="${b.id}" ${
+									b.included ? 'checked' : ''
+							  } aria-label="Incluir ${b.kind} na narração" />`;
+						const control = readOnly
+							? b.lang
+								? `<span class="chip lang" style="margin-top:6px;display:inline-block">${langLabel(
+										b.lang
+								  )}</span>`
+								: ''
+							: langSelect(b);
+						const jump = readOnly
+							? `<button class="link-btn" data-role="jump" data-id="${b.id}" style="margin-top:4px">ir para o bloco</button>`
+							: '';
+						return `<li class="${b.id === selected ? 'current' : ''}">
+							${checkbox}
+							<span>
+								<span class="kind">${b.kind}</span>
+								<span class="text">${text}</span>
+								${control}
+								${jump}
+							</span>
+						</li>`;
+					})
+					.join('');
+				return `<ul class="block-list">${rows}</ul>`;
+			}
+
+			function summaryChips() {
+				const excluded = blocks.filter((b) => b.eligible && !b.included).length;
+				const foreign = blocks.filter((b) => narrated(b) && b.lang).length;
+				const chips = [
+					`<span class="chip">${
+						blocks.filter(narrated).length
+					} blocos narrados</span>`,
+				];
+				if (excluded) {
+					chips.push(`<span class="chip off">${excluded} excluídos</span>`);
+				}
+				if (foreign) {
+					chips.push(
+						`<span class="chip lang">${foreign} em outro idioma</span>`
+					);
+				}
+				return `<div class="summary-line">${chips.join('')}</div>`;
+			}
+
+			function renderSidebar() {
+				const b = blocks.find((x) => x.id === selected);
+				if (option === 'A' || option === 'C') {
+					const tabs = `<div class="sidebar-tabs">
+						<button aria-selected="false">Post</button>
+						<button aria-selected="true">Bloco</button>
+					</div>`;
+					const generic = `<div class="panel-section">
+						<h3>${b.kind}</h3>
+						<label class="field"><span>Tamanho da fonte</span>
+							<select><option>Padrão</option><option>Grande</option></select>
+						</label>
+					</div>`;
+					const narration =
+						option === 'A'
+							? inspectorPanel(b)
+							: `<div class="panel-section narration">
+									<h3>Narração</h3>
+									<p class="muted">Nada aqui nesta opção — os dois controles
+									vivem na barra flutuante acima do bloco selecionado.</p>
+								</div>`;
+					$sidebar.innerHTML = tabs + generic + narration;
+					return;
+				}
+				if (option === 'B') {
+					$sidebar.innerHTML = `<div class="sidebar-tabs">
+							<button aria-selected="true">Narração</button>
+						</div>
+						${narrationPanelBase()}
+						<div class="panel-section narration">
+							<h3>Blocos do post</h3>
+							<p class="hint">Desmarque pra tirar da narração; escolha o idioma
+							por linha.</p>
+							<div class="scroll-cap">${blockListPanel({ readOnly: false })}</div>
+						</div>`;
+					return;
+				}
+				// D
+				$sidebar.innerHTML = `<div class="sidebar-tabs">
+						<button aria-selected="false">Post</button>
+						<button aria-selected="true">Bloco</button>
+					</div>
+					${inspectorPanel(b)}
+					<div class="panel-section narration">
+						<h3>Resumo da narração</h3>
+						${summaryChips()}
+						<div class="scroll-cap">${blockListPanel({ readOnly: true })}</div>
+					</div>`;
+			}
+
+			function render() {
+				renderNote();
+				renderBlocks();
+				renderSidebar();
+			}
+
+			document.getElementById('tabs').addEventListener('click', (e) => {
+				const t = e.target.closest('.tab');
+				if (!t) return;
+				option = t.dataset.opt;
+				toolbarMenu = false;
+				document
+					.querySelectorAll('.tab')
+					.forEach((x) =>
+						x.setAttribute('aria-selected', String(x === t))
+					);
+				render();
+			});
+
+			$blocks.addEventListener('click', (e) => {
+				const tb = e.target.closest('.block-toolbar button');
+				if (tb) {
+					const b = blocks.find((x) => x.id === selected);
+					if (tb.dataset.act === 'toggle') {
+						b.included = !b.included;
+						toolbarMenu = false;
+					} else if (tb.dataset.act === 'lang-menu') {
+						toolbarMenu = !toolbarMenu;
+					} else if (tb.dataset.lang !== undefined) {
+						b.lang = tb.dataset.lang;
+						toolbarMenu = false;
+					}
+					render();
+					return;
+				}
+				const el = e.target.closest('.block');
+				if (!el) return;
+				selected = el.dataset.id;
+				toolbarMenu = false;
+				render();
+			});
+
+			$sidebar.addEventListener('click', (e) => {
+				const sw = e.target.closest('[data-role="toggle"]');
+				if (sw) {
+					const b = blocks.find((x) => x.id === sw.dataset.id);
+					b.included = !b.included;
+					render();
+					return;
+				}
+				const cb = e.target.closest('[data-role="check"]');
+				if (cb) {
+					const b = blocks.find((x) => x.id === cb.dataset.id);
+					b.included = cb.checked;
+					render();
+					return;
+				}
+				const jump = e.target.closest('[data-role="jump"]');
+				if (jump) {
+					selected = jump.dataset.id;
+					render();
+				}
+			});
+
+			$sidebar.addEventListener('change', (e) => {
+				const sel = e.target.closest('[data-role="lang"]');
+				if (!sel) return;
+				const b = blocks.find((x) => x.id === sel.dataset.id);
+				b.lang = sel.value;
+				render();
+			});
+
+			render();
+		</script>
+	</body>
+</html>
