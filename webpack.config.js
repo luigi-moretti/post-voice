@@ -12,6 +12,10 @@ module.exports = {
 			__dirname,
 			'features/narration/frontend/player.ts'
 		),
+		'dictionary-admin': path.resolve(
+			__dirname,
+			'features/pronunciation/admin/settings.ts'
+		),
 	},
 	output: {
 		...defaultConfig.output,
