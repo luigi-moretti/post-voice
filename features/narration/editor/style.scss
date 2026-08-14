@@ -1,0 +1,269 @@
+// Narration sidebar panel — approved "Opção C" card from the Fase 1 spec.
+//
+// Structure and controls come from @wordpress/components, so the panel inherits
+// admin typography, focus styles, dark mode and future WordPress changes. Only
+// what core has no component for is styled here: the status card, the staleness
+// badge, the generation progress bar and the mini player.
+
+.post-voice-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	padding: 1rem;
+
+	&__card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		padding: 0.75rem;
+		border: 1px solid #e0e0e0;
+		border-radius: 4px;
+	}
+
+	&__card-heading {
+		margin: 0;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		color: #757575;
+	}
+
+	// Right-aligned inside the card, under the player: the approved variant C.
+	// Right rather than full width so it reads as the card's secondary action
+	// instead of competing with "Generate again" below the card.
+	&__card-actions {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: -0.25rem;
+	}
+
+	// Confirmation in place of the button that opened it. Bordered and tinted
+	// because it asks about something irreversible, and the panel has no other
+	// red surface for the eye to confuse it with.
+	&__confirm {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		border: 1px solid #b32d2e;
+		border-radius: 4px;
+		background: #fcf0f1;
+	}
+
+	&__confirm-text {
+		margin: 0;
+		font-size: 0.75rem;
+		line-height: 1.45;
+	}
+
+	&__status {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	&__generated-at {
+		font-size: 0.75rem;
+		color: #757575;
+	}
+
+	&__badge {
+		padding: 0.125rem 0.5rem;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		border-radius: 2px;
+
+		// Colour is a secondary cue only: the badge text says "Up to date" or "May
+		// be out of date" in full, so it does not rely on colour to be understood.
+		&.is-current {
+			color: #007017;
+			background: #edfaef;
+		}
+
+		&.is-stale {
+			color: #8a5700;
+			background: #fcf4e6;
+		}
+	}
+
+	&__generating-label {
+		margin: 0;
+		font-size: 0.8125rem;
+	}
+
+	&__hint {
+		margin: 0;
+		font-size: 0.75rem;
+		color: #757575;
+	}
+
+	&__actions {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	// Voice selector and its sample button on one line. `align-items: end` keeps
+	// the round button on the control's baseline rather than the label's.
+	&__voice {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.5rem;
+
+		.components-base-control {
+			flex: 1 1 auto;
+			min-width: 0;
+		}
+	}
+
+	&__sample {
+		flex: 0 0 auto;
+
+		&.components-button.has-icon {
+			width: 2rem;
+			height: 2rem;
+			min-width: 2rem;
+			padding: 0;
+			border-radius: 50%;
+			border: 1px solid var(--wp-admin-theme-color, #3858e9);
+			color: var(--wp-admin-theme-color, #3858e9);
+		}
+	}
+
+	&__progress {
+		height: 0.25rem;
+		overflow: hidden;
+		background: #e0e0e0;
+		border-radius: 999px;
+	}
+
+	&__progress-fill {
+		height: 100%;
+		background: var(--wp-admin-theme-color, #3858e9);
+		border-radius: 999px;
+		transition: width 250ms linear;
+
+		// No usable estimate — a failed calibration, say. Sliding back and forth
+		// says "working" without claiming a completion percentage that would be
+		// invented.
+		&.is-indeterminate {
+			width: 40%;
+			animation: post-voice-indeterminate 1.4s ease-in-out infinite;
+		}
+	}
+}
+
+.post-voice-mini-player {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+
+	// The element still plays the audio; the panel draws its own controls so it
+	// looks the same in every browser.
+	audio {
+		display: none;
+	}
+
+	&__play {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+		width: 2rem;
+		height: 2rem;
+		padding: 0;
+		color: #fff;
+		background: var(--wp-admin-theme-color, #3858e9);
+		border: none;
+		border-radius: 50%;
+		cursor: pointer;
+		font-size: 0.75rem;
+		line-height: 1;
+
+		&:hover {
+			filter: brightness(1.1);
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--wp-admin-theme-color, #3858e9);
+			outline-offset: 2px;
+		}
+	}
+
+	&__seek {
+		flex: 1 1 auto;
+		min-width: 0;
+		height: 1.25rem;
+		margin: 0;
+		background: transparent;
+		appearance: none;
+		cursor: pointer;
+
+		&::-webkit-slider-runnable-track {
+			height: 0.25rem;
+			background: #e0e0e0;
+			border-radius: 999px;
+		}
+
+		&::-moz-range-track {
+			height: 0.25rem;
+			background: #e0e0e0;
+			border-radius: 999px;
+		}
+
+		&::-moz-range-progress {
+			height: 0.25rem;
+			background: var(--wp-admin-theme-color, #3858e9);
+			border-radius: 999px;
+		}
+
+		&::-webkit-slider-thumb {
+			width: 0.75rem;
+			height: 0.75rem;
+			margin-top: -0.25rem;
+			background: var(--wp-admin-theme-color, #3858e9);
+			border: none;
+			border-radius: 50%;
+			appearance: none;
+		}
+
+		&::-moz-range-thumb {
+			width: 0.75rem;
+			height: 0.75rem;
+			background: var(--wp-admin-theme-color, #3858e9);
+			border: none;
+			border-radius: 50%;
+		}
+	}
+
+	&__time {
+		flex: 0 0 auto;
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums; // stops the row twitching each second
+		color: #757575;
+	}
+}
+
+@keyframes post-voice-indeterminate {
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(250%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.post-voice-panel__progress-fill {
+		transition: none;
+
+		&.is-indeterminate {
+			animation: none;
+			width: 100%;
+			opacity: 0.5;
+		}
+	}
+}

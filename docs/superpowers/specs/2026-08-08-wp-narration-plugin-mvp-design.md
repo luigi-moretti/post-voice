@@ -56,6 +56,7 @@ Convenções derivadas (usar daqui pra frente em todo o doc e no código):
 |---|---|---|
 | `audio` | file | O blob gerado no browser |
 | `language` | string | Código do bundle (ex. `pt`, alinhado com pasta `onnx/<language>/`) |
+| `voice` | string | Voz pré-definida usada na geração (ver "Seletor de voz") |
 | `source_hash` | string | SHA-256 hex, calculado no client (`crypto.subtle.digest`) sobre o texto filtrado que foi de fato narrado |
 
 Autenticação: header `X-WP-Nonce` padrão WP REST (cookie+nonce), não vai no body.
@@ -132,6 +133,10 @@ Mockups (fonte + screenshot):
 
 Continua valendo o já decidido em "Acessibilidade" (teclado, aria-label, aria-live, `prefers-reduced-motion`) e em "Frontend (TypeScript leve)" (sem framework, controla `<audio>` nativo, botão de fechar/minimizar).
 
+**Sem botão Stop (emenda de 2026-08-13).** O escopo e os critérios de aceite, escritos em 08/08, listavam "play, pause, stop, velocidade" — antes desta seção existir. A decisão de 10/08 acima trocou stop por scrubber e nunca voltou lá pra corrigir; as duas listas ficaram se contradizendo até uma revisão de consistência achar. Vale esta seção: **não há botão Stop**, e as duas listas foram corrigidas pra dizer scrubber.
+
+Motivo, pra não ser reaberto como esquecimento: stop é herança de fita cassete, onde parar e rebobinar eram operações físicas distintas. Nenhum player de áudio contemporâneo tem — nem YouTube, nem Spotify, nem o próprio `<audio controls>` nativo do navegador. O que a linha original queria garantir (o leitor consegue parar e voltar ao começo) o par pause + scrubber já entrega, com a vantagem de também levar a qualquer outro ponto. E o scrubber é um `<input type="range">`, então voltar ao início por teclado é a tecla Home — mais barato que um quinto controle numa pílula desenhada pra ser pequena em mobile.
+
 ### A11y — enforcement automatizado em CI [definido]
 
 Fechado junto com "Cenários E2E obrigatórios" (mesmo conserto, ver abaixo). Resumo:
@@ -148,7 +153,11 @@ Lista final (ver também "Qualidade e testes"): fluxo feliz completo · fallback
 
 **Mirror próprio no Hugging Face**, não dependência direta de `KevinAHM/pocket-tts-onnx`.
 
-**Licença checada (não bloqueia):** modelo base (`kyutai/pocket-tts`) é CC-BY-4.0 — permite redistribuir/derivar com atribuição, tem cláusula de uso proibido (nada ilegal/enganoso/impersonação sem consentimento — relevante pro voice cloning, vira nota de política de uso aceitável do plugin, não bloqueio legal). Export ONNX (`KevinAHM/pocket-tts-onnx`) é dual: modelos CC-BY-4.0 herdado, código de conversão Apache 2.0. Ambos permissivos.
+**Licença checada (não bloqueia):** modelo base (`kyutai/pocket-tts`) é CC-BY-4.0 — permite redistribuir/derivar com atribuição, tem cláusula de uso proibido (nada ilegal/enganoso/impersonação sem consentimento — relevante pro voice cloning, vira nota de política de uso aceitável do plugin, não bloqueio legal). Export ONNX (`KevinAHM/pocket-tts-onnx`) também é CC-BY-4.0. Ambos permissivos.
+
+**Correção (2026-08-11, durante execução do plano):** a frase acima antes dizia que o export ONNX era "dual: modelos CC-BY-4.0, código de conversão Apache 2.0" — **errado**, verificado contra a fonte. `KevinAHM/pocket-tts-onnx` declara `cc-by-4.0` no card e o `LICENSE` que distribui é o texto Attribution 4.0. O Apache 2.0 é do código do *demo Space* (`CODE-LICENSE`), que não é o repo do modelo e não é espelhado.
+
+**Achado mais grave no mesmo caminho:** o demo Space distribui `onnx/ONNX-LICENSE` cujo conteúdo é Attribution-**NonCommercial** 4.0 — contradiz o próprio frontmatter dele (`license: cc-by-4.0`), o `kyutai/pocket-tts` e o `KevinAHM/pocket-tts-onnx`, os três declarando CC-BY-4.0 puro. Esse arquivo chegou a ser republicado no nosso mirror por engano; foi removido e substituído pelo texto Attribution 4.0 que as fontes reais declaram. Importa muito: NC proibiria uso comercial, o que inviabilizaria o plugin na maioria dos sites que o instalariam. Se algum dia o upstream esclarecer que NC é a licença correta de fato, essa decisão inteira ("Engine TTS: Pocket TTS") precisa ser reaberta.
 
 **Por que mirror em vez de só pin por commit:** pin protege contra o arquivo *mudar de conteúdo*, não protege contra a conta/repo inteiro sumir (conta pessoal de terceiro, sem garantia de permanência). Mirror sob controle próprio remove esse risco. É inclusive primeiro passo barato pro caminho já combinado ("Hosting do modelo: HF agora, trocável por auto-hospedado depois").
 
@@ -170,10 +179,10 @@ Lista final (ver também "Qualidade e testes"): fluxo feliz completo · fallback
 
 **Dentro:**
 - Painel no editor Gutenberg (aba "Narração") — visível durante edição do post.
-- Autor escolhe idioma, gera áudio (Pocket TTS, 100% client-side).
+- Autor escolhe idioma e voz, gera áudio (Pocket TTS, 100% client-side).
 - Autor ouve preview antes de persistir.
 - Áudio confirmado é salvo como asset de mídia do post (Media Library).
-- Player no frontend do post: play, pause, stop, seletor de velocidade.
+- Player no frontend do post: play, pause, scrubber, seletor de velocidade (ver emenda "Sem botão Stop").
 - Player sticky (acompanha scroll) e mobile-first.
 - Fundação de qualidade: lint, testes automatizados, CI, i18n (nasce junto, não é add-on depois).
 
@@ -222,6 +231,7 @@ Não cria pasta vazia `features/segment-language/` ou similar agora — enfeite 
 
 Só orquestra — nunca roda TTS no servidor. Recebe o blob de áudio já gerado no browser via REST, salva como attachment (`wp_insert_attachment`), grava meta:
 - `_narration_language` — idioma do áudio gerado
+- `_narration_voice` — voz pré-definida usada na geração (ver "Seletor de voz")
 - `_narration_source_hash` — hash do texto do post no momento da geração (detecta desatualização)
 - `_narration_attachment_id` — liga o post ao asset de mídia
 
@@ -231,7 +241,7 @@ Toda ação passa por checagem de capability (`edit_post` **e** `upload_files`, 
 
 Layout: **card de status no topo + controles de ação abaixo**, não "tudo visível de uma vez" nem "wizard passo a passo" — escolhido por ser composicional: cada fase futura empilha um card novo abaixo sem redesenhar o que já existe (validado com a ilustração da Fase 2 nos mockups).
 
-- **Sem áudio:** card de status ("Nenhum áudio gerado ainda") + seletor de idioma + botão "Gerar áudio".
+- **Sem áudio:** card de status ("Nenhum áudio gerado ainda") + seletor de idioma + seletor de voz + botão "Gerar áudio".
 - **Com áudio existente:** card de status mostra data de geração + badge "Atualizado"/"Pode estar desatualizado" (se o hash do texto mudou) + player inline (play/scrubber/tempo) + botão "Gerar novamente".
 - **Gerando:** card de status vira progresso (texto + barra + ETA) + botão "Cancelar".
 
@@ -239,6 +249,45 @@ Mockups aprovados (fonte + screenshot, não só descrição):
 - [`assets/2026-08-08-narration-panel-layout-options.html`](assets/2026-08-08-narration-panel-layout-options.html) — comparação das 3 direções de layout (A/B/C).
 - [`assets/2026-08-08-narration-panel-option-c-states.html`](assets/2026-08-08-narration-panel-option-c-states.html) — opção C nos estados áudio-existente / desatualizado / gerando + ilustração de compatibilidade com Fase 2.
 - [`assets/2026-08-08-narration-panel-option-c.png`](assets/2026-08-08-narration-panel-option-c.png) — screenshot renderizado.
+
+### Seletor de voz (emenda de 2026-08-13)
+
+Lacuna do spec original, não decisão: escolha de voz não aparecia nem no escopo nem na lista "Fora (fases 2/3)" — o painel aprovado só tinha idioma, e a Fase 1 acabou fixando a voz padrão do bundle (`alba`) sem o autor saber que havia outras. Os 5 bundles espelhados trazem as **mesmas 8 vozes** (`alba, azelma, cosette, eponine, fantine, javert, jean, marius`), já dentro do `voices.bin` que vem no download de ~190MB — trocar de voz não baixa nada novo, e trocar de idioma não invalida a voz escolhida.
+
+**Formato aprovado: `SelectControl` "Voz" + botão redondo de amostra ao lado** (variante B1 dos mockups). Comparado com só o dropdown (avaliar uma voz custaria uma geração completa do post) e com uma lista das 8 vozes com play por linha (melhor pra comparar, mas ~170px de altura e componente custom sem equivalente em `@wordpress/components`).
+
+- [`assets/2026-08-13-voice-selector-options.html`](assets/2026-08-13-voice-selector-options.html) — as 3 variantes, interativo.
+- [`assets/2026-08-13-voice-selector-options.png`](assets/2026-08-13-voice-selector-options.png) — screenshot renderizado.
+
+**Frase de amostra: fixa, uma por bundle, fora do gettext.** Gettext segue o locale do admin; a amostra alimenta um modelo de fala cujo idioma é o bundle escolhido. Traduzir via `__()` faria um admin em português ouvir a voz inglesa lendo português. Mapa fixo por idioma, todas as frases abaixo de 60 caracteres (~4s de fala) pra manter a amostra rápida.
+
+**Texto de amostra editável pelo autor: rejeitado nesta fase.** 150 caracteres são ~12s de fala — ~36s de espera num device no limiar de "lento" (RTF 3), o que quebra a única promessa que o botão faz. E o que o texto livre revelaria de verdade é pronúncia de termos específicos, que é o dicionário da Fase 2; timbre não muda com a frase. Para "como fica o meu texto nessa voz" o caminho é o preview real, que já é descartável.
+
+**Guarda espelhada no server**, mesma lógica do idioma: `ALLOWED_VOICES` no REST, 400 `post_voice_invalid_voice`. Controle desabilitado no painel é UX, não garantia — o endpoint é alcançável direto e o valor acaba em post meta que o frontend confia.
+
+### Remover a narração pelo editor (emenda de 2026-08-13)
+
+Segunda lacuna do spec original, achada em teste manual: **não existe como remover uma narração salva sem sair do editor.** Com áudio existente, o painel oferece ouvir ou gerar outro — nunca voltar a "sem áudio". Não foi decisão: uma varredura do documento por remover/excluir/apagar/deletar não acha nenhuma menção a essa ação no painel, e a lista "Fora (fases 2/3)" também não a exclui. Todos os caminhos de remoção previstos são efeito colateral de outra coisa: gerar de novo (que continua deixando áudio), deletar o post, ou deletar o attachment na Media Library.
+
+**Decisão: entra na Fase 1.** Três motivos, todos internos ao próprio spec:
+
+1. O estado já é prometido e não tem porta. A tabela de "Tratamento de erro" diz que, deletado o attachment pela Media Library, o "painel volta a mostrar 'sem áudio'". Esse estado existe, funciona e é testado — só não há como alcançá-lo de dentro do editor. O caminho atual exige sair do post, abrir a Media Library e identificar qual attachment é a narração.
+2. É o mesmo aprisionamento que já corrigimos uma vez. O preview só oferecia "Salvar narração", então quem não gostasse do resultado não tinha saída a não ser persistir; viramos isso com o botão Descartar. O estado salvo tem a forma idêntica.
+3. O encanamento inteiro já existe e é coberto por teste: `Post_Voice_Post_Meta::clear()`, o marker `_post_voice_narration` e os dois hooks simétricos. Falta a rota e o botão.
+
+**Servidor:** `DELETE /wp-json/post-voice/v1/posts/{post_id}/narration` — apaga o attachment e limpa as quatro metas. Duas regras herdadas do resto do endpoint: só remove attachment que carrega o marker (mídia que o autor anexou por conta nunca é tocada, mesma proteção da varredura de duplicados), e a capability não é só `edit_post` — apagar arquivo da Media Library é permissão própria, checada sobre o attachment.
+
+**Confirmação: obrigatória**, ao contrário do Descartar do preview. O item "Preview em memória" acima dispensa confirmação com o argumento de que "nada foi persistido ainda, não há perda real de dado" — o que argumenta pelo oposto aqui: o arquivo sai da Media Library e a narração desaparece do frontend para os leitores.
+
+Mockups (fonte + screenshot), com três posições para o botão e dois padrões de confirmação:
+- [`assets/2026-08-13-narration-removal-options.html`](assets/2026-08-13-narration-removal-options.html) — interativo.
+- [`assets/2026-08-13-narration-removal-options.png`](assets/2026-08-13-narration-removal-options.png) — screenshot renderizado.
+
+**Formato aprovado (13 ago 2026): variante C + confirmação 1** — botão de texto "Remover", alinhado à direita **dentro do card de status**, logo abaixo do player; ao ser clicado vira uma confirmação inline no próprio lugar, com o texto da consequência e os botões Remover/Cancelar.
+
+Por que C e não as outras duas: o botão pertence ao card que descreve o áudio que ele apaga (A fica no rodapé, longe do objeto, e empilha dois botões de largura cheia que competem entre si), e um rótulo em texto ganha de um ícone tanto em descoberta quanto em leitor de tela — B custaria zero de altura, mas dependeria de tooltip e poria uma lixeira colada num badge verde de status.
+
+Por que confirmação inline e não modal: `ConfirmDialog` traria foco preso e Esc de graça, mas escurece o editor inteiro para uma ação de um post só. A caixa inline cabe no painel, não sequestra a tela e tem espaço para dizer o que importa — que o arquivo sai da Media Library e o leitor perde o player. Contrapartida aceita: ela empurra o conteúdo abaixo enquanto está aberta.
 
 **Nota de compatibilidade entre fases:** customização visual do player (Fase 3) não mora nesse painel — é configuração de site/tema, não por post; vai pra uma tela de Configurações separada do plugin (ver seção abaixo). Highlight de palavra (Fase 3) não deve exigir card novo aqui — é automático uma vez que o áudio é gerado com timestamps.
 
@@ -299,6 +348,7 @@ Isso substitui a linha antiga "bloqueia se WASM não suportado" por um degradê 
 | Cenário | Comportamento |
 |---|---|
 | WASM realmente ausente (raro) | Aba mostra aviso, botão "Gerar" fica desabilitado (feature-detect antes de deixar tentar) |
+| Contexto não-seguro (site em HTTP puro) | `crypto.subtle` e AudioWorklet não existem fora de secure context — painel bloqueia a geração com "precisa de HTTPS (ou localhost)". Achado na revisão da Task 5: sem isso o hash de fonte lança e a detecção de desatualizado quebra. |
 | WASM ok, mas sem `crossOriginIsolated` (headers COOP/COEP ausentes) | Cai pra build single-thread do ONNX Runtime — mais lento, mas funciona. Não bloqueia. |
 | Storage insuficiente (`navigator.storage.estimate()`) | Avisa *antes* de baixar o modelo, não depois de gastar banda |
 | Dispositivo lento (RTF medido na calibração ruim, ou ETA alto pra texto longo) | Aviso com tempo estimado + pede confirmação pra textos longos; nunca bloqueia — não existe fallback de servidor |
@@ -340,13 +390,14 @@ Feature é adjacente a acessibilidade (narração ajuda quem prefere/precisa ouv
   - `npm audit` completo (inclui dev — ESLint/Jest/Playwright/`@wordpress/scripts`/etc., nunca chega no site de ninguém) → threshold pragmático (crítica: 1, alta: 5, moderada: 10), mesmo padrão de scripts de auditoria já usados noutros projetos — ruído esperado, impacto real baixo.
   - `composer audit` → **0 crítica, 0 alta**. Arquitetura atual não tem dependência de runtime PHP nenhuma (REST/post-meta/capability são só WP core), gate fica pronto pra quando/se isso mudar.
   - Scripts Node tipo `audit-check.mjs` (roda `X audit --json`, conta por severidade, compara com threshold, falha CI só acima do limiar) — um por ecossistema.
+  - **Unidade de contagem: par (advisory, pacote vulnerável) — emenda de 2026-08-13.** Não era explícito antes, e o script herdou a unidade do `npm audit`, que conta *nós da árvore*: um advisory sem correção no `extract-zip` aparecia como 7 "high", um por pacote que leva até ele (npm/cli#4272 documenta o mesmo defeito, e ele erra nos dois sentidos — 3 advisories no mesmo pacote colapsam em 1). É a unidade que o resto do mercado usa: a Snyk separa "issues" (o pacote ofensor) de "vulnerable paths" (as cadeias que chegam nele) e usa o primeiro como número de manchete, o Dependabot emite um alerta por advisory por manifest, e o Trivy trata contar a mesma CVE duas vezes pro mesmo pacote como bug. Os thresholds (crítica 1, alta 5, moderada 10 no dev) continuam os mesmos e passam a significar "problemas distintos", não "nós afetados". O `audit-check-composer.mjs` já contava assim por construção — o JSON do `composer audit` vem indexado por pacote com a lista de advisories.
   - **Limite reconhecido:** audit pega CVE já catalogado, não pega supply-chain zero-day (pacote comprometido antes de virar advisory). Mitigação barata: CI sempre `npm ci`/`composer install --no-dev`, nunca `install` solto — só instala o que já tá no lockfile commitado e revisado, não resolve dependência nova sem passar por PR.
 
 ## Critérios de aceite (Fase 1 "pronta")
 
 - Autor consegue gerar, ouvir preview e salvar narração de um post, num idioma suportado, sem sair do editor.
 - Áudio salvo aparece na Media Library e reproduz corretamente no frontend do post; regenerar substitui o áudio anterior sem deixar attachment órfão.
-- Player no frontend: play/pause/stop/velocidade funcionam, fica fixo ao rolar, tem botão de fechar/minimizar, é utilizável em viewport mobile e operável 100% por teclado.
+- Player no frontend: play/pause/scrubber/velocidade funcionam, fica fixo ao rolar, tem botão de fechar/minimizar, é utilizável em viewport mobile e operável 100% por teclado.
 - Autor recebe ETA antes de disparar geração de texto longo, e consegue cancelar uma geração em andamento a qualquer momento.
 - Editor sem `crossOriginIsolated` ainda gera áudio (single-thread), só mais devagar — nunca bloqueia por causa disso.
 - Editor de post sem áudio gerado não sofre nenhuma degradação de performance (modelo só carrega sob demanda).

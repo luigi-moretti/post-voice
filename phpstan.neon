@@ -1,0 +1,21 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+parameters:
+    level: 6
+    paths:
+        - features
+    # The plugin's constants are defined in the bootstrap, which is not itself
+    # analysed (it is not under `features/`). Scanning it lets PHPStan resolve
+    # POST_VOICE_PATH/URL/VERSION without analysing WordPress's own load order.
+    scanFiles:
+        - post-voice.php
+    bootstrapFiles:
+        - tests/phpstan-bootstrap.php
+    excludePaths:
+        - build
+        # WP_UnitTestCase lives in the WordPress test suite, which is downloaded
+        # at test time and never present as a Composer package — PHPStan sees an
+        # unknown parent class and reports every assertion in every test file as
+        # an undefined method. The PHP tests are verified by actually running
+        # them (`composer run test`), not by static analysis.
+        - features/*/tests/php/*

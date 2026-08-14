@@ -1,0 +1,463 @@
+<h2>Seletor de voz no painel "Narração" — Mínimo vs. Melhor</h2>
+<p class="subtitle">
+  Pocket TTS traz 8 vozes pré-definidas, idênticas nos 5 idiomas: <b>alba, azelma, cosette, eponine, fantine, javert, jean, marius</b>.
+  Já vêm no <code>voices.bin</code> do bundle que o autor baixa hoje — trocar de voz não baixa nada novo.
+  A dúvida não é "ter dropdown", é <b>como o autor descobre como cada voz soa</b>.
+  Os botões abaixo funcionam: clique nos play das amostras e nos "Gerar".
+</p>
+
+<p class="subtitle" style="border-left: 3px solid #007017; background: #edfaef; padding: 10px 14px; border-radius: 0 4px 4px 0;">
+  <b>Decidido (13 ago 2026): variante B1.</b> Meio-termo entre usabilidade e um painel compacto.
+  Descartado no mesmo passo: deixar o texto de amostra editável (textarea) — 150 caracteres são ~12s de fala,
+  o que vira ~36s de espera num device lento e quebra a promessa de "amostra rápida"; e o que o texto livre
+  revelaria de fato é <i>pronúncia</i>, que é o dicionário da Fase 2, não timbre.
+  A frase de amostra é fixa <b>por bundle</b> (uma por idioma), fora do gettext — ver a nota no fim da página.
+</p>
+
+<style>
+  /* Standalone: os mockups anteriores eram fragmentos dentro de um wrapper.
+     Este abre direto no browser, então traz o mínimo de estilo de página. */
+  body { margin: 0; padding: 2rem 1.5rem 4rem; background: #f0f0f1; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #1e1e1e; }
+  h2 { max-width: 62rem; margin: 0 auto .5rem; font-size: 20px; }
+  p.subtitle { max-width: 62rem; margin: 0 auto 1.5rem; font-size: 13px; line-height: 1.6; color: #555; }
+
+  .vs-wrap { max-width: 68rem; margin: 0 auto; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #1e1e1e; }
+  .vs-wrap * { box-sizing: border-box; }
+
+  .vs-row { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; justify-content: center; }
+  .vs-col-title { text-align: center; font-size: 12px; font-weight: 600; color: #757575; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .vs-opt-title { font-size: 15px; font-weight: 700; margin: 2rem 0 .25rem; }
+  .vs-opt-sub { font-size: 12.5px; color: #757575; margin-bottom: 1rem; line-height: 1.5; max-width: 62rem; }
+
+  /* --- painel WP (mesmas medidas/cores do painel real: features/narration/editor/style.scss) --- */
+  .wp-mock { width: 280px; border: 1px solid #ddd; border-radius: 4px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .wp-mock-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #ddd; }
+  .wp-mock-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .wp-mock-icon { width: 16px; height: 16px; border-radius: 3px; background: #3858e9; display: inline-block; }
+  .wp-mock-close { color: #757575; font-size: 16px; }
+  .wp-mock-body { padding: 14px 12px; font-size: 12.5px; display: flex; flex-direction: column; gap: 12px; }
+
+  .wp-card { display: flex; flex-direction: column; gap: 10px; padding: 10px; border: 1px solid #e0e0e0; border-radius: 4px; }
+  .wp-card-heading { font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: #757575; }
+  .wp-meta { font-size: 11.5px; color: #757575; }
+  .wp-status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .wp-badge { font-size: 10.5px; padding: 2px 6px; border-radius: 2px; font-weight: 600; }
+  .wp-badge.ok { background: #edfaef; color: #007017; }
+
+  .wp-field-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #757575; margin-bottom: 4px; font-weight: 600; }
+  .wp-select { width: 100%; padding: 6px 8px; border: 1px solid #949494; border-radius: 2px; background: #fff; font-size: 13px; font-family: inherit; color: #1e1e1e; }
+  .wp-field + .wp-field { margin-top: 10px; }
+
+  .wp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 7px 10px; border-radius: 2px; font-size: 13px; font-family: inherit; font-weight: 500; cursor: pointer; border: 1px solid transparent; }
+  .wp-btn.primary { background: #3858e9; color: #fff; }
+  .wp-btn.secondary { background: #fff; color: #3858e9; border-color: #3858e9; }
+  .wp-btn.tertiary { background: transparent; color: #3858e9; }
+  .wp-actions { display: flex; gap: 8px; }
+  .wp-actions .wp-btn { width: auto; flex: 1 1 auto; }
+
+  .wp-hint { font-size: 11.5px; color: #757575; line-height: 1.45; }
+
+  /* mini player do preview */
+  .wp-player { display: flex; align-items: center; gap: 8px; }
+  .wp-player-btn { width: 32px; height: 32px; border-radius: 50%; background: #3858e9; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; border: none; cursor: pointer; }
+  .wp-player-bar { flex: 1; height: 4px; background: #e0e0e0; border-radius: 999px; position: relative; }
+  .wp-player-bar > i { position: absolute; left: 0; top: 0; height: 100%; width: 35%; background: #3858e9; border-radius: 999px; }
+  .wp-player-time { font-size: 11px; color: #757575; font-variant-numeric: tabular-nums; }
+
+  /* barra de progresso (gerando) */
+  .wp-progress { height: 4px; background: #e0e0e0; border-radius: 999px; overflow: hidden; }
+  .wp-progress > i { display: block; height: 100%; width: 62%; background: #3858e9; border-radius: 999px; }
+
+  /* --- amostra: variante B1 (botão ao lado do select) --- */
+  .wp-voice-row { display: flex; align-items: flex-end; gap: 6px; }
+  .wp-voice-row .wp-select { flex: 1 1 auto; }
+  .sample-btn { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; border: 1px solid #3858e9; background: #fff; color: #3858e9; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .sample-btn.playing { background: #3858e9; color: #fff; }
+  .sample-btn.loading { border-color: #949494; color: #949494; }
+
+  /* --- amostra: variante B2 (lista de vozes) --- */
+  .voice-list { border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden; }
+  .voice-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 12.5px; }
+  .voice-item:last-child { border-bottom: none; }
+  .voice-item:hover { background: #f6f7f7; }
+  .voice-item.selected { background: #f0f4ff; font-weight: 600; }
+  .voice-item .radio { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #949494; flex-shrink: 0; position: relative; }
+  .voice-item.selected .radio { border-color: #3858e9; }
+  .voice-item.selected .radio::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: #3858e9; }
+  .voice-item .name { flex: 1 1 auto; }
+  .voice-item .sample-btn { width: 24px; height: 24px; font-size: 9px; }
+  .voice-scroll { max-height: 168px; overflow-y: auto; }
+
+  .vs-note { max-width: 62rem; margin: 1.25rem auto 0; font-size: 12.5px; line-height: 1.55; color: #444; background: #f6f7f7; border-left: 3px solid #3858e9; padding: 10px 14px; border-radius: 0 4px 4px 0; }
+  .vs-note b { color: #1e1e1e; }
+
+  table.vs-table { border-collapse: collapse; width: 100%; max-width: 62rem; margin: 1.5rem auto 0; font-size: 12.5px; }
+  table.vs-table th, table.vs-table td { border: 1px solid #e0e0e0; padding: 8px 10px; text-align: left; vertical-align: top; }
+  table.vs-table th { background: #f6f7f7; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #757575; }
+  table.vs-table td b { color: #1e1e1e; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 2px; font-size: 11.5px; }
+</style>
+
+<div class="vs-wrap">
+
+  <!-- ============================= MÍNIMO ============================= -->
+  <div class="vs-opt-title">Opção 1 — Mínimo: só o dropdown</div>
+  <p class="vs-opt-sub">
+    "Voz" vira um <code>SelectControl</code> logo abaixo de "Idioma", igual em tudo ao que já existe. Nenhuma amostra:
+    o autor descobre a voz gerando e ouvindo o preview — que já pode ser descartado sem salvar.
+    Custo de implementação: mesmo caminho de <code>language</code> (painel → REST → meta).
+  </p>
+
+  <div class="vs-row">
+    <div>
+      <div class="vs-col-title">Sem áudio ainda</div>
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-card">
+            <div class="wp-card-heading">Status</div>
+            <div class="wp-meta">Nenhum áudio gerado ainda.</div>
+          </div>
+          <div>
+            <div class="wp-field">
+              <div class="wp-field-label">Idioma</div>
+              <select class="wp-select">
+                <option>Português</option><option>Inglês</option><option>Espanhol</option><option>Alemão</option><option>Italiano</option>
+              </select>
+            </div>
+            <div class="wp-field">
+              <div class="wp-field-label">Voz</div>
+              <select class="wp-select">
+                <option>alba</option><option>azelma</option><option>cosette</option><option>eponine</option>
+                <option>fantine</option><option>javert</option><option>jean</option><option>marius</option>
+              </select>
+            </div>
+          </div>
+          <button class="wp-btn primary" data-demo="generate">Gerar áudio</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="vs-col-title">Depois de gerar — ouvindo o resultado</div>
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-card">
+            <div class="wp-card-heading">Pré-visualização</div>
+            <div class="wp-player">
+              <button class="wp-player-btn" data-demo="play">▶</button>
+              <div class="wp-player-bar"><i></i></div>
+              <span class="wp-player-time">1:42</span>
+            </div>
+            <div class="wp-meta">Voz: alba · Português</div>
+          </div>
+          <div class="wp-actions">
+            <button class="wp-btn primary">Salvar narração</button>
+            <button class="wp-btn tertiary">Descartar</button>
+          </div>
+          <button class="wp-btn secondary">Gerar novamente</button>
+          <div class="wp-hint">Não gostou da voz? Troque no seletor e gere de novo — nada foi salvo ainda.</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="vs-col-title">Trocando de voz = gerar o post inteiro de novo</div>
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-card">
+            <div class="wp-card-heading">Gerando</div>
+            <div class="wp-meta">Sintetizando áudio…</div>
+            <div class="wp-progress"><i></i></div>
+            <div class="wp-meta">~38s restantes</div>
+          </div>
+          <button class="wp-btn tertiary">Cancelar</button>
+          <div class="wp-hint">
+            Este é o preço do Mínimo: cada voz avaliada custa uma geração completa do post
+            (dezenas de segundos num post médio, minutos num post longo).
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="vs-note">
+    <b>Onde dói:</b> os nomes não dizem nada sobre timbre. Para comparar <i>alba</i> com <i>eponine</i> o autor gera o post inteiro duas vezes.
+    Em compensação: zero UI nova, zero estado novo, e o fluxo de descarte do preview já existe e já foi testado.
+  </div>
+
+  <!-- ============================= MELHOR — B1 ============================= -->
+  <div class="vs-opt-title">Opção 2 — Melhor / variante B1: select + botão de amostra</div>
+  <p class="vs-opt-sub">
+    Mesmo dropdown, mais um botão redondo ao lado que toca uma frase curta fixa na voz selecionada
+    (~2s de áudio, gerado na hora). Ocupa uma linha, cabe na largura do sidebar.
+    Para comparar duas vozes, o autor troca no select e clica de novo.
+  </p>
+
+  <div class="vs-row">
+    <div>
+      <div class="vs-col-title">Modelo ainda não baixado</div>
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-card">
+            <div class="wp-card-heading">Status</div>
+            <div class="wp-meta">Nenhum áudio gerado ainda.</div>
+          </div>
+          <div>
+            <div class="wp-field">
+              <div class="wp-field-label">Idioma</div>
+              <select class="wp-select"><option>Português</option><option>Inglês</option></select>
+            </div>
+            <div class="wp-field">
+              <div class="wp-field-label">Voz</div>
+              <div class="wp-voice-row">
+                <select class="wp-select"><option>alba</option><option>azelma</option><option>cosette</option></select>
+                <button class="sample-btn loading" title="Ouvir amostra">▶</button>
+              </div>
+            </div>
+          </div>
+          <div class="wp-hint">
+            A primeira amostra baixa o modelo de voz (~190&nbsp;MB). Depois disso, cada amostra sai em ~2s.
+          </div>
+          <button class="wp-btn primary">Gerar áudio</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="vs-col-title">Modelo carregado — amostra tocando</div>
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-card">
+            <div class="wp-card-heading">Status</div>
+            <div class="wp-meta">Nenhum áudio gerado ainda.</div>
+          </div>
+          <div>
+            <div class="wp-field">
+              <div class="wp-field-label">Idioma</div>
+              <select class="wp-select"><option>Português</option><option>Inglês</option></select>
+            </div>
+            <div class="wp-field">
+              <div class="wp-field-label">Voz</div>
+              <div class="wp-voice-row">
+                <select class="wp-select" data-sample-select>
+                  <option>alba</option><option>azelma</option><option>cosette</option><option>eponine</option>
+                  <option>fantine</option><option>javert</option><option>jean</option><option>marius</option>
+                </select>
+                <button class="sample-btn" data-sample title="Ouvir amostra">▶</button>
+              </div>
+            </div>
+          </div>
+          <div class="wp-hint" data-sample-hint>Amostra: "Esta é a voz que vai narrar o seu post."</div>
+          <button class="wp-btn primary">Gerar áudio</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= MELHOR — B2 ============================= -->
+  <div class="vs-opt-title">Opção 2 — Melhor / variante B2: lista de vozes com play em cada linha</div>
+  <p class="vs-opt-sub">
+    Em vez de dropdown, as 8 vozes ficam listadas (com scroll). Cada linha tem seu próprio play,
+    e ouvir <b>não</b> é a mesma ação que escolher — dá pra varrer as 8 sem perder a seleção atual.
+    Custo: ocupa bem mais altura no sidebar e destoa dos outros campos, que são <code>SelectControl</code>.
+  </p>
+
+  <div class="vs-row">
+    <div>
+      <div class="vs-col-title">Lista aberta, comparando vozes</div>
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-card">
+            <div class="wp-card-heading">Status</div>
+            <div class="wp-meta">Nenhum áudio gerado ainda.</div>
+          </div>
+          <div class="wp-field">
+            <div class="wp-field-label">Idioma</div>
+            <select class="wp-select"><option>Português</option><option>Inglês</option></select>
+          </div>
+          <div>
+            <div class="wp-field-label">Voz</div>
+            <div class="voice-list">
+              <div class="voice-scroll" data-voice-list>
+                <div class="voice-item selected"><span class="radio"></span><span class="name">alba</span><button class="sample-btn" data-sample>▶</button></div>
+                <div class="voice-item"><span class="radio"></span><span class="name">azelma</span><button class="sample-btn" data-sample>▶</button></div>
+                <div class="voice-item"><span class="radio"></span><span class="name">cosette</span><button class="sample-btn" data-sample>▶</button></div>
+                <div class="voice-item"><span class="radio"></span><span class="name">eponine</span><button class="sample-btn" data-sample>▶</button></div>
+                <div class="voice-item"><span class="radio"></span><span class="name">fantine</span><button class="sample-btn" data-sample>▶</button></div>
+                <div class="voice-item"><span class="radio"></span><span class="name">javert</span><button class="sample-btn" data-sample>▶</button></div>
+                <div class="voice-item"><span class="radio"></span><span class="name">jean</span><button class="sample-btn" data-sample>▶</button></div>
+                <div class="voice-item"><span class="radio"></span><span class="name">marius</span><button class="sample-btn" data-sample>▶</button></div>
+              </div>
+            </div>
+          </div>
+          <button class="wp-btn primary">Gerar áudio</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="vs-col-title">Com áudio já salvo — lista recolhida</div>
+      <div class="wp-mock">
+        <div class="wp-mock-header">
+          <div class="wp-mock-title"><span class="wp-mock-icon"></span>Narração</div>
+          <span class="wp-mock-close">✕</span>
+        </div>
+        <div class="wp-mock-body">
+          <div class="wp-card">
+            <div class="wp-card-heading">Status</div>
+            <div class="wp-status-row">
+              <span class="wp-meta">Gerado em 13 ago, 14:32</span>
+              <span class="wp-badge ok">Atualizado</span>
+            </div>
+            <div class="wp-player">
+              <button class="wp-player-btn" data-demo="play">▶</button>
+              <div class="wp-player-bar"><i></i></div>
+              <span class="wp-player-time">1:42</span>
+            </div>
+            <div class="wp-meta">Voz: alba · Português</div>
+          </div>
+          <div class="wp-field">
+            <div class="wp-field-label">Voz</div>
+            <button class="wp-btn secondary" data-demo="expand">alba — trocar voz ▾</button>
+          </div>
+          <button class="wp-btn secondary">Gerar novamente</button>
+          <div class="wp-hint">
+            A lista inteira só aparece quando o autor pede. Sem isso, o campo mais comprido do painel
+            fica ocupando espaço num estado em que ninguém vai mexer nele.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <table class="vs-table">
+    <tr>
+      <th style="width: 16%">&nbsp;</th>
+      <th style="width: 28%">Mínimo (só dropdown)</th>
+      <th style="width: 28%">Melhor B1 (select + amostra)</th>
+      <th style="width: 28%">Melhor B2 (lista com play)</th>
+    </tr>
+    <tr>
+      <td><b>Custo de avaliar 1 voz</b></td>
+      <td>1 geração do post inteiro (dezenas de s a minutos)</td>
+      <td>~2s por amostra</td>
+      <td>~2s por amostra</td>
+    </tr>
+    <tr>
+      <td><b>Comparar as 8</b></td>
+      <td>Inviável na prática</td>
+      <td>8 trocas de select + 8 cliques</td>
+      <td>8 cliques, sem perder a seleção</td>
+    </tr>
+    <tr>
+      <td><b>Altura no sidebar</b></td>
+      <td>+1 campo</td>
+      <td>+1 campo</td>
+      <td>+1 campo e ~170px de lista</td>
+    </tr>
+    <tr>
+      <td><b>Estado novo no painel</b></td>
+      <td>Nenhum</td>
+      <td><code>sampling</code> + cache de amostras + carga do modelo fora do fluxo de "Gerar"</td>
+      <td>Igual B1, mais "qual linha está tocando"</td>
+    </tr>
+    <tr>
+      <td><b>Primeiro clique</b></td>
+      <td>Baixa o modelo dentro do fluxo já conhecido de "Gerar"</td>
+      <td colspan="2">Baixa ~190MB a partir de um botão que promete "amostra rápida" — precisa avisar antes</td>
+    </tr>
+    <tr>
+      <td><b>Componentes</b></td>
+      <td><code>SelectControl</code>, igual a Idioma</td>
+      <td><code>SelectControl</code> + <code>Button</code></td>
+      <td>Lista custom — nada equivalente em <code>@wordpress/components</code></td>
+    </tr>
+  </table>
+
+  <div class="vs-note" style="margin-top: 1.5rem;">
+    <b>O ponto que decide:</b> em todas as variantes, ouvir amostra exige o modelo carregado — o mesmo download de ~190&nbsp;MB
+    que hoje só acontece quando o autor clica em "Gerar áudio". A amostra é barata <i>depois</i> do modelo; o primeiro clique nunca é.
+    Por isso B1/B2 precisam de um aviso explícito antes do primeiro download, e o Mínimo não precisa de nada — ele nunca promete rapidez.
+  </div>
+
+  <div class="vs-note" style="border-left-color: #8a5700; background: #fcf4e6;">
+    <b>A frase de amostra não passa por <code>__()</code>.</b> Gettext segue o locale do <i>admin</i>, mas esse texto alimenta um
+    <i>modelo de fala</i> cujo idioma é o bundle escolhido. Admin em português gerando narração em inglês ouviria a voz inglesa
+    lendo português — mal pronunciado e inútil como amostra. A chave certa é o bundle, então é um mapa fixo
+    (<code>SAMPLE_TEXTS</code> em <code>voice-catalog.ts</code>), uma frase por idioma, todas abaixo de 60 caracteres
+    pra manter a amostra em ~4s de fala.<br><br>
+    O mesmo mapa conserta um bug que já existia: a calibração de RTF sintetizava uma frase em português <b>em qualquer idioma</b>.
+    Passava despercebido porque esse áudio era descartado — e ficaria audível na hora em que virasse amostra.
+    Agora a calibração fala a frase do bundle certo, e o áudio dela é reaproveitado como a primeira amostra em vez de jogado fora.
+  </div>
+</div>
+
+<script>
+  // Amostras e players são fingidos: viram ⏸ por ~1.6s e voltam, só pra dar a sensação do fluxo.
+  function fakePlay( btn, ms ) {
+    if ( btn.dataset.busy ) { return; }
+    btn.dataset.busy = '1';
+    const original = btn.textContent;
+    btn.textContent = '⏸';
+    btn.classList.add( 'playing' );
+    setTimeout( () => {
+      btn.textContent = original;
+      btn.classList.remove( 'playing' );
+      delete btn.dataset.busy;
+    }, ms );
+  }
+
+  document.querySelectorAll( '[data-sample]' ).forEach( ( btn ) => {
+    btn.addEventListener( 'click', ( event ) => {
+      event.stopPropagation();
+      fakePlay( btn, 1600 );
+    } );
+  } );
+
+  document.querySelectorAll( '[data-demo="play"]' ).forEach( ( btn ) => {
+    btn.addEventListener( 'click', () => fakePlay( btn, 2400 ) );
+  } );
+
+  // B2: clicar na linha seleciona; clicar no play não muda a seleção (é o ponto da variante).
+  document.querySelectorAll( '[data-voice-list] .voice-item' ).forEach( ( item ) => {
+    item.addEventListener( 'click', () => {
+      item.parentElement
+        .querySelectorAll( '.voice-item' )
+        .forEach( ( other ) => other.classList.remove( 'selected' ) );
+      item.classList.add( 'selected' );
+    } );
+  } );
+
+  const sampleSelect = document.querySelector( '[data-sample-select]' );
+  const sampleHint = document.querySelector( '[data-sample-hint]' );
+  if ( sampleSelect && sampleHint ) {
+    sampleSelect.addEventListener( 'change', () => {
+      sampleHint.textContent =
+        'Amostra (' + sampleSelect.value + '): "Esta é a voz que vai narrar o seu post."';
+    } );
+  }
+</script>

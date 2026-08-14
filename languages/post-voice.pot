@@ -1,0 +1,249 @@
+# Copyright (C) 2026 
+# This file is distributed under the GPL-2.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: Post Voice 0.1.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/post-voice\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-08-14T02:28:09+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: post-voice\n"
+
+#. Plugin Name of the plugin
+#: post-voice.php
+msgid "Post Voice"
+msgstr ""
+
+#. Description of the plugin
+#: post-voice.php
+msgid "Gera narração em áudio de posts 100% no navegador (client-side TTS), com voice cloning via Pocket TTS."
+msgstr ""
+
+#: features/narration/php/class-frontend-render.php:53
+msgid "Post narration player"
+msgstr ""
+
+#: features/narration/php/class-frontend-render.php:64
+#: build/narration-editor.js:19
+msgid "Play narration"
+msgstr ""
+
+#: features/narration/php/class-frontend-render.php:65
+msgid "Playing"
+msgstr ""
+
+#: features/narration/php/class-frontend-render.php:66
+msgid "Paused"
+msgstr ""
+
+#: features/narration/php/class-frontend-render.php:76
+#: build/narration-editor.js:19
+msgid "Seek within narration"
+msgstr ""
+
+#: features/narration/php/class-frontend-render.php:77
+msgid "Playback speed"
+msgstr ""
+
+#: features/narration/php/class-frontend-render.php:78
+msgid "Close player"
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:80
+msgid "Your role does not have permission to add media. Ask an administrator."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:96
+msgid "Narration is only available for posts."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:104
+msgid "Save the post before generating narration."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:130
+msgid "Your role does not have permission to edit this post."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:139
+msgid "Your role does not have permission to delete this audio. Ask an administrator."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:167
+msgid "This post has no narration to remove."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:201
+msgid "No audio file was received."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:210
+msgid "Unsupported narration language."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:219
+msgid "Unsupported narration voice."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:228
+msgid "Malformed source hash."
+msgstr ""
+
+#. translators: %s: title of the post being narrated.
+#: features/narration/php/class-rest-api.php:293
+#, php-format
+msgid "Narration — %s"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Failed to save narration."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Failed to remove narration."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Pause narration"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "This browser cannot run WebAssembly, which narration needs. Try another browser, or ask an administrator whether a security policy is blocking it."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Narration needs a secure connection. Load the editor over HTTPS (or localhost) and try again."
+msgstr ""
+
+#. translators: %s: required free storage, e.g. "285 MB".
+#: build/narration-editor.js:19
+#, js-format
+msgid "Not enough free storage to download the voice model. About %s of free space is needed."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "No readable text found in this post."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "This device is slower than usual for narration — it may take a while."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Narration"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Save the post first to generate narration."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Preparing…"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Synthesising audio…"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Narration generation progress"
+msgstr ""
+
+#. translators: %d: seconds remaining until narration is ready.
+#: build/narration-editor.js:19
+#, js-format
+msgid "~%ds remaining"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Cancel"
+msgstr ""
+
+#. translators: %d: estimated generation time in seconds.
+#: build/narration-editor.js:19
+#, js-format
+msgid "This text is long — estimated time: %d seconds."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Generate anyway"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Preview"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Save narration"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Discard"
+msgstr ""
+
+#. translators: %s: date and time the narration was generated.
+#: build/narration-editor.js:19
+#, js-format
+msgid "Generated on %s"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "⚠ May be out of date"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Up to date"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Remove"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Remove narration?"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Remove this narration? The audio file leaves the Media Library and the player disappears from the site."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "No audio generated yet."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Language"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Voice"
+msgstr ""
+
+#. translators: %s: voice name, e.g. "alba".
+#: build/narration-editor.js:19
+#, js-format
+msgid "Hear a sample of %s"
+msgstr ""
+
+#. translators: %s: model download size, e.g. "190 MB".
+#: build/narration-editor.js:19
+#, js-format
+msgid "The first sample downloads the voice model (about %s). After that, samples play in a couple of seconds."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Generate again"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Generate audio"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "The post text changed since the last generation."
+msgstr ""

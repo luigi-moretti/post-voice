@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ master ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run lint:js
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.2', tools: composer }
+      - run: composer install
+      - run: composer run lint
+      - run: composer run stan
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run test:unit -- --coverage
+
+      # pcov, not the default "none": PHPUnit 9 silently produces an empty
+      # Clover report without a coverage driver, and the threshold check below
+      # would then pass on 0 measured statements.
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.2', tools: composer, coverage: pcov }
+      - run: composer install
+
+      # The WordPress test suite needs a real WordPress checkout and a real
+      # MySQL. wp-env provisions both, and unpacks core onto the runner's own
+      # filesystem, so PHPUnit runs directly on the runner against them — the
+      # same path scripts/run-php-tests.sh takes locally.
+      - run: npx wp-env start
+      - run: npm run test:php -- --coverage-clover=coverage/clover.xml
+      - run: php scripts/check-coverage-threshold.php coverage/clover.xml 85
+      - if: always()
+        run: npx wp-env stop
+
+  # Its own job rather than a step on `lint`: this one needs wp-env (WP-CLI does
+  # the extraction) and a development build, and a stale .pot should read as a
+  # translation problem, not as a lint failure.
+  i18n:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npx wp-env start
+      - run: npm run i18n:check
+      - if: always()
+        run: npx wp-env stop
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run build
+      - run: npx wp-env start
+      # The headless shell is named explicitly: the wp-scripts base Playwright
+      # config asks for it, and it has not always come along with `chromium`.
+      - run: npx playwright install --with-deps chromium chromium-headless-shell
+      - run: npm run test:e2e
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+      - if: always()
+        run: npx wp-env stop
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run audit:npm:production
+      - run: npm run audit:npm
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.2', tools: composer }
+      - run: composer install
+      - run: npm run audit:composer

@@ -1,0 +1,209 @@
+// Reader player — approved "Opção B: pílula flutuante" from the Fase 1 spec.
+//
+// A floating dark pill with a margin from the viewport edges, drawing its own
+// play button, progress bar and controls. It draws its own because the native
+// `<audio controls>` renders completely differently in each browser, which the
+// design explicitly rejects.
+//
+// Everything here styles the *enhanced* player. Without JavaScript the root
+// never gets `--enhanced`, the native control keeps its own appearance, and none
+// of the layout below applies — that is the no-JS fallback working as intended.
+
+$pv-surface: #1e1e1e;
+$pv-surface-hover: #333;
+$pv-accent: #2b62f0;
+$pv-track: #4a4a4a;
+$pv-text: #fff;
+
+.post-voice-player {
+	&[hidden] {
+		display: none;
+	}
+}
+
+.post-voice-player--enhanced {
+	// Fixed, not sticky: the approved design floats the pill above the article at
+	// the bottom of the viewport for the whole read, which sticky cannot do once
+	// the content it belongs to scrolls past. The close button exists precisely
+	// because fixed UI collides with sticky headers and cookie banners.
+	position: fixed;
+	right: 1rem;
+	bottom: 1rem;
+	left: 1rem;
+	z-index: 100;
+
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+
+	// Margin from the edges rather than full width — the distinguishing choice of
+	// Option B over the full-width bar of Option A.
+	max-width: 40rem;
+	margin: 0 auto;
+	padding: 0.625rem 0.875rem;
+
+	background: $pv-surface;
+	color: $pv-text;
+	border-radius: 999px;
+	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+
+	animation: post-voice-player-in 200ms ease-out;
+
+	// The element still plays the audio; it just stops drawing itself.
+	audio {
+		display: none;
+	}
+
+	button {
+		flex: 0 0 auto;
+		background: transparent;
+		color: inherit;
+		border: 1px solid transparent;
+		cursor: pointer;
+		font: inherit;
+		line-height: 1;
+
+		&:focus-visible {
+			outline: 2px solid $pv-text;
+			outline-offset: 2px;
+		}
+	}
+
+	[data-role='play'] {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.75rem; // 44px — minimum comfortable touch target
+		height: 2.75rem;
+		padding: 0;
+		font-size: 1rem;
+		background: $pv-accent;
+		border-radius: 50%;
+
+		&:hover {
+			filter: brightness(1.1);
+		}
+	}
+
+	[data-role='rate'] {
+		min-width: 2.75rem;
+		height: 2rem;
+		padding: 0 0.5rem;
+		font-size: 0.8125rem;
+		background: $pv-surface-hover;
+		border-radius: 999px;
+
+		&:hover {
+			filter: brightness(1.2);
+		}
+	}
+
+	[data-role='close'] {
+		width: 2.25rem;
+		height: 2.25rem;
+		padding: 0;
+		font-size: 0.875rem;
+		border-radius: 50%;
+		opacity: 0.75;
+
+		&:hover {
+			opacity: 1;
+			background: $pv-surface-hover;
+		}
+	}
+
+}
+
+// Progress bar. A range input keeps arrow-key seeking, Home/End and screen
+// reader announcements for free, so only its appearance is replaced.
+.post-voice-player--enhanced [data-role='seek'] {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 1.5rem;
+	margin: 0;
+	padding: 0;
+	background: transparent;
+	appearance: none;
+	cursor: pointer;
+
+	&:focus-visible {
+		outline: 2px solid $pv-text;
+		outline-offset: 2px;
+		border-radius: 999px;
+	}
+
+	&::-webkit-slider-runnable-track {
+		height: 0.25rem;
+		background: $pv-track;
+		border-radius: 999px;
+	}
+
+	&::-moz-range-track {
+		height: 0.25rem;
+		background: $pv-track;
+		border-radius: 999px;
+	}
+
+	&::-moz-range-progress {
+		height: 0.25rem;
+		background: $pv-accent;
+		border-radius: 999px;
+	}
+
+	&::-webkit-slider-thumb {
+		width: 0.875rem;
+		height: 0.875rem;
+		margin-top: -0.3125rem; // centre the thumb on a 4px track
+		background: $pv-accent;
+		border: none;
+		border-radius: 50%;
+		appearance: none;
+	}
+
+	&::-moz-range-thumb {
+		width: 0.875rem;
+		height: 0.875rem;
+		background: $pv-accent;
+		border: none;
+		border-radius: 50%;
+	}
+}
+
+// `.screen-reader-text` is a core WordPress class, but themes are not obliged to
+// define it — and the aria-live region relies on it staying visually hidden
+// while remaining in the accessibility tree.
+.post-voice-player .screen-reader-text {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+@keyframes post-voice-player-in {
+	from {
+		transform: translateY(100%);
+		opacity: 0;
+	}
+	to {
+		transform: none;
+		opacity: 1;
+	}
+}
+
+// Two belts for one pair of trousers, on purpose. The media query covers users
+// whose preference is set before the page loads; the class covers the E2E
+// scenario and any runtime change, since player.ts reads matchMedia directly.
+@media (prefers-reduced-motion: reduce) {
+	.post-voice-player--enhanced {
+		animation: none;
+	}
+}
+
+.post-voice-player--no-motion {
+	animation: none;
+}

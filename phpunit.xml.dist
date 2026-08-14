@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<phpunit bootstrap="tests/php/bootstrap.php" colors="true">
+    <testsuites>
+        <testsuite name="post-voice">
+            <!--
+                Explicit suffix: this project follows WordPress's `test-*.php`
+                file naming, not PHPUnit's default `*Test.php`, so without it
+                PHPUnit silently discovers nothing and reports success.
+            -->
+            <directory suffix=".php">features/narration/tests/php</directory>
+        </testsuite>
+    </testsuites>
+    <coverage>
+        <include>
+            <directory suffix=".php">features</directory>
+        </include>
+        <exclude>
+            <directory suffix=".php">features/narration/tests</directory>
+        </exclude>
+        <report>
+            <clover outputFile="coverage/clover.xml"/>
+        </report>
+    </coverage>
+</phpunit>

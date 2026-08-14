@@ -1,0 +1,66 @@
+{
+	"name": "post-voice",
+	"version": "0.1.0",
+	"private": true,
+	"license": "GPL-2.0-or-later",
+	"scripts": {
+		"build": "wp-scripts build",
+		"start": "wp-scripts start",
+		"lint:js": "wp-scripts lint-js",
+		"format": "wp-scripts format",
+		"test:unit": "wp-scripts test-unit-js",
+		"test:e2e": "playwright test",
+		"i18n:pot": "npm run build:dev && wp-env run cli --env-cwd=wp-content/plugins/post-voice wp i18n make-pot . languages/post-voice.pot --include=post-voice.php,features/narration/php,build/narration-editor.js,build/narration-player.js",
+		"audit:npm": "node scripts/audit-check.mjs",
+		"audit:npm:production": "node scripts/audit-check.mjs --production",
+		"audit:composer": "node scripts/audit-check-composer.mjs",
+		"test:php": "./scripts/run-php-tests.sh",
+		"build:dev": "wp-scripts build --mode=development",
+		"refresh:php": "./scripts/refresh-php.sh",
+		"prepare": "husky",
+		"i18n:check": "./scripts/check-pot.sh",
+		"test:php:coverage": "./scripts/run-php-coverage.sh"
+	},
+	"devDependencies": {
+		"@axe-core/playwright": "^4.10.0",
+		"@playwright/test": "^1.48.0",
+		"@types/jest": "^29.5.14",
+		"@wordpress/api-fetch": "^7.53.0",
+		"@wordpress/data": "^10.53.0",
+		"@wordpress/date": "^5.53.0",
+		"@wordpress/e2e-test-utils-playwright": "^1.16.0",
+		"@wordpress/editor": "^14.53.0",
+		"@wordpress/element": "^8.5.0",
+		"@wordpress/env": "^10.39.0",
+		"@wordpress/eslint-plugin": "^22.0.0",
+		"@wordpress/i18n": "^6.26.0",
+		"@wordpress/notices": "^5.53.0",
+		"@wordpress/plugins": "^7.53.0",
+		"@wordpress/scripts": "^30.0.0",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.4.0",
+		"prettier": "npm:wp-prettier@^3.0.3",
+		"typescript": "^5.6.0"
+	},
+	"dependencies": {
+		"@breezystack/lamejs": "^1.2.7"
+	},
+	"lint-staged": {
+		"*.{js,cjs,mjs,ts,tsx}": "wp-scripts lint-js",
+		"*.php": "./vendor/bin/phpcs"
+	},
+	"overrides": {
+		"@babel/core": "^7.26.10",
+		"adm-zip": "^0.6.0",
+		"linkify-it": "^6.1.0",
+		"markdown-it": "^15.0.0",
+		"minimatch": "^10.2.6",
+		"test-exclude": {
+			"minimatch": "^3.1.2"
+		},
+		"serialize-javascript": "^7.1.0",
+		"uuid": "^11.1.1",
+		"@opentelemetry/core": "^2.8.0",
+		"webpack-dev-server": "^5.2.5"
+	}
+}

@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<ruleset name="Post Voice">
+    <file>.</file>
+    <arg name="extensions" value="php"/>
+    <exclude-pattern>/build/*</exclude-pattern>
+    <exclude-pattern>/node_modules/*</exclude-pattern>
+    <exclude-pattern>/vendor/*</exclude-pattern>
+    <rule ref="WordPress">
+        <!--
+            WPCS wants every class file to restate the full class name, i.e.
+            `features/narration/php/class-post-voice-post-meta.php`. The plugin
+            prefix is already carried by the repo (which *is* the plugin folder)
+            and the feature by the directory, so the sniff would only produce
+            paths that say "post-voice" twice. File names follow the plan's
+            architecture tree instead.
+        -->
+        <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+    </rule>
+    <rule ref="PHPCompatibilityWP"/>
+
+    <!--
+        `scripts/` holds CI build tooling run from a terminal, not code that ever
+        serves a request. WP_Filesystem exists to work through WordPress's
+        filesystem abstraction on a live site, and escaping exists to protect
+        HTML output — neither applies to a script whose entire job is writing
+        numbers to stdout and a non-zero exit code.
+    -->
+    <rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_fwrite">
+        <exclude-pattern>*/scripts/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.Security.EscapeOutput.OutputNotEscaped">
+        <exclude-pattern>*/scripts/*</exclude-pattern>
+    </rule>
+
+    <!--
+        Same reasoning one level further: a test that arranges a file on disk is
+        arranging a fixture, not touching a live site's uploads. WP_Filesystem
+        would need credentials and a request context that PHPUnit does not have,
+        and the plugin code under test reads these paths with plain `require`
+        and `file_exists` anyway — mediating the fixture through an abstraction
+        the subject does not use would test the abstraction instead.
+    -->
+    <rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_mkdir">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.WP.AlternativeFunctions.rename_rename">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.WP.AlternativeFunctions.unlink_unlink">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+
+    <!--
+        Test methods document themselves through their names, which WPCS itself
+        requires to be long and descriptive. Requiring a docblock per test on top
+        of that produces a comment that restates the method name and nothing more.
+    -->
+    <rule ref="Squiz.Commenting.FunctionComment.Missing">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.ClassComment.Missing">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Generic.Commenting.DocComment.MissingShort">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <config name="testVersion" value="8.2-"/>
+    <config name="minimum_wp_version" value="6.6"/>
+</ruleset>
