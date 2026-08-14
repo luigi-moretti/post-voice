@@ -1,5 +1,9 @@
 import { registerPlugin } from '@wordpress/plugins';
-import { PluginSidebar, PluginSidebarMoreMenuItem } from '@wordpress/editor';
+import {
+	PluginSidebar,
+	PluginSidebarMoreMenuItem,
+	store as editorStore,
+} from '@wordpress/editor';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { useState, useRef, useEffect, useCallback } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
@@ -29,6 +33,8 @@ import { encodeMp3 } from './mp3-encoder';
 import { deleteNarration, saveNarration } from './narration-api';
 import { MiniPlayer } from './mini-player';
 import { VOICES, DEFAULT_VOICE, isVoice } from './voice-catalog';
+import { DictionaryPanel } from '../../pronunciation/editor/dictionary-panel';
+import type { DictionaryEntry } from '../../pronunciation/editor/dictionary-entry';
 
 import './style.scss';
 
@@ -145,11 +151,21 @@ function NarrationPanel() {
 	}, [] );
 
 	const { createErrorNotice } = useDispatch( noticesStore );
+	const { editPost } = useDispatch( editorStore );
 
 	const attachmentId = meta._narration_attachment_id as number | undefined;
 	const savedHash = meta._narration_source_hash as string | undefined;
 	const savedVoice = meta._narration_voice as string | undefined;
 	const savedLanguage = meta._narration_language as string | undefined;
+	const postDictionary = ( meta._narration_dictionary ??
+		[] ) as DictionaryEntry[];
+
+	const setPostDictionary = useCallback(
+		( next: DictionaryEntry[] ) => {
+			editPost( { meta: { _narration_dictionary: next } } );
+		},
+		[ editPost ]
+	);
 
 	// Reopen the panel on the settings the existing audio was made with, rather
 	// than on the defaults. Otherwise the selectors quietly describe a narration
@@ -910,6 +926,17 @@ function NarrationPanel() {
 								) }
 							</p>
 						) }
+
+					<DictionaryPanel
+						entries={ postDictionary }
+						defaultLanguage={ language }
+						onChange={ setPostDictionary }
+						settingsUrl={
+							window.postVoiceData?.canManageOptions
+								? 'options-general.php?page=post-voice'
+								: null
+						}
+					/>
 
 					{ ! isBusy && (
 						<>
