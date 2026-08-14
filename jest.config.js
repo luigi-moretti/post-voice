@@ -37,6 +37,7 @@ module.exports = {
 		'features/narration/frontend/player-state.ts',
 		'features/narration/format-time.ts',
 		'features/pronunciation/editor/dictionary-entry.ts',
+		'features/pronunciation/editor/apply-dictionary.ts',
 	],
 	coverageThreshold: {
 		global: { lines: 80 },
