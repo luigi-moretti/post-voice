@@ -14,6 +14,7 @@ import { Button, Notice, SelectControl } from '@wordpress/components';
 
 import { PocketTtsEngine } from './engine/tts-engine';
 import { SUPPORTED_LANGUAGES } from './model-source';
+import { LANGUAGE_LABELS } from './language-labels';
 import { extractNarratableText } from './extract-narratable-text';
 import type { EditorBlock } from './extract-narratable-text';
 import { computeSourceHash } from './source-hash';
@@ -37,18 +38,6 @@ import { DictionaryPanel } from '../../pronunciation/editor/dictionary-panel';
 import type { DictionaryEntry } from '../../pronunciation/editor/dictionary-entry';
 
 import './style.scss';
-
-/**
- * Human-readable names for the bundles. The identifiers are file paths in the
- * model mirror — "english_2026-04" is not something to show an author.
- */
-const LANGUAGE_LABELS: Record< string, string > = {
-	'english_2026-04': 'English',
-	german: 'Deutsch',
-	italian: 'Italiano',
-	portuguese: 'Português',
-	spanish: 'Español',
-};
 
 /**
  * Shown both as the panel's standing warning and as the error thrown if

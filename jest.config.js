@@ -35,6 +35,8 @@ module.exports = {
 		'features/narration/editor/storage-check.ts',
 		'features/narration/editor/mp3-encoder.ts',
 		'features/narration/editor/model-source.ts',
+		'features/narration/editor/site-language.ts',
+		'features/narration/editor/language-labels.ts',
 		'features/narration/editor/segment.ts',
 		'features/narration/editor/voice-catalog.ts',
 		'features/narration/frontend/player-state.ts',
