@@ -1,5 +1,10 @@
 import { computeRtf } from '../rtf-calibration';
 import { sampleTextFor } from '../voice-catalog';
+import { groupByLanguage, reassemble } from '../group-segments';
+import type { ResolvedSegment } from '../segment';
+
+/** Silence inserted between consecutive segments, in seconds. */
+export const SEGMENT_GAP_SECONDS = 0.12;
 
 export interface GenerateOptions {
 	/**
@@ -11,6 +16,19 @@ export interface GenerateOptions {
 	 */
 	voice?: string;
 	signal?: AbortSignal;
+}
+
+export interface GenerateSegmentsOptions extends GenerateOptions {
+	/** Called after each segment finishes, for the panel's progress bar. */
+	onProgress?: ( done: number, total: number ) => void;
+	/**
+	 * Called once per language, right after its bundle is warmed up.
+	 *
+	 * The RTF of a bundle cannot be known before it is loaded, so the panel's
+	 * first ETA covers the second language with the first one's number. This is
+	 * how it replaces that guess with a measurement, mid-generation.
+	 */
+	onLanguageCalibrated?: ( language: string, rtf: number ) => void;
 }
 
 export interface CalibrationResult {
@@ -199,6 +217,64 @@ export class PocketTtsEngine {
 				data: { text, voice: options.voice ?? this.defaultVoice },
 			} );
 		} );
+	}
+
+	/**
+	 * Synthesise a multi-language narration as a single buffer.
+	 *
+	 * Loads one bundle per language rather than one per segment: `ensureLanguage`
+	 * tears down and rebuilds the ONNX sessions, which costs seconds, and a post
+	 * that alternates languages ten times would pay that ten times.
+	 *
+	 * @param segments Resolved segments in document order.
+	 * @param options  Voice, abort signal and progress callback.
+	 */
+	async generateSegments(
+		segments: ResolvedSegment[],
+		options: GenerateSegmentsOptions
+	): Promise< Float32Array > {
+		if ( segments.length === 0 ) {
+			throw new Error( 'No segments to narrate' );
+		}
+
+		const groups = groupByLanguage( segments );
+		const parts: Array< { index: number; audio: Float32Array } > = [];
+		let done = 0;
+
+		for ( const group of groups ) {
+			// Abort between groups as well as inside generate(): loading a bundle is
+			// the longest uninterruptible step, and starting one the author already
+			// cancelled would hold the editor for seconds with nothing to show.
+			if ( options.signal?.aborted ) {
+				throw new DOMException( 'Generation cancelled', 'AbortError' );
+			}
+			await this.ensureLanguage( group.language );
+
+			if ( options.onLanguageCalibrated ) {
+				// One short sample per language, not per segment: the warm-up costs a
+				// couple of seconds and buys a real RTF for this bundle on this
+				// device, which is what the ETA for the rest of the group is built
+				// from. The audio is discarded here — the sample button's cache is
+				// the panel's business, and it already holds the first bundle's.
+				const { rtf } = await this.calibrate( options.voice );
+				options.onLanguageCalibrated( group.language, rtf );
+			}
+
+			for ( const item of group.items ) {
+				const audio = await this.generate( item.text, {
+					voice: options.voice,
+					signal: options.signal,
+				} );
+				parts.push( { index: item.index, audio } );
+				done += 1;
+				options.onProgress?.( done, segments.length );
+			}
+		}
+
+		return reassemble(
+			parts,
+			Math.round( SEGMENT_GAP_SECONDS * this.sampleRate )
+		);
 	}
 
 	dispose(): void {
