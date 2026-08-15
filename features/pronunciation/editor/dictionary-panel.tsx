@@ -13,6 +13,7 @@ import {
 	MAX_TERM_LENGTH,
 	type DictionaryEntry,
 } from './dictionary-entry';
+import { nextRowId } from './row-ids';
 
 interface DictionaryPanelProps {
 	entries: DictionaryEntry[];
@@ -41,8 +42,17 @@ export function DictionaryPanel( {
 	onChange,
 	settingsUrl,
 }: DictionaryPanelProps ) {
+	// Identities for the rows, kept in state so they survive a re-render — that
+	// is what stops React reusing the wrong input when a row is removed, which
+	// used to steal focus from whatever the author was typing in. They are React
+	// keys only: nothing writes them into the entries this panel saves.
+	//
+	// `nextRowId` rather than `crypto.randomUUID` — see `row-ids.ts`. The latter
+	// is secure-context-only, so on a plain-HTTP editor (a state this plugin
+	// supports and explains) this initialiser threw during render for any post
+	// that already had one entry, and took the whole sidebar with it.
 	const [ ids, setIds ] = useState< string[] >( () => {
-		return entries.map( () => crypto.randomUUID() );
+		return entries.map( () => nextRowId() );
 	} );
 
 	// Keep IDs in sync with entries when the parent re-renders with a different
@@ -56,7 +66,7 @@ export function DictionaryPanel( {
 				// Entries grew; generate new IDs for new entries
 				const newIds = [ ...prevIds ];
 				for ( let i = prevIds.length; i < entries.length; i++ ) {
-					newIds.push( crypto.randomUUID() );
+					newIds.push( nextRowId() );
 				}
 				return newIds;
 			}
@@ -133,10 +143,7 @@ export function DictionaryPanel( {
 				variant="secondary"
 				disabled={ entries.length >= MAX_ENTRIES }
 				onClick={ () => {
-					setIds( ( prevIds ) => [
-						...prevIds,
-						crypto.randomUUID(),
-					] );
+					setIds( ( prevIds ) => [ ...prevIds, nextRowId() ] );
 					onChange( [
 						...entries,
 						{

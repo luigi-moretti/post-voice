@@ -412,6 +412,79 @@ test.describe( 'Post Voice — Fase 2', () => {
 		await expect( page.getByText( 'May be out of date' ) ).toBeVisible();
 	} );
 
+	test( 'the pronunciation panel opens on a browser without crypto.randomUUID', async ( {
+		admin,
+		editor,
+		page,
+	} ) => {
+		// `Crypto.randomUUID` is secure-context-only, and a plain-HTTP editor is
+		// a state this plugin supports on purpose: `ensureEngine` detects it and
+		// answers with a sentence instead of failing obscurely. wp-env serves the
+		// editor on localhost, which *is* a secure context, so that browser
+		// cannot be reproduced by changing the URL. Taking away exactly the one
+		// API that is missing there — and nothing else, `crypto.getRandomValues`
+		// very much included, since the editor itself uses it — is the honest
+		// stand-in.
+		await page.addInitScript( () => {
+			Object.defineProperty( crypto, 'randomUUID', {
+				configurable: true,
+				value: () => {
+					throw new TypeError(
+						'crypto.randomUUID is not a function'
+					);
+				},
+			} );
+		} );
+
+		await admin.createNewPost();
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: { content: 'Uma frase qualquer.' },
+		} );
+
+		await openNarrationPanel( page );
+		await page
+			.getByRole( 'button', {
+				name: 'Pronunciation for this post',
+				exact: true,
+			} )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Add term', exact: true } )
+			.click();
+		await page.getByLabel( 'Term' ).fill( 'BYD' );
+		await page.getByLabel( 'Read as' ).fill( 'Bi Iou Di' );
+		await editor.saveDraft();
+
+		// The reload is the scenario, not a courtesy. The failure was in the
+		// panel's state initialiser, so it needed a post that *already* has an
+		// entry when the panel first mounts — a fresh mount over saved meta, which
+		// is what an author gets every time they open a post they have already
+		// added a term to. Before the fix this threw during render and the whole
+		// sidebar was replaced by Gutenberg's generic error boundary.
+		await page.reload();
+		await openNarrationPanel( page );
+		await page
+			.getByRole( 'button', {
+				name: 'Pronunciation for this post',
+				exact: true,
+			} )
+			.click();
+		await expect( page.getByLabel( 'Read as' ) ).toHaveValue( 'Bi Iou Di' );
+
+		// Still a working panel rather than a rendered corpse: adding and removing
+		// a row exercises both mutation handlers, which generated an id each.
+		await page
+			.getByRole( 'button', { name: 'Add term', exact: true } )
+			.click();
+		await expect( page.getByLabel( 'Term' ) ).toHaveCount( 2 );
+		await page
+			.getByRole( 'button', { name: 'Remove', exact: true } )
+			.last()
+			.click();
+		await expect( page.getByLabel( 'Term' ) ).toHaveValue( 'BYD' );
+	} );
+
 	test( 'a post in two languages produces one MP3, with the inline-marked run heard in its own language', async ( {
 		admin,
 		editor,

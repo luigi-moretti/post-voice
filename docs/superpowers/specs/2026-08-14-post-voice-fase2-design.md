@@ -782,3 +782,17 @@ O cenário E2E "a generation warms each bundle up once, not once per code path"
 conta os warm-ups pelo único lugar de onde eles são observáveis por fora: as
 mensagens `generate` postadas ao worker cujo texto é a frase de amostra do bundle
 (`SAMPLE_TEXTS`). Nada é stubbado — o wrapper registra e repassa.
+
+**Editor em HTTP puro continua sendo um estado suportado, e o dicionário voltou
+a respeitá-lo.** `Crypto.randomUUID` só existe em contexto seguro. O painel de
+pronúncia o chamava no inicializador de estado e nos dois handlers de mutação,
+então num site em HTTP puro abrir qualquer post que já tivesse **uma** entrada
+salva estourava durante o render: a barra lateral inteira era substituída pelo
+error boundary genérico do Gutenberg, no lugar do aviso explicativo que
+`ensureEngine` existe para dar ("Narration needs a secure connection…").
+
+Esses ids são chave de React e nada mais — nunca são gravados na meta, e isso
+continua valendo. Um contador monotônico (`features/pronunciation/editor/row-ids.ts`)
+remove a dependência sem perder a propriedade que motivou os ids em primeiro
+lugar: identidade estável entre renders, para que remover uma linha não faça o
+React reaproveitar o input errado e roubar o foco de quem está digitando.
