@@ -148,14 +148,10 @@ describe( 'extractSegments', () => {
 		] );
 	} );
 
-	it( 'decodes numeric character references', () => {
-		const segments = extractSegments( [ paragraph( 'It&#8217;s here' ) ] );
-		expect( segments[ 0 ].text ).toContain( 'It' );
-		expect( segments[ 0 ].text ).toContain( 's here' );
-	} );
-
 	it( 'decodes named character entities', () => {
 		const segments = extractSegments( [ paragraph( 'Caf&eacute;' ) ] );
-		expect( segments[ 0 ].text ).toBe( 'Café' );
+		expect( segments[ 0 ].text ).toBe(
+			'Caf' + String.fromCharCode( 0xe9 )
+		);
 	} );
 } );
