@@ -600,7 +600,15 @@ function NarrationPanel() {
 				groups.map( ( group ) => group.language )
 			);
 			const pending = groups.length - cached.size;
-			if ( pending > 0 ) {
+			// `navigator.storage?.estimate`, not `navigator.storage.estimate`:
+			// the Storage API is optional, and `ensureEngine` below has always
+			// treated it that way. Reading it unguarded here made the first
+			// generation on a browser without it die with a raw `TypeError`,
+			// shown verbatim to the author by `failGeneration` — a browser Fase 1
+			// merely could not pre-check on, Fase 2 could not generate on at all.
+			// Absent, the check is skipped: an unenforceable guard is not a
+			// reason to refuse work the browser can still do.
+			if ( pending > 0 && navigator.storage?.estimate ) {
 				const estimate = await navigator.storage.estimate();
 				if (
 					! hasEnoughStorage( estimate, bytesForBundles( pending ) )
