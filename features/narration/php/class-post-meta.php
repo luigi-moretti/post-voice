@@ -63,14 +63,15 @@ class Post_Voice_Post_Meta {
 			array_merge(
 				$args,
 				array(
-					'type'         => 'array',
-					'show_in_rest' => array(
+					'type'              => 'array',
+					'show_in_rest'      => array(
 						'schema' => array(
 							'type'  => 'array',
 							'items' => array( 'type' => 'string' ),
 						),
 					),
-					'default'      => array(),
+					'sanitize_callback' => array( self::class, 'sanitize_languages' ),
+					'default'           => array(),
 				)
 			)
 		);
@@ -85,6 +86,42 @@ class Post_Voice_Post_Meta {
 	 */
 	public static function get_attachment_id( int $post_id ): int {
 		return (int) get_post_meta( $post_id, self::ATTACHMENT_ID, true );
+	}
+
+	/**
+	 * Coerce anything into a valid, deduped list of narration languages.
+	 *
+	 * The narration endpoint validates `languages` on its own way in, but
+	 * `_narration_languages` is `show_in_rest`, which means
+	 * `PATCH /wp/v2/posts/<id>` can write it directly — a route the endpoint's
+	 * own checks never see. Mirrors
+	 * `Post_Voice_Dictionary_Store::sanitize()`: the last line of defence lives
+	 * on the meta registration itself, not only on the one route that happens
+	 * to be the intended way in.
+	 *
+	 * @param mixed $value Raw value from a meta write.
+	 * @return string[]
+	 */
+	public static function sanitize_languages( $value ): array {
+		if ( ! is_array( $value ) ) {
+			return array();
+		}
+
+		$clean = array();
+		foreach ( $value as $language ) {
+			$language = (string) $language;
+			if (
+				in_array( $language, Post_Voice_Rest_Api::ALLOWED_LANGUAGES, true )
+				&& ! in_array( $language, $clean, true )
+			) {
+				$clean[] = $language;
+			}
+			if ( count( $clean ) >= count( Post_Voice_Rest_Api::ALLOWED_LANGUAGES ) ) {
+				break;
+			}
+		}
+
+		return $clean;
 	}
 
 	/**

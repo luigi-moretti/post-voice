@@ -31,6 +31,34 @@ export function groupByLanguage( segments: ResolvedSegment[] ): SegmentGroup[] {
 }
 
 /**
+ * Every language this narration should be recorded against, primary first.
+ *
+ * `groupByLanguage` reports only what was actually said — a post where every
+ * block carries an explicit foreign language can produce a list that never
+ * includes the post's own selector value at all. The server requires the
+ * primary language to be a member of the list it is sent (see
+ * `class-rest-api.php`'s save handler), so a segments-only list is not merely
+ * incomplete, it is a payload the endpoint always rejects. `languages`
+ * therefore means "the post's primary language plus every language actually
+ * spoken", not just the second half — deduped, with the primary first so the
+ * status card names it first too.
+ *
+ * @param primaryLanguage The post's selected language.
+ * @param groups          Segment groups the narration was actually built from.
+ */
+export function withPrimaryLanguage(
+	primaryLanguage: string,
+	groups: SegmentGroup[]
+): string[] {
+	return Array.from(
+		new Set( [
+			primaryLanguage,
+			...groups.map( ( group ) => group.language ),
+		] )
+	);
+}
+
+/**
  * Put the synthesised parts back in document order, with silence at the seams.
  *
  * Sums the lengths first and writes into a single pre-allocated buffer. Building

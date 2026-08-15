@@ -233,9 +233,23 @@ class Post_Voice_Rest_Api {
 
 		// Absent means single-language, which is what every Fase 1 client sends.
 		$languages_param = (string) $request->get_param( 'languages' );
-		$languages       = '' === $languages_param
+		$languages_raw   = '' === $languages_param
 			? array( $language )
 			: array_values( array_filter( array_map( 'trim', explode( ',', $languages_param ) ) ) );
+
+		// Bounded before anything else touches it: a client sending 10,000 entries
+		// (valid, invalid, or duplicated) should not get a `foreach` or a dedupe
+		// pass over them — cardinality can never legitimately exceed the number of
+		// bundles that exist, so a list longer than that is rejected outright.
+		if ( count( $languages_raw ) > count( self::ALLOWED_LANGUAGES ) ) {
+			return new WP_Error(
+				'post_voice_invalid_language',
+				__( 'Too many languages.', 'post-voice' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$languages = array_values( array_unique( $languages_raw ) );
 
 		foreach ( $languages as $candidate ) {
 			if ( ! in_array( $candidate, self::ALLOWED_LANGUAGES, true ) ) {

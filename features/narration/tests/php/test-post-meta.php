@@ -81,6 +81,39 @@ class Test_Post_Voice_Post_Meta extends WP_UnitTestCase {
 		$this->assertSame( array(), get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGES, true ) );
 	}
 
+	public function test_sanitize_languages_dedupes_and_drops_unsupported_values(): void {
+		$this->assertSame(
+			array( 'portuguese', 'spanish' ),
+			Post_Voice_Post_Meta::sanitize_languages(
+				array( 'portuguese', 'klingon', 'portuguese', 'spanish' )
+			)
+		);
+	}
+
+	public function test_sanitize_languages_rejects_non_array_input(): void {
+		$this->assertSame( array(), Post_Voice_Post_Meta::sanitize_languages( 'portuguese' ) );
+	}
+
+	public function test_direct_meta_write_is_sanitised_the_same_as_the_endpoint(): void {
+		// `_narration_languages` is `show_in_rest`, so `PATCH /wp/v2/posts/<id>`
+		// reaches this meta key directly — a route the narration endpoint's own
+		// validation never sees. The registered `sanitize_callback` is the only
+		// thing standing between that route and an unbounded, unvalidated array,
+		// and `update_post_meta()` applies it even without going through REST.
+		$post_id = self::factory()->post->create();
+
+		update_post_meta(
+			$post_id,
+			Post_Voice_Post_Meta::LANGUAGES,
+			array( 'portuguese', 'portuguese', 'klingon', 'spanish' )
+		);
+
+		$this->assertSame(
+			array( 'portuguese', 'spanish' ),
+			get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGES, true )
+		);
+	}
+
 	public function test_auth_callback_requires_edit_post_capability(): void {
 		$post_id = self::factory()->post->create();
 

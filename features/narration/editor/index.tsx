@@ -25,7 +25,7 @@ import { extractSegments } from './extract-segments';
 import type { EditorBlock, ResolvedSegment } from './segment';
 import { resolveSegments, mergeAdjacent, unknownLanguages } from './segment';
 import { computeSegmentHash } from './segment-hash';
-import { groupByLanguage } from './group-segments';
+import { groupByLanguage, withPrimaryLanguage } from './group-segments';
 import { bundleForLocale } from './site-language';
 import { cachedBundles } from './bundle-cache-status';
 import {
@@ -165,8 +165,15 @@ function NarrationPanel() {
 	const savedHash = meta._narration_source_hash as string | undefined;
 	const savedVoice = meta._narration_voice as string | undefined;
 	const savedLanguage = meta._narration_language as string | undefined;
-	const postDictionary = ( meta._narration_dictionary ??
-		[] ) as DictionaryEntry[];
+	// Memoized rather than a plain `?? []`: that fallback is a new array literal
+	// on every render whenever the meta key is unset, which changed
+	// `buildSegments`'s identity every render too — defeating the 300ms
+	// staleness debounce by re-running the parser and the dictionary pass in
+	// render on every keystroke, the exact cost the debounce exists to avoid.
+	const postDictionary = useMemo(
+		() => ( meta._narration_dictionary ?? [] ) as DictionaryEntry[],
+		[ meta._narration_dictionary ]
+	);
 
 	const setPostDictionary = useCallback(
 		( next: DictionaryEntry[] ) => {
@@ -255,12 +262,22 @@ function NarrationPanel() {
 		// 300ms: `blocks` changes on every keystroke, and this path now runs the
 		// parser, the dictionary and the digest. Measured at ~18ms on a 64KB post —
 		// small, but not small enough to pay per character.
+		let cancelled = false;
 		const timer = setTimeout( () => {
-			void computeSegmentHash( buildSegments() ).then( ( hash ) => {
-				setIsStale( Boolean( savedHash ) && hash !== savedHash );
-			} );
+			computeSegmentHash( buildSegments() )
+				.then( ( hash ) => {
+					if ( ! cancelled ) {
+						setIsStale(
+							Boolean( savedHash ) && hash !== savedHash
+						);
+					}
+				} )
+				.catch( () => {} );
 		}, 300 );
-		return () => clearTimeout( timer );
+		return () => {
+			cancelled = true;
+			clearTimeout( timer );
+		};
 	}, [ buildSegments, savedHash ] );
 
 	const setPreview = useCallback( ( blob: Blob | null ) => {
@@ -433,8 +450,9 @@ function NarrationPanel() {
 				segments,
 				voice,
 				language,
-				languages: groupByLanguage( segments ).map(
-					( group ) => group.language
+				languages: withPrimaryLanguage(
+					language,
+					groupByLanguage( segments )
 				),
 			};
 			setPreview( encodeMp3( audio, engineRef.current!.sampleRate ) );
@@ -465,6 +483,11 @@ function NarrationPanel() {
 		// set brought it back, already open, when the preview was discarded.
 		setIsConfirmingRemoval( false );
 		setState( 'calibrating' );
+		// A second "Generate again" enters `calibrating` — which counts as
+		// `isGenerating` — while `progress` still holds the previous run's 100.
+		// Without this the bar renders full, `aria-valuenow={100}`, before the
+		// bundle download for this run has even started.
+		setProgress( null );
 		try {
 			const segments = buildSegments();
 			const groups = groupByLanguage( segments );
@@ -514,13 +537,28 @@ function NarrationPanel() {
 			if ( rtf > 0 ) {
 				rtfByLanguageRef.current.set( language, rtf );
 			}
+			// Re-checked rather than reusing `pending`: `ensureEngine()` just spent
+			// however long it took to download the selected language's bundle (if it
+			// was not cached already), so counting it as still-pending here would add
+			// its download time to the estimate a second time — once for the seconds
+			// that already elapsed inside `ensureEngine()`, and once more for a
+			// download that already finished.
+			const stillPending =
+				pending > 0
+					? groups.length -
+					  (
+							await cachedBundles(
+								groups.map( ( group ) => group.language )
+							)
+					  ).size
+					: 0;
 			const eta =
 				rtf > 0
 					? estimateMultiBundleEta(
 							groups,
 							rtfByLanguageRef.current,
 							rtf,
-							pending,
+							stillPending,
 							downloadBytesPerSecond()
 					  )
 					: null;

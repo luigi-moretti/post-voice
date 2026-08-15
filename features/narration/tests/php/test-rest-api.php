@@ -573,6 +573,42 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		);
 	}
 
+	public function test_save_dedupes_repeated_languages(): void {
+		$request = $this->build_save_request(
+			array(
+				'language'  => 'portuguese',
+				'languages' => 'portuguese,portuguese,portuguese',
+			)
+		);
+
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame(
+			array( 'portuguese' ),
+			get_post_meta( $this->post_id, Post_Voice_Post_Meta::LANGUAGES, true )
+		);
+	}
+
+	public function test_save_rejects_a_languages_list_longer_than_the_allowed_set(): void {
+		// Six raw entries against five possible languages — rejected on count
+		// alone, before dedupe or per-value validation ever runs. A duplicate is
+		// included deliberately: cardinality is checked on what the client sent,
+		// not on what would remain after cleanup, so 10,000 repeats of one valid
+		// value cannot buy their way past this guard by collapsing to one.
+		$request = $this->build_save_request(
+			array(
+				'language'  => 'portuguese',
+				'languages' => 'portuguese,spanish,german,italian,english_2026-04,portuguese',
+			)
+		);
+
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'post_voice_invalid_language', $response->get_data()['code'] );
+	}
+
 	/**
 	 * Save one narration through the endpoint and return its attachment ID.
 	 */
