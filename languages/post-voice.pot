@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-14T20:40:33+00:00\n"
+"POT-Creation-Date: 2026-08-15T02:02:22+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -119,12 +119,14 @@ msgstr ""
 #: features/pronunciation/php/class-settings-page.php:118
 #: features/pronunciation/php/class-settings-page.php:131
 #: build/dictionary-admin.js:19
+#: build/narration-editor.js:19
 msgid "Term"
 msgstr ""
 
 #: features/pronunciation/php/class-settings-page.php:119
 #: features/pronunciation/php/class-settings-page.php:137
 #: build/dictionary-admin.js:19
+#: build/narration-editor.js:19
 msgid "Read as"
 msgstr ""
 
@@ -159,6 +161,50 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "Pause narration"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Pronunciation for this post"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Nothing here yet. Add a term when the narration mispronounces a name or an acronym."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Add term"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Edit the site-wide dictionary"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Post default"
+msgstr ""
+
+#. translators: %s: language name.
+#: build/narration-editor.js:19
+#, js-format
+msgid "%s — already downloaded"
+msgstr ""
+
+#. translators: 1: language name, 2: download size, e.g. "199 MB".
+#: build/narration-editor.js:19
+#, js-format
+msgid "%1$s — +%2$s to download"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Include in the narration"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Turned off, this block is left out of the audio and out of the up-to-date check."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Language for this block"
 msgstr ""
 
 #: build/narration-editor.js:19
