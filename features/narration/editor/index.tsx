@@ -165,6 +165,11 @@ function NarrationPanel() {
 	const savedHash = meta._narration_source_hash as string | undefined;
 	const savedVoice = meta._narration_voice as string | undefined;
 	const savedLanguage = meta._narration_language as string | undefined;
+	// Not memoized, unlike `postDictionary` right below: this one is read in JSX
+	// only and never reaches a hook's dependency array, so a fresh array literal
+	// on the renders where the key is unset costs nothing.
+	const savedLanguages = ( meta._narration_languages ?? [] ) as string[];
+
 	// Memoized rather than a plain `?? []`: that fallback is a new array literal
 	// on every render whenever the meta key is unset, which changed
 	// `buildSegments`'s identity every render too — defeating the 300ms
@@ -668,6 +673,42 @@ function NarrationPanel() {
 			);
 			setPreview( null );
 			setExisting( { url: saved.url, generatedAt: saved.generated_at } );
+			// Teach the editor's own copy of the post meta what the plugin's REST
+			// route just wrote behind its back.
+			//
+			// This save never goes through the editor's redux save flow, so
+			// `getEditedPostAttribute( 'meta' )` otherwise keeps answering with
+			// whatever the post was *loaded* with — an empty hash, an empty
+			// language list and an empty voice on a post whose first narration
+			// was just saved. Everything downstream reads that meta and was wrong
+			// for the rest of the session:
+			//
+			//   - the staleness effect bails out on a falsy `savedHash`, so the
+			//     "May be out of date" badge could never turn again in the very
+			//     session that generated the audio — the one session where an
+			//     author is most likely to keep editing;
+			//   - the status card rendered its language and voice line as a bare
+			//     "· voice", because the empty values came back as `[]` and `''`
+			//     rather than as nullish, so its fallbacks never fired;
+			//   - `attachmentId` stayed unset, so the card vanished entirely the
+			//     moment the panel remounted (which it does on every switch to
+			//     the block inspector — they share one complementary-area slot).
+			//
+			// Local component state cannot fix this precisely because of that
+			// remount. `editPost` can, and `mergedEdits: { meta: true }` on the
+			// postType entity means this merges into the existing meta rather
+			// than replacing it, leaving `_narration_dictionary` alone. It does
+			// mark the post dirty; the values are already on the server, so the
+			// next save rewrites them identically.
+			editPost( {
+				meta: {
+					_narration_attachment_id: saved.attachment_id,
+					_narration_language: saved.language,
+					_narration_languages: generated?.languages ?? [ language ],
+					_narration_voice: saved.voice,
+					_narration_source_hash: sourceHash,
+				},
+			} );
 			// Not necessarily up to date: if the author edited while generation ran,
 			// the audio just saved is already behind the editor's text.
 			setIsStale(
@@ -680,7 +721,7 @@ function NarrationPanel() {
 		} finally {
 			savingRef.current = false;
 		}
-	}, [ buildSegments, language, postId, setPreview, voice ] );
+	}, [ buildSegments, editPost, language, postId, setPreview, voice ] );
 
 	const removeNarration = useCallback( async () => {
 		// Same guard, same reason as saving: two clicks in one JavaScript task
@@ -695,10 +736,20 @@ function NarrationPanel() {
 		try {
 			await deleteNarration( postId );
 			setIsConfirmingRemoval( false );
-			// The editor's cached post meta still names the attachment that no
-			// longer exists, exactly as it still names the old one after a save.
-			// The panel trusts its own state over that cache, and a reload reads
-			// the cleared meta from the server.
+			// The server cleared this meta; the editor's cached copy would
+			// otherwise keep naming an attachment that no longer exists, and the
+			// panel would try to fetch it again on its next remount. Same reason
+			// as the `editPost` in `confirmSave` — the DELETE never went through
+			// the editor's save flow, so nothing else tells it.
+			editPost( {
+				meta: {
+					_narration_attachment_id: 0,
+					_narration_language: '',
+					_narration_languages: [],
+					_narration_voice: '',
+					_narration_source_hash: '',
+				},
+			} );
 			setExisting( null );
 			setIsStale( false );
 			setState( 'idle' );
@@ -709,7 +760,7 @@ function NarrationPanel() {
 		} finally {
 			removingRef.current = false;
 		}
-	}, [ postId ] );
+	}, [ editPost, postId ] );
 
 	// Escape backs out of the confirmation. It lives on the buttons rather than on
 	// the alertdialog wrapper because that wrapper is a plain div — jsx-a11y is
@@ -980,14 +1031,19 @@ function NarrationPanel() {
 								{ sprintf(
 									/* translators: 1: languages used, e.g. "portuguese + english_2026-04"; 2: voice name. */
 									__( '%1$s · voice %2$s', 'post-voice' ),
-									(
-										( meta._narration_languages as string[] ) ?? [
-											savedLanguage ?? language,
-										]
+									// `||`, not `??`: `_narration_languages` is
+									// registered with a `default` of `array()`, and
+									// `_narration_voice` answers `''` when unset.
+									// What arrives is empty-but-present, so a
+									// nullish fallback never fires and the line
+									// rendered as a bare "· voice".
+									( savedLanguages.length
+										? savedLanguages
+										: [ savedLanguage || language ]
 									)
 										.map( languageLabel )
 										.join( ' + ' ),
-									savedVoice ?? voice
+									savedVoice || voice
 								) }
 							</p>
 							<MiniPlayer src={ existing.url } />
