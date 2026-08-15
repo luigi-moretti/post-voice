@@ -40,6 +40,7 @@ module.exports = {
 		'features/narration/editor/segment.ts',
 		'features/narration/editor/voice-catalog.ts',
 		'features/narration/editor/bundle-cache-status.ts',
+		'features/narration/editor/group-segments.ts',
 		'features/narration/frontend/player-state.ts',
 		'features/narration/format-time.ts',
 		'features/pronunciation/editor/dictionary-entry.ts',
