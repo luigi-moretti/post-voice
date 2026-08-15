@@ -2,6 +2,7 @@ import {
 	formatBytes,
 	hasEnoughStorage,
 	LANGUAGE_BUNDLE_BYTES,
+	bytesForBundles,
 } from '../../editor/storage-check';
 
 const MB = 1024 * 1024;
@@ -38,5 +39,21 @@ describe( 'formatBytes', () => {
 
 	it( 'formats gigabyte-scale values', () => {
 		expect( formatBytes( 2 * 1024 * MB ) ).toBe( '2.0 GB' );
+	} );
+} );
+
+describe( 'bytesForBundles', () => {
+	it( 'is zero when every bundle is already cached', () => {
+		expect( bytesForBundles( 0 ) ).toBe( 0 );
+	} );
+
+	it( 'scales with the number of bundles still to download', () => {
+		expect( bytesForBundles( 2 ) ).toBe( 2 * LANGUAGE_BUNDLE_BYTES );
+	} );
+
+	it( 'uses the measured bundle size, not the old estimate', () => {
+		expect( LANGUAGE_BUNDLE_BYTES ).toBe(
+			Math.round( 198.6 * 1024 * 1024 )
+		);
 	} );
 } );
