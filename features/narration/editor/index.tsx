@@ -37,6 +37,7 @@ import { VOICES, DEFAULT_VOICE, isVoice } from './voice-catalog';
 import { DictionaryPanel } from '../../pronunciation/editor/dictionary-panel';
 import type { DictionaryEntry } from '../../pronunciation/editor/dictionary-entry';
 import { registerBlockNarrationControls } from './block-narration-attributes';
+import { registerInlineLanguageFormat } from './inline-language-format';
 
 import './style.scss';
 
@@ -1034,3 +1035,4 @@ function NarrationPanel() {
 
 registerPlugin( 'post-voice', { render: NarrationPanel, icon: 'microphone' } );
 registerBlockNarrationControls();
+registerInlineLanguageFormat();
