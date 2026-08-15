@@ -105,4 +105,57 @@ describe( 'extractSegments', () => {
 			] )
 		).toEqual( [] );
 	} );
+
+	it( 'coerces non-string content with toString method', () => {
+		expect(
+			extractSegments( [
+				{
+					name: 'core/paragraph',
+					attributes: {
+						content: { toString: () => 'From RichTextData' },
+					},
+					innerBlocks: [],
+				},
+			] )
+		).toEqual( [ { text: 'From RichTextData', language: null } ] );
+	} );
+
+	it( 'flattens nested markup inside a marked span', () => {
+		expect(
+			extractSegments( [
+				paragraph(
+					'Ele disse <span data-pv-lang="english_2026-04">batteries <em>with</em> wheels</span> e sentou.'
+				),
+			] )
+		).toEqual( [
+			{ text: 'Ele disse', language: null },
+			{ text: 'batteries with wheels', language: 'english_2026-04' },
+			{ text: 'e sentou.', language: null },
+		] );
+	} );
+
+	it( 'handles a marked span nested inside other inline markup', () => {
+		expect(
+			extractSegments( [
+				paragraph(
+					'Ele <strong>disse <span data-pv-lang="english_2026-04">batteries with wheels</span> agora</strong> e sentou.'
+				),
+			] )
+		).toEqual( [
+			{ text: 'Ele disse', language: null },
+			{ text: 'batteries with wheels', language: 'english_2026-04' },
+			{ text: 'agora e sentou.', language: null },
+		] );
+	} );
+
+	it( 'decodes numeric character references', () => {
+		const segments = extractSegments( [ paragraph( 'It&#8217;s here' ) ] );
+		expect( segments[ 0 ].text ).toContain( 'It' );
+		expect( segments[ 0 ].text ).toContain( 's here' );
+	} );
+
+	it( 'decodes named character entities', () => {
+		const segments = extractSegments( [ paragraph( 'Caf&eacute;' ) ] );
+		expect( segments[ 0 ].text ).toBe( 'Café' );
+	} );
 } );
