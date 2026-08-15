@@ -148,6 +148,16 @@ describe( 'extractSegments', () => {
 		] );
 	} );
 
+	it( 'decodes numeric character entities', () => {
+		// U+2019, the right single quotation mark wptexturize() emits for every
+		// straight apostrophe. Both sides are escaped so the file stays pure ASCII.
+		const entity = 'It&#' + '8217;s here';
+		const segments = extractSegments( [ paragraph( entity ) ] );
+		expect( segments[ 0 ].text ).toBe(
+			'It' + String.fromCharCode( 0x2019 ) + 's here'
+		);
+	} );
+
 	it( 'decodes named character entities', () => {
 		const segments = extractSegments( [ paragraph( 'Caf&eacute;' ) ] );
 		expect( segments[ 0 ].text ).toBe(
