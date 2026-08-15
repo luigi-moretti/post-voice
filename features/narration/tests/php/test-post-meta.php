@@ -21,7 +21,7 @@ class Test_Post_Voice_Post_Meta extends WP_UnitTestCase {
 
 	public function test_save_writes_all_four_meta_keys(): void {
 		$post_id = self::factory()->post->create();
-		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		$this->assertSame( 42, Post_Voice_Post_Meta::get_attachment_id( $post_id ) );
 		$this->assertSame( 'portuguese', get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGE, true ) );
@@ -31,7 +31,7 @@ class Test_Post_Voice_Post_Meta extends WP_UnitTestCase {
 
 	public function test_clear_removes_all_four_meta_keys(): void {
 		$post_id = self::factory()->post->create();
-		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		Post_Voice_Post_Meta::clear( $post_id );
 
@@ -39,6 +39,46 @@ class Test_Post_Voice_Post_Meta extends WP_UnitTestCase {
 		$this->assertSame( '', get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGE, true ) );
 		$this->assertSame( '', get_post_meta( $post_id, Post_Voice_Post_Meta::VOICE, true ) );
 		$this->assertSame( '', get_post_meta( $post_id, Post_Voice_Post_Meta::SOURCE_HASH, true ) );
+	}
+
+	public function test_save_records_the_language_list(): void {
+		$post_id = self::factory()->post->create();
+
+		Post_Voice_Post_Meta::save(
+			$post_id,
+			123,
+			'portuguese',
+			array( 'portuguese', 'english_2026-04' ),
+			'alba',
+			str_repeat( 'a', 64 )
+		);
+
+		$this->assertSame(
+			array( 'portuguese', 'english_2026-04' ),
+			get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGES, true )
+		);
+	}
+
+	public function test_clear_removes_the_language_list(): void {
+		$post_id = self::factory()->post->create();
+		Post_Voice_Post_Meta::save(
+			$post_id,
+			123,
+			'portuguese',
+			array( 'portuguese' ),
+			'alba',
+			str_repeat( 'a', 64 )
+		);
+
+		Post_Voice_Post_Meta::clear( $post_id );
+
+		// Unlike the other three meta keys, LANGUAGES is registered with an
+		// explicit array default (needed so REST keeps returning a well-typed
+		// array instead of an empty string once the schema says "array"). WP
+		// core's get_metadata_default() honours that default for plain
+		// get_post_meta() calls too, not only over REST, so a cleared value
+		// reads back as `array()` rather than `''`.
+		$this->assertSame( array(), get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGES, true ) );
 	}
 
 	public function test_auth_callback_requires_edit_post_capability(): void {

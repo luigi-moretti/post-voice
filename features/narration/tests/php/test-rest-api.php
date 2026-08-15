@@ -163,12 +163,38 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		$this->assertSame( 'post_voice_invalid_hash', $response->as_error()->get_error_code() );
 	}
 
-	public function test_saves_attachment_and_meta_on_valid_request(): void {
+	/**
+	 * Build a POST request to the save route, with the shared boilerplate
+	 * filled in and any of it overridable.
+	 *
+	 * @param array<string, mixed> $overrides Params to set on top of the defaults.
+	 */
+	private function build_save_request( array $overrides = array() ): WP_REST_Request {
+		$params = array_merge(
+			array(
+				'language'    => 'portuguese',
+				'voice'       => 'alba',
+				'source_hash' => str_repeat( 'a', 64 ),
+			),
+			$overrides
+		);
+
 		$request = new WP_REST_Request( 'POST', "/post-voice/v1/posts/{$this->post_id}/narration" );
-		$request->set_param( 'language', 'portuguese' );
-		$request->set_param( 'voice', 'javert' );
-		$request->set_param( 'source_hash', str_repeat( 'a', 64 ) );
+		foreach ( $params as $key => $value ) {
+			$request->set_param( $key, $value );
+		}
 		$request->set_file_params( array( 'audio' => $this->staged_audio_fixture() ) );
+
+		return $request;
+	}
+
+	public function test_saves_attachment_and_meta_on_valid_request(): void {
+		$request = $this->build_save_request(
+			array(
+				'language' => 'portuguese',
+				'voice'    => 'javert',
+			)
+		);
 
 		$response = rest_get_server()->dispatch( $request );
 		$data     = $response->get_data();
@@ -348,7 +374,7 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		// Meta from before the marker existed, or pointing at audio someone
 		// removed by hand. Nothing to delete, but the panel and the frontend
 		// player would keep advertising narration until the meta goes too.
-		Post_Voice_Post_Meta::save( $this->post_id, 999999, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $this->post_id, 999999, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		$response = rest_get_server()->dispatch(
 			new WP_REST_Request( 'DELETE', "/post-voice/v1/posts/{$this->post_id}/narration" )
@@ -428,7 +454,7 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 			)
 		);
 		wp_set_current_user( $author_id );
-		Post_Voice_Post_Meta::save( $this->post_id, $victim_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $this->post_id, $victim_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		$this->save_a_narration();
 
@@ -451,7 +477,7 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 				'post_mime_type' => 'image/jpeg',
 			)
 		);
-		Post_Voice_Post_Meta::save( $this->post_id, $victim_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $this->post_id, $victim_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		$response = rest_get_server()->dispatch(
 			new WP_REST_Request( 'DELETE', "/post-voice/v1/posts/{$this->post_id}/narration" )
@@ -488,6 +514,63 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		$this->save_a_narration();
 
 		$this->assertNotNull( get_post( $foreign_id ) );
+	}
+
+	public function test_save_rejects_a_languages_list_containing_an_unsupported_value(): void {
+		$request = $this->build_save_request(
+			array(
+				'language'  => 'portuguese',
+				'languages' => 'portuguese,klingon',
+			)
+		);
+
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'post_voice_invalid_language', $response->get_data()['code'] );
+	}
+
+	public function test_save_rejects_a_primary_language_missing_from_the_list(): void {
+		$request = $this->build_save_request(
+			array(
+				'language'  => 'portuguese',
+				'languages' => 'english_2026-04',
+			)
+		);
+
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'post_voice_invalid_language', $response->get_data()['code'] );
+	}
+
+	public function test_save_records_every_language_used(): void {
+		$request = $this->build_save_request(
+			array(
+				'language'  => 'portuguese',
+				'languages' => 'portuguese,english_2026-04',
+			)
+		);
+
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame(
+			array( 'portuguese', 'english_2026-04' ),
+			get_post_meta( $this->post_id, Post_Voice_Post_Meta::LANGUAGES, true )
+		);
+	}
+
+	public function test_save_defaults_the_language_list_to_the_primary_language(): void {
+		$request = $this->build_save_request( array( 'language' => 'portuguese' ) );
+
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame(
+			array( 'portuguese' ),
+			get_post_meta( $this->post_id, Post_Voice_Post_Meta::LANGUAGES, true )
+		);
 	}
 
 	/**

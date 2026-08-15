@@ -48,7 +48,7 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 				'post_parent' => $post_id,
 			)
 		);
-		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		Post_Voice_Assets::enqueue_frontend_assets();
 		$this->assertTrue( wp_script_is( 'post-voice-player', 'enqueued' ) );
@@ -71,7 +71,7 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 				'post_parent' => $post_id,
 			)
 		);
-		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 		$this->go_to( get_permalink( $post_id ) );
 
 		Post_Voice_Assets::enqueue_frontend_assets();

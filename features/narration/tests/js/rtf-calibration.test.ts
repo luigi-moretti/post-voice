@@ -2,6 +2,7 @@ import {
 	computeRtf,
 	estimateAudioDurationSeconds,
 	estimateEtaSeconds,
+	estimateMultiBundleEta,
 	requiresLongTextConfirmation,
 	shouldWarnSlowDevice,
 } from '../../editor/rtf-calibration';
@@ -60,5 +61,71 @@ describe( 'requiresLongTextConfirmation', () => {
 	it( 'requires confirmation only above 2 minutes ETA', () => {
 		expect( requiresLongTextConfirmation( 121 ) ).toBe( true );
 		expect( requiresLongTextConfirmation( 120 ) ).toBe( false );
+	} );
+} );
+
+describe( 'estimateMultiBundleEta', () => {
+	const groups = [
+		{
+			language: 'portuguese',
+			items: [ { index: 0, text: 'a'.repeat( 100 ) } ],
+		},
+		{
+			language: 'english_2026-04',
+			items: [ { index: 1, text: 'b'.repeat( 100 ) } ],
+		},
+	];
+
+	it( 'sums the groups using each bundle measured RTF', () => {
+		const withMeasured = estimateMultiBundleEta(
+			groups,
+			new Map( [
+				[ 'portuguese', 1 ],
+				[ 'english_2026-04', 2 ],
+			] ),
+			1,
+			0,
+			0
+		);
+		const withDefault = estimateMultiBundleEta(
+			groups,
+			new Map( [ [ 'portuguese', 1 ] ] ),
+			1,
+			0,
+			0
+		);
+
+		expect( withMeasured ).toBeGreaterThan( withDefault );
+	} );
+
+	it( 'falls back to the default RTF for a bundle not yet measured', () => {
+		expect(
+			estimateMultiBundleEta( groups, new Map(), 2, 0, 0 )
+		).toBeGreaterThan( 0 );
+	} );
+
+	it( 'adds download time for bundles still to fetch', () => {
+		const withoutDownload = estimateMultiBundleEta(
+			groups,
+			new Map(),
+			1,
+			0,
+			1_000_000
+		);
+		const withDownload = estimateMultiBundleEta(
+			groups,
+			new Map(),
+			1,
+			1,
+			1_000_000
+		);
+
+		expect( withDownload - withoutDownload ).toBeGreaterThan( 100 );
+	} );
+
+	it( 'ignores download time when the connection speed is unknown', () => {
+		expect( estimateMultiBundleEta( groups, new Map(), 1, 2, 0 ) ).toBe(
+			estimateMultiBundleEta( groups, new Map(), 1, 0, 0 )
+		);
 	} );
 } );

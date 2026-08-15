@@ -5,7 +5,13 @@ import {
 	store as editorStore,
 } from '@wordpress/editor';
 import { useSelect, useDispatch } from '@wordpress/data';
-import { useState, useRef, useEffect, useCallback } from '@wordpress/element';
+import {
+	useState,
+	useRef,
+	useEffect,
+	useCallback,
+	useMemo,
+} from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import apiFetch from '@wordpress/api-fetch';
 import { dateI18n } from '@wordpress/date';
@@ -14,20 +20,26 @@ import { Button, Notice, SelectControl } from '@wordpress/components';
 
 import { PocketTtsEngine } from './engine/tts-engine';
 import { SUPPORTED_LANGUAGES } from './model-source';
-import { LANGUAGE_LABELS } from './language-labels';
-import { extractNarratableText } from './extract-narratable-text';
-import type { EditorBlock } from './extract-narratable-text';
-import { computeSourceHash } from './source-hash';
+import { LANGUAGE_LABELS, languageLabel } from './language-labels';
+import { extractSegments } from './extract-segments';
+import type { EditorBlock, ResolvedSegment } from './segment';
+import { resolveSegments, mergeAdjacent, unknownLanguages } from './segment';
+import { computeSegmentHash } from './segment-hash';
+import { groupByLanguage } from './group-segments';
+import { bundleForLocale } from './site-language';
+import { cachedBundles } from './bundle-cache-status';
 import {
-	estimateAudioDurationSeconds,
-	estimateEtaSeconds,
+	estimateMultiBundleEta,
+	downloadBytesPerSecond,
 	requiresLongTextConfirmation,
 	shouldWarnSlowDevice,
 } from './rtf-calibration';
 import {
 	hasEnoughStorage,
 	formatBytes,
+	bytesForBundles,
 	LANGUAGE_BUNDLE_BYTES,
+	STORAGE_HEADROOM_MULTIPLIER,
 } from './storage-check';
 import { isWasmSupported } from './environment';
 import { encodeMp3 } from './mp3-encoder';
@@ -36,6 +48,8 @@ import { MiniPlayer } from './mini-player';
 import { VOICES, DEFAULT_VOICE, isVoice } from './voice-catalog';
 import { DictionaryPanel } from '../../pronunciation/editor/dictionary-panel';
 import type { DictionaryEntry } from '../../pronunciation/editor/dictionary-entry';
+import { mergeDictionaries } from '../../pronunciation/editor/dictionary-entry';
+import { applyDictionary } from '../../pronunciation/editor/apply-dictionary';
 import { registerBlockNarrationControls } from './block-narration-attributes';
 import { registerInlineLanguageFormat } from './inline-language-format';
 
@@ -51,14 +65,6 @@ const WASM_UNAVAILABLE_MESSAGE = () =>
 		'This browser cannot run WebAssembly, which narration needs. Try another browser, or ask an administrator whether a security policy is blocking it.',
 		'post-voice'
 	);
-
-/**
- * How long typing has to pause before the panel re-checks whether the saved
- * audio still matches the post. Long enough that a sentence typed at speed
- * costs one hash instead of forty, short enough that the badge has settled by
- * the time an author looks away from the text and at the panel.
- */
-const STALENESS_CHECK_DELAY_MS = 500;
 
 type PanelState =
 	| 'idle'
@@ -77,7 +83,9 @@ interface ExistingNarration {
 
 function NarrationPanel() {
 	const [ state, setState ] = useState< PanelState >( 'idle' );
-	const [ language, setLanguage ] = useState< string >( 'portuguese' );
+	const [ language, setLanguage ] = useState< string >( () =>
+		bundleForLocale( window.postVoiceData?.siteLanguage ?? '' )
+	);
 	const [ voice, setVoice ] = useState< string >( DEFAULT_VOICE );
 	const [ etaSeconds, setEtaSeconds ] = useState< number | null >( null );
 	const [ previewUrl, setPreviewUrl ] = useState< string | null >( null );
@@ -92,6 +100,10 @@ function NarrationPanel() {
 	// including the ones that never open this panel.
 	const [ wasmSupported ] = useState( isWasmSupported );
 	const [ elapsedSeconds, setElapsedSeconds ] = useState( 0 );
+	// Real per-segment completion, reported by the engine once generation is
+	// under way. Null before then, when the bar still runs on the elapsed/ETA
+	// heuristic below because no segment has finished yet to measure from.
+	const [ progress, setProgress ] = useState< number | null >( null );
 
 	const previewBlobRef = useRef< Blob | null >( null );
 	// Everything the audio in memory was actually synthesised from. Saving must
@@ -101,10 +113,15 @@ function NarrationPanel() {
 	// not exist. The text half of this fixed a stale "up to date" badge; voice
 	// and language went the same way for the same reason.
 	const generatedWithRef = useRef< {
-		text: string;
+		segments: ResolvedSegment[];
 		voice: string;
 		language: string;
+		languages: string[];
 	} | null >( null );
+	// Measured RTF per bundle, filled in as each one warms up. A ref rather than
+	// state: it feeds the next ETA calculation, and re-rendering on every
+	// measurement would buy nothing.
+	const rtfByLanguageRef = useRef< Map< string, number > >( new Map() );
 	// Mirrors previewUrl so the unmount cleanup, which runs once and therefore
 	// closes over the first render's state, can still revoke the current one.
 	const previewUrlRef = useRef< string | null >( null );
@@ -157,6 +174,20 @@ function NarrationPanel() {
 		},
 		[ editPost ]
 	);
+
+	const buildSegments = useCallback( () => {
+		const dictionary = mergeDictionaries(
+			window.postVoiceData?.dictionary ?? [],
+			postDictionary
+		);
+		const resolved = mergeAdjacent(
+			resolveSegments( extractSegments( blocks ), language )
+		);
+		return resolved.map( ( segment ) => ( {
+			...segment,
+			text: applyDictionary( segment.text, segment.language, dictionary ),
+		} ) );
+	}, [ blocks, language, postDictionary ] );
 
 	// Reopen the panel on the settings the existing audio was made with, rather
 	// than on the defaults. Otherwise the selectors quietly describe a narration
@@ -221,25 +252,16 @@ function NarrationPanel() {
 	// unhandled rejection. A failed comparison leaves the badge alone rather
 	// than claiming freshness it could not verify.
 	useEffect( () => {
-		if ( ! savedHash ) {
-			setIsStale( false );
-			return;
-		}
-		let cancelled = false;
+		// 300ms: `blocks` changes on every keystroke, and this path now runs the
+		// parser, the dictionary and the digest. Measured at ~18ms on a 64KB post —
+		// small, but not small enough to pay per character.
 		const timer = setTimeout( () => {
-			computeSourceHash( extractNarratableText( blocks ) )
-				.then( ( currentHash ) => {
-					if ( ! cancelled ) {
-						setIsStale( currentHash !== savedHash );
-					}
-				} )
-				.catch( () => {} );
-		}, STALENESS_CHECK_DELAY_MS );
-		return () => {
-			cancelled = true;
-			clearTimeout( timer );
-		};
-	}, [ blocks, savedHash ] );
+			void computeSegmentHash( buildSegments() ).then( ( hash ) => {
+				setIsStale( Boolean( savedHash ) && hash !== savedHash );
+			} );
+		}, 300 );
+		return () => clearTimeout( timer );
+	}, [ buildSegments, savedHash ] );
 
 	const setPreview = useCallback( ( blob: Blob | null ) => {
 		setPreviewUrl( ( previous ) => {
@@ -382,14 +404,39 @@ function NarrationPanel() {
 	}, [] );
 
 	const runGeneration = useCallback(
-		async ( text: string ) => {
+		async ( segments: ResolvedSegment[] ) => {
 			setState( 'generating' );
+			setProgress( null );
 			abortRef.current = new AbortController();
-			const audio = await engineRef.current!.generate( text, {
+			const audio = await engineRef.current!.generateSegments( segments, {
 				voice,
 				signal: abortRef.current.signal,
+				onProgress: ( done, total ) =>
+					setProgress( Math.round( ( done / total ) * 100 ) ),
+				onLanguageCalibrated: ( calibratedLanguage, rtf ) => {
+					// Replace the borrowed RTF with this bundle's own and re-estimate
+					// what is left, so a second bundle that turns out slower than the
+					// first stops the countdown from lying for the rest of the run.
+					rtfByLanguageRef.current.set( calibratedLanguage, rtf );
+					setEtaSeconds(
+						estimateMultiBundleEta(
+							groupByLanguage( segments ),
+							rtfByLanguageRef.current,
+							rtf,
+							0,
+							downloadBytesPerSecond()
+						)
+					);
+				},
 			} );
-			generatedWithRef.current = { text, voice, language };
+			generatedWithRef.current = {
+				segments,
+				voice,
+				language,
+				languages: groupByLanguage( segments ).map(
+					( group ) => group.language
+				),
+			};
 			setPreview( encodeMp3( audio, engineRef.current!.sampleRate ) );
 			setState( 'idle' );
 		},
@@ -419,11 +466,39 @@ function NarrationPanel() {
 		setIsConfirmingRemoval( false );
 		setState( 'calibrating' );
 		try {
-			const text = extractNarratableText( blocks );
-			if ( ! text ) {
-				throw new Error(
-					__( 'No readable text found in this post.', 'post-voice' )
-				);
+			const segments = buildSegments();
+			const groups = groupByLanguage( segments );
+			const cached = await cachedBundles(
+				groups.map( ( group ) => group.language )
+			);
+			const pending = groups.length - cached.size;
+			if ( pending > 0 ) {
+				const estimate = await navigator.storage.estimate();
+				if (
+					! hasEnoughStorage( estimate, bytesForBundles( pending ) )
+				) {
+					throw new Error(
+						sprintf(
+							/* translators: 1: required free space, e.g. "600 MB"; 2: comma-separated language names. */
+							__(
+								'Not enough free space: this narration needs %1$s for the language models it still has to download (%2$s).',
+								'post-voice'
+							),
+							formatBytes(
+								bytesForBundles( pending ) *
+									STORAGE_HEADROOM_MULTIPLIER
+							),
+							groups
+								.map( ( group ) => group.language )
+								.filter(
+									( groupLanguage ) =>
+										! cached.has( groupLanguage )
+								)
+								.map( languageLabel )
+								.join( ', ' )
+						)
+					);
+				}
 			}
 
 			const engine = await ensureEngine();
@@ -436,11 +511,17 @@ function NarrationPanel() {
 			// rtf === 0 means the warm-up produced no measurable audio. Treat that as
 			// "unmeasured", not "instant" — otherwise a broken calibration looks like a
 			// blazing-fast device and every guard below silently stops firing.
+			if ( rtf > 0 ) {
+				rtfByLanguageRef.current.set( language, rtf );
+			}
 			const eta =
 				rtf > 0
-					? estimateEtaSeconds(
+					? estimateMultiBundleEta(
+							groups,
+							rtfByLanguageRef.current,
 							rtf,
-							estimateAudioDurationSeconds( text.length )
+							pending,
+							downloadBytesPerSecond()
 					  )
 					: null;
 			setEtaSeconds( eta );
@@ -460,16 +541,17 @@ function NarrationPanel() {
 				);
 			}
 
-			await runGeneration( text );
+			await runGeneration( segments );
 		} catch ( err ) {
 			failGeneration( err );
 		}
 	}, [
-		blocks,
+		buildSegments,
 		cacheSample,
 		createErrorNotice,
 		ensureEngine,
 		failGeneration,
+		language,
 		runGeneration,
 		voice,
 	] );
@@ -484,11 +566,11 @@ function NarrationPanel() {
 	const generateAfterConfirmation = useCallback( async () => {
 		setError( null );
 		try {
-			await runGeneration( extractNarratableText( blocks ) );
+			await runGeneration( buildSegments() );
 		} catch ( err ) {
 			failGeneration( err );
 		}
-	}, [ blocks, failGeneration, runGeneration ] );
+	}, [ buildSegments, failGeneration, runGeneration ] );
 
 	const cancelGeneration = useCallback( () => {
 		abortRef.current?.abort();
@@ -536,13 +618,13 @@ function NarrationPanel() {
 			// `javert`/`spanish` against audio recorded in `alba`/`portuguese`, and
 			// the frontend trusts that meta.
 			const generated = generatedWithRef.current;
-			const sourceHash = await computeSourceHash(
-				generated?.text ?? extractNarratableText( blocks )
-			);
+			const segments = generated?.segments ?? buildSegments();
+			const sourceHash = await computeSegmentHash( segments );
 			const saved = await saveNarration(
 				postId,
 				blob,
 				generated?.language ?? language,
+				generated?.languages ?? [ language ],
 				generated?.voice ?? voice,
 				sourceHash
 			);
@@ -551,10 +633,7 @@ function NarrationPanel() {
 			// Not necessarily up to date: if the author edited while generation ran,
 			// the audio just saved is already behind the editor's text.
 			setIsStale(
-				sourceHash !==
-					( await computeSourceHash(
-						extractNarratableText( blocks )
-					) )
+				sourceHash !== ( await computeSegmentHash( buildSegments() ) )
 			);
 			setState( 'idle' );
 		} catch ( err ) {
@@ -563,7 +642,7 @@ function NarrationPanel() {
 		} finally {
 			savingRef.current = false;
 		}
-	}, [ blocks, language, postId, setPreview, voice ] );
+	}, [ buildSegments, language, postId, setPreview, voice ] );
 
 	const removeNarration = useCallback( async () => {
 		// Same guard, same reason as saving: two clicks in one JavaScript task
@@ -638,6 +717,16 @@ function NarrationPanel() {
 		return () => clearInterval( timer );
 	}, [ state ] );
 
+	const segmentCount = useMemo(
+		() => buildSegments().length,
+		[ buildSegments ]
+	);
+	const hasNothingToNarrate = segmentCount === 0;
+	const unknown = useMemo(
+		() => unknownLanguages( extractSegments( blocks ) ),
+		[ blocks ]
+	);
+
 	const isAutoDraft = postStatus === 'auto-draft';
 	const isSampling = state === 'sampling';
 	// Sampling is deliberately not "busy": it must not tear down the panel around
@@ -653,12 +742,15 @@ function NarrationPanel() {
 	// Nothing has been downloaded yet, so the first sample pays for the model.
 	const needsModelDownload = ! engineRef.current;
 
-	// Clamp short of complete: finishing the bar before the audio arrives would
-	// claim the work is done when it is not.
+	// The real per-segment count, once the engine has reported one, beats the
+	// elapsed/ETA guess — it is measured, not estimated. Clamp the guess short
+	// of complete: finishing the bar before the audio arrives would claim the
+	// work is done when it is not.
 	const progressPercent =
-		etaSeconds && etaSeconds > 0
+		progress ??
+		( etaSeconds && etaSeconds > 0
 			? Math.min( 95, ( elapsedSeconds / etaSeconds ) * 100 )
-			: null;
+			: null );
 	const remainingSeconds =
 		etaSeconds !== null ? Math.max( 0, etaSeconds - elapsedSeconds ) : null;
 
@@ -696,6 +788,19 @@ function NarrationPanel() {
 							{ __(
 								'Save the post first to generate narration.',
 								'post-voice'
+							) }
+						</Notice>
+					) }
+
+					{ unknown.length > 0 && (
+						<Notice status="warning" isDismissible={ false }>
+							{ sprintf(
+								/* translators: %s: comma-separated list of unrecognised language codes. */
+								__(
+									'This post marks a language this version does not support (%s). Those parts will be narrated in the post language.',
+									'post-voice'
+								),
+								unknown.join( ', ' )
 							) }
 						</Notice>
 					) }
@@ -833,6 +938,20 @@ function NarrationPanel() {
 										: __( 'Up to date', 'post-voice' ) }
 								</span>
 							</div>
+							<p className="post-voice-panel__languages">
+								{ sprintf(
+									/* translators: 1: languages used, e.g. "portuguese + english_2026-04"; 2: voice name. */
+									__( '%1$s · voice %2$s', 'post-voice' ),
+									(
+										( meta._narration_languages as string[] ) ?? [
+											savedLanguage ?? language,
+										]
+									)
+										.map( languageLabel )
+										.join( ' + ' ),
+									savedVoice ?? voice
+								) }
+							</p>
 							<MiniPlayer src={ existing.url } />
 
 							{ /*
@@ -1009,7 +1128,10 @@ function NarrationPanel() {
 								}
 								onClick={ startGeneration }
 								disabled={
-									isAutoDraft || isSampling || ! wasmSupported
+									isAutoDraft ||
+									isSampling ||
+									! wasmSupported ||
+									hasNothingToNarrate
 								}
 								__next40pxDefaultSize
 							>
@@ -1017,6 +1139,14 @@ function NarrationPanel() {
 									? __( 'Generate again', 'post-voice' )
 									: __( 'Generate audio', 'post-voice' ) }
 							</Button>
+							{ hasNothingToNarrate && (
+								<p className="post-voice-panel__hint">
+									{ __(
+										'Nothing to narrate yet: every block is either excluded from the narration or of a type that is never read aloud.',
+										'post-voice'
+									) }
+								</p>
+							) }
 							{ isStale && existing && ! previewUrl && (
 								<p className="post-voice-panel__hint">
 									{ __(

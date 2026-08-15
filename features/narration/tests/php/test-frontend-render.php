@@ -25,7 +25,7 @@ class Test_Post_Voice_Frontend_Render extends WP_UnitTestCase {
 				'post_parent' => $post_id,
 			)
 		);
-		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		$this->go_to( get_permalink( $post_id ) );
 		the_post();
@@ -45,7 +45,7 @@ class Test_Post_Voice_Frontend_Render extends WP_UnitTestCase {
 				'post_parent' => $post_id,
 			)
 		);
-		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		$this->go_to( get_permalink( $post_id ) );
 		the_post();

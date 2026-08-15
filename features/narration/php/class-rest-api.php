@@ -231,6 +231,33 @@ class Post_Voice_Rest_Api {
 			);
 		}
 
+		// Absent means single-language, which is what every Fase 1 client sends.
+		$languages_param = (string) $request->get_param( 'languages' );
+		$languages       = '' === $languages_param
+			? array( $language )
+			: array_values( array_filter( array_map( 'trim', explode( ',', $languages_param ) ) ) );
+
+		foreach ( $languages as $candidate ) {
+			if ( ! in_array( $candidate, self::ALLOWED_LANGUAGES, true ) ) {
+				return new WP_Error(
+					'post_voice_invalid_language',
+					__( 'Unsupported narration language.', 'post-voice' ),
+					array( 'status' => 400 )
+				);
+			}
+		}
+
+		// The primary language names the bundle the panel opened on, so audio that
+		// does not contain it means the client and the meta disagree about what was
+		// generated — and the meta is what the panel trusts afterwards.
+		if ( ! in_array( $language, $languages, true ) ) {
+			return new WP_Error(
+				'post_voice_invalid_language',
+				__( 'The primary language must be one of the languages used.', 'post-voice' ),
+				array( 'status' => 400 )
+			);
+		}
+
 		$voice = (string) $request->get_param( 'voice' );
 		if ( ! in_array( $voice, self::ALLOWED_VOICES, true ) ) {
 			return new WP_Error(
@@ -360,7 +387,7 @@ class Post_Voice_Rest_Api {
 
 		$kept_attachment_id = self::sweep_superseded_narrations( $post_id, $attachment_id );
 
-		Post_Voice_Post_Meta::save( $post_id, $kept_attachment_id, $language, $voice, $source_hash );
+		Post_Voice_Post_Meta::save( $post_id, $kept_attachment_id, $language, $languages, $voice, $source_hash );
 
 		return new WP_REST_Response(
 			array(
