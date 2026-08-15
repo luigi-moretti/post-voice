@@ -8,7 +8,7 @@ describe( 'cachedBundles', () => {
 
 	it( 'reports a bundle whose manifest is already cached', async () => {
 		const match = jest.fn( async ( url: string ) =>
-			url.includes( 'portuguese' ) ? new Response( '{}' ) : undefined
+			url.includes( 'portuguese' ) ? {} : undefined
 		);
 		// @ts-expect-error — minimal CacheStorage stand-in.
 		global.caches = { open: async () => ( { match } ) };

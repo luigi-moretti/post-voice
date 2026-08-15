@@ -6,11 +6,6 @@ module.exports = {
 		...( defaultConfig.setupFiles || [] ),
 		'<rootDir>/test/jest.setup.js',
 	],
-	setupFilesAfterEnv: [ '<rootDir>/test/jest.setup-after-env.js' ],
-	testEnvironment: 'jsdom',
-	testEnvironmentOptions: {
-		customExportConditions: [ 'node', 'node-addons' ],
-	},
 	// The default @wordpress/jest-preset-default testMatch includes `**/test/*.[jt]s?(x)`,
 	// which would otherwise pick up test/jest.setup.js itself as a test suite (and fail
 	// with "Your test suite must contain at least one test"). Excluded explicitly here.
@@ -18,7 +13,6 @@ module.exports = {
 		'/node_modules/',
 		'<rootDir>/vendor/',
 		'<rootDir>/test/jest.setup.js',
-		'<rootDir>/test/jest.setup-after-env.js',
 	],
 	// `@breezystack/lamejs` resolves its `require` condition to an IIFE bundle that
 	// assigns to a global instead of `module.exports`, so a plain CommonJS require
