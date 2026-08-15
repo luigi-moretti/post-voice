@@ -1,5 +1,6 @@
 import {
 	computeRtf,
+	downloadBytesPerSecond,
 	estimateAudioDurationSeconds,
 	estimateEtaSeconds,
 	estimateMultiBundleEta,
@@ -127,5 +128,55 @@ describe( 'estimateMultiBundleEta', () => {
 		expect( estimateMultiBundleEta( groups, new Map(), 1, 2, 0 ) ).toBe(
 			estimateMultiBundleEta( groups, new Map(), 1, 0, 0 )
 		);
+	} );
+} );
+
+describe( 'downloadBytesPerSecond', () => {
+	// jsdom does not populate `navigator.connection` at all, so the Chromium-only
+	// shape is installed per test rather than left uncovered. The property is
+	// configurable, and deleting it afterwards restores jsdom's actual state —
+	// which is "absent", not "some earlier value".
+	const setConnection = ( connection: unknown ): void => {
+		Object.defineProperty( navigator, 'connection', {
+			value: connection,
+			configurable: true,
+			writable: true,
+		} );
+	};
+
+	afterEach( () => {
+		delete ( navigator as { connection?: unknown } ).connection;
+	} );
+
+	it( 'converts downlink megabits per second into bytes per second', () => {
+		// 8 Mbps is 8_000_000 bits, which is 1_000_000 bytes. Pinned as a number
+		// rather than a comparison: a missing `/ 8` would still be "greater than
+		// zero" and "larger for a faster link", so only the literal catches it.
+		setConnection( { downlink: 8 } );
+
+		expect( downloadBytesPerSecond() ).toBe( 1_000_000 );
+	} );
+
+	it( 'scales linearly with the reported downlink', () => {
+		setConnection( { downlink: 1.5 } );
+
+		expect( downloadBytesPerSecond() ).toBe( 187_500 );
+	} );
+
+	it( 'returns 0 when the browser reports no connection information', () => {
+		expect( navigator ).not.toHaveProperty( 'connection' );
+		expect( downloadBytesPerSecond() ).toBe( 0 );
+	} );
+
+	it( 'returns 0 when the connection object omits downlink', () => {
+		setConnection( {} );
+
+		expect( downloadBytesPerSecond() ).toBe( 0 );
+	} );
+
+	it( 'returns 0 for a non-positive downlink', () => {
+		setConnection( { downlink: 0 } );
+
+		expect( downloadBytesPerSecond() ).toBe( 0 );
 	} );
 } );

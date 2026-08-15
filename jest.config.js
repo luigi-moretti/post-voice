@@ -28,7 +28,6 @@ module.exports = {
 	collectCoverageFrom: [
 		'features/narration/editor/environment.ts',
 		'features/narration/editor/extract-segments.ts',
-		'features/narration/editor/source-hash.ts',
 		'features/narration/editor/rtf-calibration.ts',
 		'features/narration/editor/segment-hash.ts',
 		'features/narration/editor/storage-check.ts',

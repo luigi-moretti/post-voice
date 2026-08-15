@@ -38,22 +38,46 @@ either complains.
 | `npm run test:unit -- --coverage` | same, with the coverage gate | ≥80% lines | ~5s |
 | `npm run test:php` | PHPUnit against wp-env | all pass | ~5s |
 | `npm run test:php:coverage` | PHPUnit + line coverage | ≥85% lines | ~30s |
-| `npm run test:e2e` | Playwright, 16 scenarios | all pass | ~9min |
+| `npm run test:e2e` | Playwright, 26 scenarios | all pass | ~9min |
 | `npm run i18n:check` | committed `.pot` matches the source | no drift | ~20s |
 | `npm run audit:npm` / `:production` | dependency advisories | see below | ~15s |
 | `npm run audit:composer` | same for PHP tooling | 0 critical, 0 high | ~5s |
 
 ### Jest — pure TypeScript
 
-Only pure functions are measured: block filtering, source hashing, RTF/ETA math,
-the storage pre-check, the MP3 encoder, the voice catalogue, the WebAssembly
-detect, the player state machine, time formatting. The list lives in
-`jest.config.js` under `collectCoverageFrom`.
+Only pure functions are measured: block filtering, segment extraction and
+resolution, segment hashing, dictionary application, RTF/ETA math, the storage
+pre-check, the MP3 encoder, the voice catalogue, the WebAssembly detect, the
+player state machine, time formatting. The list lives in `jest.config.js` under
+`collectCoverageFrom`.
 
 Glue — the worker wrapper, the React panel — is deliberately outside it. Mocking
 ONNX Runtime and a Worker only produces a test that always passes; the risks
 there are threading, `crossOriginIsolated` and timing, which only a real browser
 exercises. That is what the E2E suite is for.
+
+#### The segment pipeline ceiling
+
+`features/narration/tests/js/segment-pipeline-perf.test.ts` is the one timing
+test in the suite. It runs the whole editor-side path — `extractSegments` →
+`resolveSegments` → `mergeAdjacent` → `applyDictionary` (200 terms) →
+`computeSegmentHash` — over a 120-block, ~61,000-character post, and fails above
+**50 ms**. The editor runs exactly this path on a debounced keystroke, so the
+number it protects is typing latency.
+
+It is a ceiling, not a benchmark: nothing is reported, and a passing run says
+only "still fast enough". What it exists to catch is a change that puts
+per-call work back on that path — recompiling the dictionary's 200-term regex
+on every invocation being the concrete case.
+
+Read a failure carefully before blaming the plugin. Measured at ~36 ms on the
+development machine, the split was `extractSegments` ~31 ms, merge ~0.2 ms,
+`applyDictionary` ~1.7 ms, `computeSegmentHash` ~3 ms. `extractSegments` parses
+with `DOMParser`, and jsdom's parser is far slower than the browser's — so most
+of that budget is the test environment, and the real headroom on a loaded runner
+is thinner than the ceiling suggests. If this test goes red on CI alone, suspect
+runner load before suspecting a regression, and confirm by running it locally a
+few times.
 
 ### PHPUnit
 
@@ -103,16 +127,34 @@ Playwright drives a real browser against wp-env, so the build has to be current:
 npm run build && npm run test:e2e
 ```
 
-The 16 scenarios cover the eight the spec requires — happy path, no
+The 26 scenarios split in two. Eighteen are Fase 1's: happy path, no
 `crossOriginIsolated`, cancel mid-generation, insufficient storage, regenerate
 without orphans, axe with zero serious/critical violations in editor and
-frontend, full keyboard operation of the player, `prefers-reduced-motion` — plus
+frontend, full keyboard operation of the player, `prefers-reduced-motion`, plus
 regressions for stale badges, model caching, discarding a preview, voice
 selection, URL uniqueness and double-click saves.
+
+Eight are Fase 2's, in `narration-fase2.spec.ts`: a block excluded in the
+inspector, a second language with no room to download, an inline marked run
+surviving a save as an Author (which is the only test of what `kses` does to
+`data-pv-lang`, and so reads the post back over REST rather than trusting the
+editor's own serialisation), a dictionary entry changing what is narrated,
+editing the dictionary marking existing audio stale, a two-language post
+producing one MP3, cancelling during a language warm-up, and cancelling a
+multi-segment generation then immediately regenerating.
 
 Most scenarios generate audio for real, which means downloading ~190MB of model
 on the first run and 30-45s of synthesis each. Failure artifacts land in
 `artifacts/`.
+
+**The multi-language scenarios cost a second download.** Each language bundle is
+its own ~190MB fetch, so the two-language scenario pays roughly twice the
+first-run model cost of a single-language one — and it pays it again after any
+`npx wp-env clean`, which drops the browser profile the bundles were cached in.
+On a cold machine budget an extra 3-5 minutes for that scenario alone; on a warm
+one it is cache-served and unremarkable. This is also why the storage pre-check
+scenario asserts *before* the fetch: the only affordable way to test "no room
+for a second bundle" is to never start it.
 
 A single scenario, headed, with the inspector:
 
@@ -160,6 +202,20 @@ Scenarios must insert a real `core/paragraph` and save a draft first.
 **A `getByRole( 'button', { name } )` matches two elements.** The editor's
 document bar exposes a button whose accessible name is the post title. Use
 `exact: true`, and avoid post titles that collide with control labels.
+
+**The whole suite goes red at once, every scenario failing in under two
+seconds.** Look for a duplicated accessible name before anything else. This has
+happened: the per-block inspector panel was titled "Narration", the same as the
+plugin sidebar's toggle, and Playwright's strict mode refused to guess between
+them — 14 of 14 scenarios failed on the first `openNarrationPanel`, and stayed
+red for five commits because nothing in between ran more than a `--grep`. The
+panel is now "Narration for this block", and `e2e/open-narration-panel.ts`
+locates the sidebar by `aria-controls` rather than by name so that a future
+string collision cannot reproduce it. Note that this class of defect is
+invisible to `narration-a11y.spec.ts`, which scopes axe to `.post-voice-panel`:
+a name duplicated *across* the panel and the block inspector falls outside that
+include. Run the full suite, never a `--grep`, before calling a task that
+touched the browser done.
 
 ## What CI runs
 

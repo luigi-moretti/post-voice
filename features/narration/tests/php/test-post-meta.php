@@ -19,17 +19,18 @@ class Test_Post_Voice_Post_Meta extends WP_UnitTestCase {
 		Post_Voice_Post_Meta::register();
 	}
 
-	public function test_save_writes_all_four_meta_keys(): void {
+	public function test_save_writes_all_five_meta_keys(): void {
 		$post_id = self::factory()->post->create();
 		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		$this->assertSame( 42, Post_Voice_Post_Meta::get_attachment_id( $post_id ) );
 		$this->assertSame( 'portuguese', get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGE, true ) );
+		$this->assertSame( array( 'portuguese' ), get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGES, true ) );
 		$this->assertSame( 'alba', get_post_meta( $post_id, Post_Voice_Post_Meta::VOICE, true ) );
 		$this->assertSame( str_repeat( 'a', 64 ), get_post_meta( $post_id, Post_Voice_Post_Meta::SOURCE_HASH, true ) );
 	}
 
-	public function test_clear_removes_all_four_meta_keys(): void {
+	public function test_clear_removes_all_five_meta_keys(): void {
 		$post_id = self::factory()->post->create();
 		Post_Voice_Post_Meta::save( $post_id, 42, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
@@ -37,6 +38,9 @@ class Test_Post_Voice_Post_Meta extends WP_UnitTestCase {
 
 		$this->assertSame( 0, Post_Voice_Post_Meta::get_attachment_id( $post_id ) );
 		$this->assertSame( '', get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGE, true ) );
+		// `array()`, not `''`: LANGUAGES is the one key registered with an
+		// explicit array default. See test_clear_removes_the_language_list.
+		$this->assertSame( array(), get_post_meta( $post_id, Post_Voice_Post_Meta::LANGUAGES, true ) );
 		$this->assertSame( '', get_post_meta( $post_id, Post_Voice_Post_Meta::VOICE, true ) );
 		$this->assertSame( '', get_post_meta( $post_id, Post_Voice_Post_Meta::SOURCE_HASH, true ) );
 	}

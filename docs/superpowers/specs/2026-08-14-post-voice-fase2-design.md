@@ -498,3 +498,147 @@ não string traduzível.
 - Não detecta idioma automaticamente.
 - Não importa nem exporta dicionário.
 - Não muda o player do leitor, o formato do áudio nem o contrato de attachment.
+
+---
+
+## Emenda de 2026-08-15 — o que a execução descobriu
+
+Esta seção fecha a Fase 2. Ela registra tudo que a execução das 18 tarefas
+descobriu e que **contradiz, refina ou confirma** o que está decidido acima. A
+regra do projeto é que código e spec não podem divergir em silêncio: onde a
+execução mudou uma decisão, a mudança está aqui, com o motivo.
+
+### 1. Confirmações — decisões que a execução validou
+
+**O filtro `wp_kses_allowed_html` não era necessário, e não existe.** O plano
+previa um filtro para preservar `data-pv-lang` no `post_content` de quem não tem
+`unfiltered_html`. Ele foi deliberadamente não implementado: `data-*` é atributo
+global permitido pelo kses desde o WP 5.0
+(`wp-includes/kses.php`, `_wp_add_global_attributes()`, `'data-*' => true`, e o
+casamento por curinga em `wp_kses_attr()`). Adicionar o filtro seria ampliar a
+superfície de HTML aceito sem necessidade — o oposto do que a seção de segurança
+desta spec pede.
+
+Isso não ficou no raciocínio: o cenário E2E "an inline marked run survives a save
+as Author" publica como um Author de verdade (papel sem `unfiltered_html`) e
+**relê o post pela REST com `context=edit`**, afirmando sobre
+`saved.content.raw`. A primeira versão desse cenário afirmava sobre
+`getEditedPostContent()` — os blocos serializados pelo próprio cliente — e por
+isso não podia falhar por kses nenhum: parecia cobertura e não afirmava nada
+sobre o servidor. A versão corrigida falha de verdade se o atributo for retirado.
+
+**O teto de desempenho vale, com uma ressalva sobre o que ele mede.** O critério
+de aceite "extração + dicionário + hash de um post de 64 KB abaixo de 50 ms"
+passa. Medido em ~36 ms na máquina de desenvolvimento — não os ~18 ms que o plano
+previu — e a divisão importa: `extractSegments` ~31 ms, merge ~0,2 ms,
+`applyDictionary` com 200 termos ~1,7 ms, `computeSegmentHash` ~3 ms. Quase todo
+o orçamento é o `DOMParser` do jsdom, muito mais lento que o parser do navegador
+que o editor realmente usa. Ou seja: o teto continua protegendo o que deveria
+proteger (recompilar o regex de 200 termos a cada chamada), mas a folga real num
+runner carregado é menor do que o número 50 sugere, e uma falha desse teste deve
+ser lida primeiro como carga de runner e só depois como regressão. Registrado no
+próprio teste e em `TESTING.md`.
+
+### 2. Contradições — decisões que a execução teve de mudar
+
+**`_narration_languages` sempre inclui o idioma principal.** A spec descreve
+`language` como o idioma padrão do post e `languages` como os idiomas falados. O
+servidor foi implementado exigindo `language ∈ languages`, e isso criou um estado
+impossível de satisfazer: um post em que **todo** bloco está explicitamente
+marcado em outro idioma nunca fala o idioma padrão, então a lista de grupos não o
+contém. O sintoma era o pior possível — a síntese terminava depois de vários
+minutos e só então o save devolvia 400, sem recuperação a não ser trocar o
+seletor e gerar tudo de novo.
+
+Decisão do parceiro humano: **o cliente sempre inclui o principal em
+`languages`** (união do idioma do seletor com os idiomas dos grupos). A checagem
+do servidor permanece, porque é ela que impede um `languages` arbitrário vindo de
+fora. O significado de `_narration_languages` muda de "os idiomas falados" para
+**"o idioma principal do post mais todo idioma efetivamente falado"**. É essa a
+definição que vale.
+
+**Casamento do dicionário é case-insensitive, e o teste é que estava errado.** O
+plano trazia dois testes que se contradiziam quanto a maiúsculas/minúsculas. A
+spec já dizia case-insensitive; o parceiro humano decidiu que a spec governa e o
+teste do plano foi reescrito. Nada mudou na spec — o registro existe porque a
+divergência custou uma rodada de correção e porque a regra ("spec governa,
+teste se corrige") é a que vale nas próximas fases.
+
+**Warm-up por idioma não é cancelável.** O plano prometia, em comentário próprio,
+que o cancelamento evitava uma espera de vários segundos. `calibrate()` não
+recebe `AbortSignal`, então a calibração em voo termina mesmo depois do cancelar.
+Decisão do parceiro humano: **documentar por teste em vez de corrigir**, porque
+enfiar um sinal por `calibrate()` mexeria em código de engine da Fase 1 que a
+Fase 2 não deveria tocar. O pior caso é ~2 s de espera após o cancelamento, sem
+corrupção de áudio; o cenário E2E "cancelling during a language warm-up leaves
+the editor recoverable" afirma exatamente esse comportamento — o observado, não o
+prometido.
+
+### 3. Refinamentos — o que a execução acrescentou ao desenho
+
+**Escrever meta pela rota REST do plugin não avisa o editor.** Este foi o defeito
+de produto mais caro da fase, e ele só apareceu no E2E. `confirmSave` gravava as
+metas pela rota do plugin e nunca informava o data store do editor, então
+`getEditedPostAttribute('meta')` continuava devolvendo os valores do carregamento
+da página pelo resto da sessão. Duas consequências visíveis: o efeito de
+"desatualizado" curto-circuita num `savedHash` falsy, então o selo nunca mais
+podia voltar a acender; e o cartão de status renderizava rótulo de idioma vazio.
+Três cenários E2E falhavam por essa única causa. A correção é
+`receiveEntityRecords` para o registro persistido (que também "desuja" o post),
+com um `editPost` condicional apenas quando já existe edição de meta pendente —
+sem ele, o `mergedEdits: { meta: true }` deixaria um termo de dicionário
+meio-digitado sombrear os valores recém-recebidos.
+
+O desenho implícito da Fase 1 — "o endpoint grava, o painel já sabe" — não vale
+para nada que o painel releia do post. Qualquer fase futura que escreva meta por
+fora do `core` data store precisa devolver o resultado ao store.
+
+**Nomes acessíveis são contrato, e um nome duplicado quebra tudo de uma vez.** O
+painel por bloco do inspector nasceu com o título "Narration", o mesmo nome
+acessível do toggle da barra lateral do plugin. Duas coisas com o mesmo nome é um
+defeito de acessibilidade antes de ser um problema de teste — um leitor de tela
+anuncia as duas identicamente. O painel do bloco agora se chama **"Narration for
+this block"**, espelhando "Pronunciation for this post"; o toggle da barra lateral
+mantém "Narration". O helper de E2E localiza a barra lateral por `aria-controls`,
+não por nome, e continua assim de propósito.
+
+**O `.pot` cobre `features/pronunciation`.** As listas `--include` de
+`package.json` e `scripts/check-pot.sh` nasceram sem essa pasta, então strings
+novas eram extraídas para lugar nenhum enquanto `i18n:check` continuava
+reportando "current" — um gate verde que não checava nada. Corrigido durante a
+Tarefa 4. Vale como regra: **toda pasta `features/<x>/php` nova entra nas duas
+listas no mesmo commit em que nasce**, e o mesmo para cada bundle novo em
+`build/`.
+
+**`phpunit.xml.dist` precisa de um `<directory>` por feature.** `features/pronunciation/tests/php` não era descoberto por ninguém; a suíte passava sem
+rodar aqueles testes. Mesma regra: feature nova, entrada nova.
+
+### 4. Processo — a lição que custou mais commits
+
+A suíte E2E inteira da Fase 1 ficou vermelha por **cinco commits** (14 de 14
+cenários, cada um falhando em menos de 2 s) porque a Tarefa 12 duplicou o nome
+acessível e nada entre a Tarefa 12 e a 17 rodou a suíte inteira — só `--grep`
+apontados para o cenário da vez.
+
+O ponto cego tem causa concreta: `narration-a11y.spec.ts` limita o axe a
+`.post-voice-panel`, então um nome duplicado **entre** o painel e o inspector do
+bloco cai fora do escopo verificado. O gate de acessibilidade existia e estava
+verde durante toda a regressão de acessibilidade.
+
+Regra que passa a valer: **toda tarefa que toca o navegador roda a suíte E2E
+completa antes de ser dada por pronta**, nunca um `--grep`. Está registrada em
+`TESTING.md`, na seção de sintomas.
+
+### 5. Dívida deliberada que atravessa a fase
+
+- **`LANGUAGE_LABELS` não passa por `__()`.** Lacuna de i18n herdada da Fase 1,
+  preservada de propósito nesta fase para não misturar a correção com o trabalho
+  de idioma por trecho. Candidata a follow-up.
+- **Falha de download no meio da geração** continua coberta pelo caminho de abort
+  existente, sem cenário dedicado: falhar uma requisição de 199 MB não é
+  reproduzível em CI sem stubbar o host do modelo, e as regras de teste desta
+  spec proíbem mockar essa camada.
+- **`(string) $request->get_param(...)` em `class-rest-api.php`** emite aviso de
+  "Array to string conversion" se o parâmetro chegar como `languages[]=`. A
+  requisição ainda para em 400. Pré-existente à fase, e o mesmo padrão vale para
+  `language`, `voice` e `source_hash`.

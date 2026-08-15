@@ -4466,3 +4466,133 @@ and a dead `clearDictionaryCache` export is gone.
 ---
 
 **Plan complete and saved to `docs/superpowers/plans/2026-08-14-post-voice-fase2-implementation-plan.md`.**
+
+---
+
+## Revision 2026-08-15 — execution findings
+
+Every defect execution found, in the order the tasks ran. Fixes are already in
+the code; this section exists so the plan does not read as if it had been right.
+Where a finding changed a *decision* rather than a line of code, it is also in
+the 15/08/2026 amendment to `2026-08-14-post-voice-fase2-design.md`.
+
+**Plan defects — the plan's own text was wrong**
+
+1. **Task 2: the plan's tests contradicted each other on case-insensitivity.**
+   Two tests in the same task disagreed about whether `applyDictionary` matches
+   regardless of case. The spec already said case-insensitive. The human partner
+   ruled that the spec governs and test 7 was rewritten; no production code
+   changed. The general rule this establishes: when a plan's test and the spec
+   disagree, the test is the thing that is wrong.
+2. **Task 5: two localised keys listed, three declared.** The task's prose named
+   two keys for `wp_localize_script` and its code declared three. The code was
+   right.
+3. **Task 5: PHPUnit tests that call an enqueue path without the built asset
+   file.** The task's tests invoked the enqueue callback directly. `build/` is
+   gitignored and CI's `unit` job never builds, so those tests would have passed
+   locally on a warm tree and failed on every fresh checkout. Every enqueue test
+   now goes through a `with_asset_file()` helper that creates the `.asset.php`
+   the enqueue reads. Rule for future tasks: **a PHP test may not depend on a
+   build artifact unless it creates one itself.**
+4. **Task 14: `reassemble` tests that cannot pass.** The plan compared
+   `Array.from( out )` against float64 literals — `Float32Array` rounds `0.1`, so
+   the assertion is arithmetically impossible. Corrected to compare
+   `Float32Array` against `Float32Array`; the reviewer confirmed the replacement
+   is exact rather than tautological.
+
+**Product defects execution found**
+
+5. **Task 6: dictionary rows keyed by array index.** Removing a row re-keyed
+   every row after it, so React reused the DOM nodes and focus jumped to the
+   wrong input. Rows are now keyed by a stable uuid, kept out of the meta and out
+   of the dirty path.
+6. **Task 16: `language ∈ languages` was unsatisfiable for a fully-marked post.**
+   The server required the primary language to be a member of `languages`, but a
+   post whose every block is explicitly marked in another language never produces
+   a group for the primary — so synthesis ran for minutes and *then* the save
+   returned 400, unrecoverable without changing the selector and regenerating.
+   Human ruling: **the client always includes the primary language in
+   `languages`**. The server check stands. Full reasoning in the spec amendment.
+7. **Task 16 / Task 17: `confirmSave` never told the editor what it wrote.**
+   Meta went out through the plugin's REST route, so `getEditedPostAttribute(
+   'meta' )` kept load-time values for the whole session: the staleness effect
+   short-circuits on a falsy `savedHash` and could never light the badge again,
+   and the status card rendered an empty language label. **Found only by the
+   E2E** — three scenarios failing on one root cause, and the controller's own
+   hypothesis (the dictionary panel not committing its edit) was disproved; it
+   commits on every keystroke. Fixed with `receiveEntityRecords` plus a
+   conditional `editPost` for the case where a meta edit is already pending.
+8. **Task 15: the warm-up is not cancellable, contrary to the plan's own
+   comment.** `calibrate()` takes no `AbortSignal`. Human ruling: **document it
+   by test rather than fix it**, because threading a signal through would touch
+   Fase 1 engine code this phase was not meant to change. Worst case is a ~2s
+   wait after cancel, with no corruption.
+
+**Test defects — tests that read as coverage while asserting nothing**
+
+9. **Task 17: the "survives a save as Author" scenario asserted on
+   `getEditedPostContent()`.** That is the client's own serialisation of its own
+   blocks, so the scenario could not fail on `kses` no matter what the server
+   stored — the exact thing it existed to prove. It now reads the post back over
+   REST with `context=edit`, still as the Author, and asserts on
+   `saved.content.raw`.
+10. **Task 17: the abort-then-regenerate scenario inherited `duration > 0`.**
+    Any non-empty buffer satisfies that, including the interleaved audio the
+    scenario exists to catch. It now measures a clean baseline and asserts
+    0.8×–1.25× of it: a duplicated buffer lands near 2×, a single duplicated
+    segment near 1.3×, a truncated pipeline below 0.8×.
+
+**Repo-level gaps the plan never accounted for**
+
+11. **`phpunit.xml.dist` never discovered `features/pronunciation/tests/php`.**
+    The suite passed without running those tests at all. A `<directory>` entry
+    was added during Task 3. Every new feature needs one.
+12. **The `i18n:pot` include lists never covered `features/pronunciation`.**
+    Both `package.json` and `scripts/check-pot.sh` omitted it, so new strings
+    were extracted into nothing while `i18n:check` still reported "current" — a
+    green gate checking nothing. Fixed during Task 4.
+
+**Process failure**
+
+13. **The Fase 1 E2E suite was red for five commits and nobody knew.** Task 12
+    titled the block inspector panel "Narration", duplicating the plugin
+    sidebar toggle's accessible name; Playwright's strict mode then refused to
+    resolve `openNarrationPanel`, and 14 of 14 Fase 1 scenarios failed in under
+    2s each. Nothing between Task 12 and Task 17 ran more than a `--grep`.
+
+    The blind spot has a concrete cause: `narration-a11y.spec.ts` scopes axe to
+    `.post-voice-panel`, so a name duplicated *across* the panel and the block
+    inspector falls outside its include — the accessibility gate was green
+    throughout an accessibility regression.
+
+    Two fixes, both landed. Task 17 pinned `openNarrationPanel` to
+    `aria-controls` instead of the accessible name, and Task 18 renamed the
+    block panel to "Narration for this block" so the underlying defect is gone
+    rather than merely routed around. The process rule — **run the full E2E
+    suite, never a `--grep`, before calling a browser-touching task done** — is
+    recorded in `TESTING.md`.
+
+**Task 18's own sweep**
+
+14. **Doc drift in `class-post-meta.php`.** Three comments still said "the four
+    meta keys" after Task 16 added `_narration_languages`, and
+    `test_save_writes_all_four_meta_keys` / `test_clear_removes_all_four_meta_keys`
+    were both misnamed *and* silent about the new key. Renamed to `..._five_...`
+    with the missing assertions added.
+15. **Dead code.** `features/narration/editor/source-hash.ts` and its test had
+    had no production consumer since the segment hash replaced them in Task 9 —
+    verified by a repo-wide grep, whose only remaining hits were the module
+    itself, its own test and the `collectCoverageFrom` entry. All three removed.
+16. **`downloadBytesPerSecond()` was untested and the bits-to-bytes `/ 8` had
+    zero coverage.** Every `estimateMultiBundleEta` test was comparative, so a
+    missing `/ 8` would still have been "greater than zero" and "larger for a
+    faster link". Five tests added, one of which pins 8 Mbps to exactly
+    `1_000_000` bytes per second; jsdom's `navigator.connection` is installed and
+    restored per test via `Object.defineProperty`.
+17. **The ceiling test measures jsdom more than it measures this plugin.** The
+    plan predicted ~18ms and it runs at ~36ms, of which `extractSegments` alone
+    is ~31ms because jsdom's `DOMParser` is far slower than a browser's. The
+    50ms ceiling from the plan is unchanged — it still catches the regression it
+    was written for — but the headroom is ~1.4×, not the ~2.8× the plan assumed.
+    Flagged rather than adjusted: changing a threshold is a decision for the
+    human partner, in either direction.

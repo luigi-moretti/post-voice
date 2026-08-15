@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Owns the four meta keys that record a post's narration.
+ * Owns the five meta keys that record a post's narration.
  *
  * Exposed via `show_in_rest` so the editor panel reads existing narration state
  * straight from the post's own REST payload — no separate GET endpoint.
@@ -38,7 +38,7 @@ class Post_Voice_Post_Meta {
 	 * Gate meta writes on the post's own edit capability.
 	 *
 	 * @param bool   $allowed  Whether the user can act on the meta (unused; recomputed here).
-	 * @param string $meta_key Meta key being authorised (unused; all four share one rule).
+	 * @param string $meta_key Meta key being authorised (unused; all five share one rule).
 	 * @param int    $post_id  Post the meta belongs to.
 	 */
 	public static function auth_callback( $allowed, $meta_key, $post_id ): bool {
@@ -46,7 +46,7 @@ class Post_Voice_Post_Meta {
 	}
 
 	/**
-	 * Register the four meta keys on the `post` post type.
+	 * Register the five meta keys on the `post` post type.
 	 */
 	public static function register(): void {
 		$args = array(

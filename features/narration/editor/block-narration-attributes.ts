@@ -101,7 +101,11 @@ const withNarrationControls = createHigherOrderComponent(
 				null,
 				createElement(
 					PanelBody,
-					{ title: __( 'Narration', 'post-voice' ) },
+					// Not "Narration": that is the plugin sidebar toggle's
+					// accessible name, and two controls answering to it left a
+					// screen reader unable to tell the post-wide panel from this
+					// per-block one. Mirrors "Pronunciation for this post".
+					{ title: __( 'Narration for this block', 'post-voice' ) },
 					createElement( ToggleControl, {
 						label: __( 'Include in the narration', 'post-voice' ),
 						help: __(
