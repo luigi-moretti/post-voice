@@ -65,9 +65,17 @@ class Post_Voice_Dictionary_Store {
 				continue;
 			}
 
+			// `mb_substr`, not `substr`: the caps are in characters, which is what
+			// the spec says, what the editor's `maxLength` enforces on both inputs
+			// and what `dictionary-entry.ts` validates. `substr` counts bytes, so a
+			// 60-character accented replacement the UI accepted (120 bytes) was cut
+			// in half here, and cut wherever byte 200 happened to land — possibly
+			// mid-codepoint, producing mojibake in a field that is read aloud by a
+			// speech model. WordPress guarantees `mb_substr` exists: core polyfills
+			// it in `wp-includes/compat.php` when the mbstring extension is absent.
 			$clean[] = array(
-				'term'        => substr( $term, 0, self::MAX_TERM_LENGTH ),
-				'replacement' => substr( $replacement, 0, self::MAX_REPLACEMENT_LENGTH ),
+				'term'        => mb_substr( $term, 0, self::MAX_TERM_LENGTH ),
+				'replacement' => mb_substr( $replacement, 0, self::MAX_REPLACEMENT_LENGTH ),
 				'language'    => $language,
 			);
 

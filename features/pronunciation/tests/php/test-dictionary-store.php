@@ -162,6 +162,71 @@ class Test_Post_Voice_Dictionary_Store extends WP_UnitTestCase {
 		);
 	}
 
+	/**
+	 * The caps count characters, not bytes.
+	 *
+	 * The ASCII case above cannot tell the two apart — one byte per character —
+	 * so it passed just as happily while this truncated at half the promised
+	 * length. Every character here is two bytes in UTF-8, which makes the two
+	 * readings differ by exactly the factor that matters: the client's
+	 * `maxLength` lets an author type 200 accented characters, and a byte cap
+	 * would keep 100 of them, cutting wherever byte 200 landed — possibly
+	 * mid-codepoint, so the text a speech model reads aloud ends in mojibake.
+	 */
+	public function test_sanitize_counts_the_length_caps_in_characters_not_bytes(): void {
+		$result = Post_Voice_Dictionary_Store::sanitize(
+			array(
+				array(
+					'term'        => str_repeat( 'ç', 200 ),
+					'replacement' => str_repeat( 'ã', 400 ),
+					'language'    => 'portuguese',
+				),
+			)
+		);
+
+		$this->assertSame(
+			Post_Voice_Dictionary_Store::MAX_TERM_LENGTH,
+			mb_strlen( $result[0]['term'] )
+		);
+		$this->assertSame(
+			Post_Voice_Dictionary_Store::MAX_REPLACEMENT_LENGTH,
+			mb_strlen( $result[0]['replacement'] )
+		);
+		// Nothing was cut mid-codepoint: a byte-truncated UTF-8 string ends in a
+		// lone continuation byte, which is not valid UTF-8.
+		$this->assertSame( $result[0]['term'], mb_convert_encoding( $result[0]['term'], 'UTF-8', 'UTF-8' ) );
+		$this->assertSame(
+			$result[0]['replacement'],
+			mb_convert_encoding( $result[0]['replacement'], 'UTF-8', 'UTF-8' )
+		);
+	}
+
+	/**
+	 * A value already inside the caps is left exactly as it was.
+	 *
+	 * The truncation tests above only prove where the cut happens; this proves
+	 * there is no cut at all for the length an author is actually allowed to
+	 * type. It fails against a byte cap, where 100 accented characters are 200
+	 * bytes and the replacement survives while the term is halved.
+	 */
+	public function test_sanitize_leaves_a_multibyte_value_within_the_caps_untouched(): void {
+		$term        = str_repeat( 'ç', Post_Voice_Dictionary_Store::MAX_TERM_LENGTH );
+		$replacement = str_repeat( 'ã', Post_Voice_Dictionary_Store::MAX_REPLACEMENT_LENGTH );
+
+		$result = Post_Voice_Dictionary_Store::sanitize(
+			array(
+				array(
+					'term'        => $term,
+					'replacement' => $replacement,
+					'language'    => 'portuguese',
+				),
+			)
+		);
+
+		$this->assertSame( $term, $result[0]['term'] );
+		$this->assertSame( $replacement, $result[0]['replacement'] );
+	}
+
 	public function test_sanitize_caps_the_number_of_entries(): void {
 		$entries = array();
 		for ( $i = 0; $i < Post_Voice_Dictionary_Store::MAX_ENTRIES + 10; $i++ ) {

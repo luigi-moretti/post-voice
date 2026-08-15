@@ -796,3 +796,21 @@ continua valendo. Um contador monotônico (`features/pronunciation/editor/row-id
 remove a dependência sem perder a propriedade que motivou os ids em primeiro
 lugar: identidade estável entre renders, para que remover uma linha não faça o
 React reaproveitar o input errado e roubar o foco de quem está digitando.
+
+**Os tetos do dicionário contam caracteres nos dois lados.** A spec diz
+"termo ≤ 100 caracteres, substituição ≤ 200", e o cliente cumpre isso — validação
+em `dictionary-entry.ts` e `maxLength` nos dois inputs, ambos em unidades de
+UTF-16. O servidor cortava com `substr`, que conta **bytes**: uma substituição de
+60 caracteres acentuados que a UI aceitou tem 120 bytes e era cortada pela
+metade, no byte onde calhasse de cair — inclusive no meio de um codepoint,
+produzindo mojibake num campo que alimenta um modelo de fala. Passa a ser
+`mb_substr`; o WordPress garante a função (polyfill em `wp-includes/compat.php`
+quando a extensão mbstring não existe). Os números não mudaram e continuam
+significando o que a spec sempre disse.
+
+O único teste que existia usava `str_repeat( 'a', … )` e afirmava sobre
+`strlen`, o que não distingue byte de caractere — ele passava igualmente bem com
+o defeito no lugar. Dois testes novos cobrem o caso não-ASCII: um afirma o corte
+em caracteres (e que o resultado continua UTF-8 válido, isto é, que nada foi
+cortado no meio de um codepoint), o outro afirma que um valor dentro do teto
+chega intacto.
