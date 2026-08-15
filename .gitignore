@@ -9,6 +9,11 @@ build/
 coverage/
 test-results/
 playwright-report/
+# Regenerated on every run by RequestUtils.setupRest(), which mkdir -p's and
+# rewrites it unconditionally — so CI's first run is unaffected by its absence.
+# Tracking it meant a live admin cookie and REST nonce in git, and a checkout's
+# stale nonce 403ing a run's first few calls.
+artifacts/storage-states/
 
 # Model mirror staging (Task 1 — large binaries, never committed)
 pocket-tts-onnx-mirror-src/

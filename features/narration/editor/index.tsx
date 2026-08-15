@@ -5,6 +5,7 @@ import {
 	store as editorStore,
 } from '@wordpress/editor';
 import { useSelect, useDispatch } from '@wordpress/data';
+import { store as coreStore } from '@wordpress/core-data';
 import {
 	useState,
 	useRef,
@@ -143,23 +144,30 @@ function NarrationPanel() {
 	// make the second listen as slow as the first for no reason.
 	const sampleCacheRef = useRef< Map< string, string > >( new Map() );
 
-	const { postId, blocks, postStatus, meta } = useSelect( ( select ) => {
-		const editor = select( 'core/editor' ) as any;
-		return {
-			postId: editor.getCurrentPostId() as number,
-			blocks: (
-				select( 'core/block-editor' ) as any
-			 ).getBlocks() as EditorBlock[],
-			postStatus: editor.getEditedPostAttribute( 'status' ) as string,
-			meta: ( editor.getEditedPostAttribute( 'meta' ) || {} ) as Record<
-				string,
-				unknown
-			>,
-		};
-	}, [] );
+	const { postId, postType, blocks, postStatus, meta } = useSelect(
+		( select ) => {
+			const editor = select( 'core/editor' ) as any;
+			return {
+				postId: editor.getCurrentPostId() as number,
+				postType: editor.getCurrentPostType() as string,
+				blocks: (
+					select( 'core/block-editor' ) as any
+				 ).getBlocks() as EditorBlock[],
+				postStatus: editor.getEditedPostAttribute( 'status' ) as string,
+				meta: ( editor.getEditedPostAttribute( 'meta' ) ||
+					{} ) as Record< string, unknown >,
+			};
+		},
+		[]
+	);
 
 	const { createErrorNotice } = useDispatch( noticesStore );
 	const { editPost } = useDispatch( editorStore );
+	const { receiveEntityRecords } = useDispatch( coreStore );
+	// The bound selectors, not a subscription: `useSelect` given a store and no
+	// mapping function does not subscribe, and this is only read inside a
+	// callback, where it must see current state rather than render-time state.
+	const { getEntityRecord, getEntityRecordEdits } = useSelect( coreStore );
 
 	const attachmentId = meta._narration_attachment_id as number | undefined;
 	const savedHash = meta._narration_source_hash as string | undefined;
@@ -187,6 +195,78 @@ function NarrationPanel() {
 		[ editPost ]
 	);
 
+	/**
+	 * Bring the editor's cached copy of the post in line with narration meta the
+	 * plugin's own REST routes just wrote behind its back.
+	 *
+	 * Those routes do not go through the editor's save flow, so without this
+	 * `getEditedPostAttribute( 'meta' )` keeps answering with whatever the post
+	 * was *loaded* with for the rest of the session — an empty hash (which makes
+	 * the staleness check below short-circuit, so the badge can never turn
+	 * again), an empty language list and voice (which render as a bare
+	 * "· voice"), and no attachment id (so the card disappears on the next
+	 * remount, which happens on every switch to the block inspector).
+	 *
+	 * `receiveEntityRecords` rather than `editPost`: this updates the *persisted*
+	 * record, which is what the server now holds, instead of recording an unsaved
+	 * user edit. `editPost` also worked, but it marked the post dirty — the
+	 * author got a spurious "Leave site?" prompt straight after a successful
+	 * save. Same call core itself makes after persisting an entity record
+	 * (`actions.cjs:505,534`), and deliberately with no `query`: the editor reads
+	 * its post through `getEntityRecord` with no query too, which is the
+	 * `default` context bucket rather than `edit`.
+	 *
+	 * @param updates Meta keys to overwrite.
+	 */
+	const syncPersistedMeta = useCallback(
+		( updates: Record< string, unknown > ) => {
+			const record = getEntityRecord( 'postType', postType, postId ) as
+				| ( Record< string, unknown > & {
+						meta?: Record< string, unknown >;
+				  } )
+				| undefined;
+			// Absent only if the editor has not finished loading the post, which
+			// cannot be the case by the time a narration has been generated from
+			// it. Bailing out beats writing a record made only of our own keys.
+			if ( ! record ) {
+				return;
+			}
+			receiveEntityRecords( 'postType', postType, {
+				...record,
+				meta: { ...( record.meta ?? {} ), ...updates },
+			} );
+
+			// Received records alone are not enough when the author already has an
+			// unsaved meta edit in flight — a half-typed dictionary entry is the
+			// realistic one. `getEditedEntityRecord` is `{ ...raw, ...edits }`, a
+			// *shallow* spread, and `mergedEdits: { meta: true }` means a meta edit
+			// stores the whole meta object as it stood when the edit was made. That
+			// snapshot shadows everything just received, so the badge would stay
+			// green and the card empty exactly as before.
+			//
+			// Folding the same keys into that existing edit fixes it, and only when
+			// one exists — so a post with nothing pending is still left clean, which
+			// is the whole reason for preferring `receiveEntityRecords`. The edit
+			// that survives here is the author's own, which genuinely is unsaved.
+			const edits = getEntityRecordEdits(
+				'postType',
+				postType,
+				postId
+			) as { meta?: Record< string, unknown > } | undefined;
+			if ( edits?.meta ) {
+				editPost( { meta: updates } );
+			}
+		},
+		[
+			editPost,
+			getEntityRecord,
+			getEntityRecordEdits,
+			postId,
+			postType,
+			receiveEntityRecords,
+		]
+	);
+
 	const buildSegments = useCallback( () => {
 		const dictionary = mergeDictionaries(
 			window.postVoiceData?.dictionary ?? [],
@@ -206,8 +286,27 @@ function NarrationPanel() {
 	// nobody generated: an English narration listed as Portuguese, in `alba`
 	// whatever voice actually recorded it. Keyed on the meta, so a later manual
 	// change by the author stands.
+	//
+	// Except when *we* are what moved the meta. Before `syncPersistedMeta`
+	// existed these two effects only ever ran on mount, because nothing changed
+	// the saved voice or language mid-session; now a save does. An author who
+	// generates in `alba`, then moves the dropdown to `javert` to audition it
+	// while the preview plays, and then hits Save, would watch the dropdown snap
+	// back to `alba` under their cursor. The ref records what we wrote so these
+	// can tell "the post says alba because it was loaded that way" (adopt it)
+	// from "the post says alba because we just saved alba" (leave the author's
+	// selection alone). A remount clears it, which is correct: reopening the
+	// panel is exactly when the saved settings *should* be adopted again.
+	const settingsWrittenByUsRef = useRef< {
+		voice?: string;
+		language?: string;
+	} >( {} );
+
 	useEffect( () => {
-		if ( isVoice( savedVoice ) ) {
+		if (
+			isVoice( savedVoice ) &&
+			savedVoice !== settingsWrittenByUsRef.current.voice
+		) {
 			setVoice( savedVoice );
 		}
 	}, [ savedVoice ] );
@@ -215,6 +314,7 @@ function NarrationPanel() {
 	useEffect( () => {
 		if (
 			savedLanguage &&
+			savedLanguage !== settingsWrittenByUsRef.current.language &&
 			( SUPPORTED_LANGUAGES as readonly string[] ).includes(
 				savedLanguage
 			)
@@ -673,41 +773,23 @@ function NarrationPanel() {
 			);
 			setPreview( null );
 			setExisting( { url: saved.url, generatedAt: saved.generated_at } );
-			// Teach the editor's own copy of the post meta what the plugin's REST
-			// route just wrote behind its back.
+			// What the server now holds, pushed into the editor's cached copy of
+			// the post so the badge, the status card and the attachment loader stop
+			// describing the post as it was loaded. See `syncPersistedMeta`.
 			//
-			// This save never goes through the editor's redux save flow, so
-			// `getEditedPostAttribute( 'meta' )` otherwise keeps answering with
-			// whatever the post was *loaded* with — an empty hash, an empty
-			// language list and an empty voice on a post whose first narration
-			// was just saved. Everything downstream reads that meta and was wrong
-			// for the rest of the session:
-			//
-			//   - the staleness effect bails out on a falsy `savedHash`, so the
-			//     "May be out of date" badge could never turn again in the very
-			//     session that generated the audio — the one session where an
-			//     author is most likely to keep editing;
-			//   - the status card rendered its language and voice line as a bare
-			//     "· voice", because the empty values came back as `[]` and `''`
-			//     rather than as nullish, so its fallbacks never fired;
-			//   - `attachmentId` stayed unset, so the card vanished entirely the
-			//     moment the panel remounted (which it does on every switch to
-			//     the block inspector — they share one complementary-area slot).
-			//
-			// Local component state cannot fix this precisely because of that
-			// remount. `editPost` can, and `mergedEdits: { meta: true }` on the
-			// postType entity means this merges into the existing meta rather
-			// than replacing it, leaving `_narration_dictionary` alone. It does
-			// mark the post dirty; the values are already on the server, so the
-			// next save rewrites them identically.
-			editPost( {
-				meta: {
-					_narration_attachment_id: saved.attachment_id,
-					_narration_language: saved.language,
-					_narration_languages: generated?.languages ?? [ language ],
-					_narration_voice: saved.voice,
-					_narration_source_hash: sourceHash,
-				},
+			// Recorded before the write, not after: the two effects that adopt the
+			// saved voice and language have to be able to tell this change from a
+			// freshly loaded post, and they run as soon as the meta moves.
+			settingsWrittenByUsRef.current = {
+				voice: saved.voice,
+				language: saved.language,
+			};
+			syncPersistedMeta( {
+				_narration_attachment_id: saved.attachment_id,
+				_narration_language: saved.language,
+				_narration_languages: saved.languages,
+				_narration_voice: saved.voice,
+				_narration_source_hash: sourceHash,
 			} );
 			// Not necessarily up to date: if the author edited while generation ran,
 			// the audio just saved is already behind the editor's text.
@@ -721,7 +803,14 @@ function NarrationPanel() {
 		} finally {
 			savingRef.current = false;
 		}
-	}, [ buildSegments, editPost, language, postId, setPreview, voice ] );
+	}, [
+		buildSegments,
+		language,
+		postId,
+		setPreview,
+		syncPersistedMeta,
+		voice,
+	] );
 
 	const removeNarration = useCallback( async () => {
 		// Same guard, same reason as saving: two clicks in one JavaScript task
@@ -738,17 +827,15 @@ function NarrationPanel() {
 			setIsConfirmingRemoval( false );
 			// The server cleared this meta; the editor's cached copy would
 			// otherwise keep naming an attachment that no longer exists, and the
-			// panel would try to fetch it again on its next remount. Same reason
-			// as the `editPost` in `confirmSave` — the DELETE never went through
-			// the editor's save flow, so nothing else tells it.
-			editPost( {
-				meta: {
-					_narration_attachment_id: 0,
-					_narration_language: '',
-					_narration_languages: [],
-					_narration_voice: '',
-					_narration_source_hash: '',
-				},
+			// panel would fetch it again on its next remount. Same reason as the
+			// call in `confirmSave` — the DELETE never went through the editor's
+			// save flow, so nothing else tells it.
+			syncPersistedMeta( {
+				_narration_attachment_id: 0,
+				_narration_language: '',
+				_narration_languages: [],
+				_narration_voice: '',
+				_narration_source_hash: '',
 			} );
 			setExisting( null );
 			setIsStale( false );
@@ -760,7 +847,7 @@ function NarrationPanel() {
 		} finally {
 			removingRef.current = false;
 		}
-	}, [ editPost, postId ] );
+	}, [ postId, syncPersistedMeta ] );
 
 	// Escape backs out of the confirmation. It lives on the buttons rather than on
 	// the alertdialog wrapper because that wrapper is a plain div — jsx-a11y is
@@ -1029,7 +1116,7 @@ function NarrationPanel() {
 							</div>
 							<p className="post-voice-panel__languages">
 								{ sprintf(
-									/* translators: 1: languages used, e.g. "portuguese + english_2026-04"; 2: voice name. */
+									/* translators: 1: languages used, e.g. "Português + English"; 2: voice name. */
 									__( '%1$s · voice %2$s', 'post-voice' ),
 									// `||`, not `??`: `_narration_languages` is
 									// registered with a `default` of `array()`, and

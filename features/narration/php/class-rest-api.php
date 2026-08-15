@@ -409,6 +409,12 @@ class Post_Voice_Rest_Api {
 				'url'           => wp_get_attachment_url( $kept_attachment_id ),
 				'generated_at'  => get_the_date( 'c', $kept_attachment_id ),
 				'language'      => $language,
+				// Echoed so the editor records what was actually stored rather
+				// than re-deriving it from its own request. The other four keys
+				// already came back from here; leaving this one out meant the
+				// panel wrote the list it had sent, which agreed only as long as
+				// nothing between the two ever normalised it.
+				'languages'     => $languages,
 				'voice'         => $voice,
 			),
 			200

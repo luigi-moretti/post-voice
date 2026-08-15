@@ -6,6 +6,7 @@ export interface SaveNarrationResponse {
 	url: string;
 	generated_at: string;
 	language: string;
+	languages: string[];
 	voice: string;
 }
 

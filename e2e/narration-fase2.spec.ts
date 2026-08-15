@@ -73,14 +73,25 @@ test.describe( 'Post Voice — Fase 2', () => {
 			timeout: 900_000,
 		} );
 
+		// Saving a narration must not leave the post looking edited. The panel
+		// pushes what it persisted into the editor's cache through
+		// `receiveEntityRecords`, which updates the *persisted* record; doing the
+		// same with `editPost` would record an unsaved edit and greet the author
+		// with a "Leave site?" prompt straight after a successful save. The
+		// editor's own "Saved" button is disabled exactly while the post is not
+		// dirty, which makes it the observable form of that claim.
+		await expect(
+			page.getByRole( 'button', { name: 'Saved' } )
+		).toBeDisabled();
+
 		// No reload here on purpose. `confirmSave` posts straight to the plugin's
 		// own REST route rather than through the editor's redux save flow, so it
-		// has to hand the editor's `meta` the values it just persisted itself
-		// (the `editPost` in `confirmSave`). Without that, the staleness check
-		// below — which runs after a remount and has only that meta to compare
-		// against — would read an empty `_narration_source_hash`, bail out, and
-		// leave the badge green no matter what the author changed. Reloading
-		// would hide exactly that defect, so this walks the path an author walks.
+		// has to hand the editor's cached meta the values it just persisted.
+		// Without that, the staleness check below — which runs after a remount
+		// and has only that meta to compare against — would read an empty
+		// `_narration_source_hash`, bail out, and leave the badge green no matter
+		// what the author changed. Reloading would hide exactly that defect, so
+		// this walks the path an author walks.
 
 		// The audio itself cannot be asserted on without transcribing it, so the
 		// assertion goes through the hash: it is taken over exactly what was
@@ -100,13 +111,15 @@ test.describe( 'Post Voice — Fase 2', () => {
 		await openNarrationPanel( page );
 		await expect( page.getByText( 'May be out of date' ) ).toBeVisible();
 
-		// And the duration is the other half: audio for one paragraph is shorter
-		// than audio for two, which no hash comparison can prove.
-		const duration = await page
-			.locator( '.post-voice-panel audio' )
-			.first()
-			.evaluate( ( el: HTMLAudioElement ) => el.duration );
-		expect( duration ).toBeGreaterThan( 0 );
+		// The discriminating assertion is the badge above; this one only pins that
+		// what was saved is real, playable audio rather than an empty buffer that
+		// happened to hash. (It deliberately does not claim "one paragraph is
+		// shorter than two" — nothing here compares the two, and a comparison
+		// would need a second full generation for a baseline, which the hash
+		// already covers more cheaply.) Polled, because `duration` is `NaN` until
+		// the element has its metadata, and this `<audio>` has just remounted
+		// with an HTTP attachment URL rather than a blob.
+		expect( await narrationDuration( page ) ).toBeGreaterThan( 0 );
 	} );
 
 	test( 'a second language with no room to download is blocked before the fetch', async ( {
@@ -188,51 +201,88 @@ test.describe( 'Post Voice — Fase 2', () => {
 		page,
 		requestUtils,
 	} ) => {
-		const author = await requestUtils.createUser( {
+		await requestUtils.createUser( {
 			username: 'pv-author',
 			email: 'pv-author@example.com',
 			password: 'pv-author-pass',
 			roles: [ 'author' ],
 		} );
 
-		// Log the browser itself in as the author, not just `requestUtils` — its
-		// request context is a separate connection from `page`'s, so logging in
-		// there would leave `page` still authenticated as Administrator.
-		// Administrator carries `unfiltered_html` by default on a single-site
-		// install, so publishing this post as Admin would pass regardless of
-		// whether kses actually let the attribute through — the whole point of
-		// this scenario is the role that does NOT have that capability.
-		await page.goto( '/wp-login.php' );
-		await page.locator( '#user_login' ).fill( 'pv-author' );
-		await page.locator( '#user_pass' ).fill( 'pv-author-pass' );
-		await page.locator( '#wp-submit' ).click();
-		await page.waitForURL( /wp-admin/ );
+		try {
+			// Log the browser itself in as the author, not just `requestUtils` — its
+			// request context is a separate connection from `page`'s, so logging in
+			// there would leave `page` still authenticated as Administrator.
+			// Administrator carries `unfiltered_html` by default on a single-site
+			// install, so publishing this post as Admin would pass regardless of
+			// whether kses actually let the attribute through — the whole point of
+			// this scenario is the role that does NOT have that capability.
+			await page.goto( '/wp-login.php' );
+			await page.locator( '#user_login' ).fill( 'pv-author' );
+			await page.locator( '#user_pass' ).fill( 'pv-author-pass' );
+			await page.locator( '#wp-submit' ).click();
+			await page.waitForURL( /wp-admin/ );
 
-		await admin.createNewPost();
-		await editor.insertBlock( {
-			name: 'core/paragraph',
-			attributes: {
-				content:
-					'Ele disse <span data-pv-lang="english_2026-04">batteries with wheels</span> e sentou.',
-			},
-		} );
-		await editor.publishPost();
+			await admin.createNewPost();
+			await editor.insertBlock( {
+				name: 'core/paragraph',
+				attributes: {
+					content:
+						'Ele disse <span data-pv-lang="english_2026-04">batteries with wheels</span> e sentou.',
+				},
+			} );
+			await editor.publishPost();
 
-		const content = await editor.getEditedPostContent();
+			const postId = await page.evaluate( () =>
+				(
+					window as unknown as {
+						wp: {
+							data: {
+								select: ( s: string ) => {
+									getCurrentPostId: () => number;
+								};
+							};
+						};
+					}
+				 ).wp.data
+					.select( 'core/editor' )
+					.getCurrentPostId()
+			);
 
-		// kses strips unknown attributes for roles without unfiltered_html. If this
-		// fails, the fix is wp_kses_allowed_html — not dropping the assertion.
-		expect( content ).toContain( 'data-pv-lang="english_2026-04"' );
+			// Read the post back from the server, not from the editor.
+			//
+			// `editor.getEditedPostContent()` returns the *client's* serialized
+			// blocks — `getEditedEntityRecord(...).content( record )` — and the
+			// editor keeps those edits after a save. kses runs on the way in, on the
+			// server, so asserting on the client copy can never observe it: this
+			// scenario would stay green even if a filter stripped every `data-*`
+			// attribute from what was actually stored. `content.raw` under
+			// `context: 'edit'` is the stored post.
+			const saved = ( await requestUtils.rest( {
+				path: `/wp/v2/posts/${ postId }`,
+				params: { context: 'edit' },
+			} ) ) as { content: { raw: string } };
 
-		// This install's `@wordpress/e2e-test-utils-playwright` (1.16.x) does not
-		// bind `deleteUser` onto `RequestUtils`, only `createUser` and
-		// `deleteAllUsers` — so this calls the same REST endpoint that helper
-		// would have.
-		await requestUtils.rest( {
-			method: 'DELETE',
-			path: `/wp/v2/users/${ author.id }`,
-			params: { force: true, reassign: 1 },
-		} );
+			// WordPress has allowed `data-*` on every element globally since 5.0
+			// (`_wp_add_global_attributes`, wp-includes/kses.php), so an Author
+			// without `unfiltered_html` keeps this attribute and no plugin-side
+			// filter is needed. What this pins is that it stays that way: if a
+			// future `wp_kses_allowed_html` filter or a core change drops `data-*`,
+			// every marked run in every author-published post silently loses its
+			// language and the narration reads it in the wrong voice. The fix would
+			// then be to allow the attribute explicitly — not to drop this.
+			expect( saved.content.raw ).toContain(
+				'data-pv-lang="english_2026-04"'
+			);
+		} finally {
+			// In a `finally` because a failure above must not leave `pv-author`
+			// behind: `createUser` throws `existing_user_login` on the next run, so
+			// one red assertion would turn into a different, unrelated red error on
+			// both CI retries and every later run, hiding the original cause.
+			// `deleteAllUsers` rather than `deleteUser`, which this install's
+			// `@wordpress/e2e-test-utils-playwright` (1.16.x) does not bind onto
+			// `RequestUtils`.
+			await requestUtils.deleteAllUsers();
+		}
 	} );
 
 	test( 'a dictionary entry changes what is narrated', async ( {
@@ -314,6 +364,27 @@ test.describe( 'Post Voice — Fase 2', () => {
 		await editor.saveDraft();
 
 		await openNarrationPanel( page );
+
+		// A dictionary entry added but never saved to the post, on purpose, so the
+		// narration below is generated while an unsaved meta edit is in flight.
+		// That is the case a received record alone cannot fix: `getEditedEntityRecord`
+		// is a shallow `{ ...raw, ...edits }`, and a meta edit carries a whole
+		// snapshot of the meta as it stood when it was made — which shadows the
+		// values the save is about to receive. Half-typing a term and then hitting
+		// Generate is an ordinary thing to do, and without the fold-into-edits half
+		// of `syncPersistedMeta` the badge below never turns.
+		await page
+			.getByRole( 'button', {
+				name: 'Pronunciation for this post',
+				exact: true,
+			} )
+			.click();
+		await page
+			.getByRole( 'button', { name: 'Add term', exact: true } )
+			.click();
+		await page.getByLabel( 'Term' ).fill( 'BYD' );
+		await page.getByLabel( 'Read as' ).fill( 'Bi Iou Di' );
+
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -329,19 +400,10 @@ test.describe( 'Post Voice — Fase 2', () => {
 			timeout: 600_000,
 		} );
 
-		// Same as the previous scenario: no reload, because the badge has to turn
-		// within the session that saved the audio.
-		await page
-			.getByRole( 'button', {
-				name: 'Pronunciation for this post',
-				exact: true,
-			} )
-			.click();
-		await page
-			.getByRole( 'button', { name: 'Add term', exact: true } )
-			.click();
-		await page.getByLabel( 'Term' ).fill( 'BYD' );
-		await page.getByLabel( 'Read as' ).fill( 'Bi Iou Di' );
+		// No reload, because the badge has to turn within the session that saved
+		// the audio. Changing the entry changes what would be synthesised, so the
+		// hash the save recorded no longer describes the post.
+		await page.getByLabel( 'Read as' ).fill( 'Bi Uai Di' );
 
 		await expect( page.getByText( 'May be out of date' ) ).toBeVisible();
 	} );

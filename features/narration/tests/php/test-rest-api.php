@@ -191,8 +191,9 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 	public function test_saves_attachment_and_meta_on_valid_request(): void {
 		$request = $this->build_save_request(
 			array(
-				'language' => 'portuguese',
-				'voice'    => 'javert',
+				'language'  => 'portuguese',
+				'languages' => 'portuguese,english_2026-04',
+				'voice'     => 'javert',
 			)
 		);
 
@@ -202,6 +203,9 @@ class Test_Post_Voice_Rest_Api extends WP_UnitTestCase {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertArrayHasKey( 'attachment_id', $data );
 		$this->assertSame( 'portuguese', $data['language'] );
+		// Echoed back so the editor records what was stored rather than the list
+		// it happened to send. The panel reads this key directly.
+		$this->assertSame( array( 'portuguese', 'english_2026-04' ), $data['languages'] );
 		$this->assertSame( 'javert', $data['voice'] );
 		$this->assertSame( 'javert', get_post_meta( $this->post_id, Post_Voice_Post_Meta::VOICE, true ) );
 		$this->assertSame( $data['attachment_id'], Post_Voice_Post_Meta::get_attachment_id( $this->post_id ) );
