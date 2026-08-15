@@ -398,75 +398,97 @@ function NarrationPanel() {
 	}, [] );
 
 	/**
-	 * Bring the engine up on the selected language, downloading the model if this
-	 * is the first use.
+	 * Bring the engine up on a given language, downloading the model if this is
+	 * the first use.
 	 *
 	 * Shared by generation and by the voice sample: both need a loaded bundle,
 	 * both must refuse to start on an insecure origin, and both must warn about
 	 * disk space *before* spending ~190MB of bandwidth rather than after.
+	 *
+	 * @param targetLanguage Bundle to bring up. Defaults to the panel selector's
+	 *                       language, which is what the voice sample wants; a
+	 *                       generation passes the first language it will actually
+	 *                       speak, which on a fully marked post is not the
+	 *                       selector's. See `startGeneration`.
 	 */
-	const ensureEngine = useCallback( async (): Promise< PocketTtsEngine > => {
-		// The buttons are already disabled without wasm, but disabled buttons are
-		// UX, not a guarantee: this path is also reached from the voice sample, and
-		// a re-render could land a click before the state settles. Refusing here
-		// keeps the failure a sentence instead of an ONNX Runtime stack trace.
-		if ( ! wasmSupported ) {
-			throw new Error( WASM_UNAVAILABLE_MESSAGE() );
-		}
+	const ensureEngine = useCallback(
+		async (
+			targetLanguage: string = language
+		): Promise< PocketTtsEngine > => {
+			// The buttons are already disabled without wasm, but disabled buttons
+			// are UX, not a guarantee: this path is also reached from the voice
+			// sample, and a re-render could land a click before the state settles.
+			// Refusing here keeps the failure a sentence instead of an ONNX Runtime
+			// stack trace.
+			if ( ! wasmSupported ) {
+				throw new Error( WASM_UNAVAILABLE_MESSAGE() );
+			}
 
-		// `crypto.subtle` only exists in a secure context. On a plain-HTTP site it
-		// is undefined, so hashing throws and staleness detection breaks. Check up
-		// front rather than failing mid-generation after the model has downloaded.
-		// The same requirement gates AudioWorklet and cross-origin isolation, so
-		// this one check covers the whole feature.
-		if ( ! window.isSecureContext || ! window.crypto?.subtle ) {
-			throw new Error(
-				__(
-					'Narration needs a secure connection. Load the editor over HTTPS (or localhost) and try again.',
-					'post-voice'
-				)
-			);
-		}
-
-		// Check storage BEFORE downloading ~190MB of model, not after.
-		if ( ! engineRef.current && navigator.storage?.estimate ) {
-			const estimate = await navigator.storage.estimate();
-			if ( ! hasEnoughStorage( estimate ) ) {
+			// `crypto.subtle` only exists in a secure context. On a plain-HTTP site
+			// it is undefined, so hashing throws and staleness detection breaks.
+			// Check up front rather than failing mid-generation after the model has
+			// downloaded. The same requirement gates AudioWorklet and cross-origin
+			// isolation, so this one check covers the whole feature.
+			if ( ! window.isSecureContext || ! window.crypto?.subtle ) {
 				throw new Error(
-					sprintf(
-						/* translators: %s: required free storage, e.g. "285 MB". */
-						__(
-							'Not enough free storage to download the voice model. About %s of free space is needed.',
-							'post-voice'
-						),
-						formatBytes( LANGUAGE_BUNDLE_BYTES * 1.5 )
+					__(
+						'Narration needs a secure connection. Load the editor over HTTPS (or localhost) and try again.',
+						'post-voice'
 					)
 				);
 			}
-		}
 
-		if ( ! engineRef.current ) {
-			engineRef.current = new PocketTtsEngine();
-			await engineRef.current.load( language );
-		} else {
-			// The engine outlives a single generation; the selector does not have
-			// to agree with it.
-			await engineRef.current.ensureLanguage( language );
-		}
+			// Check storage BEFORE downloading ~190MB of model, not after.
+			if ( ! engineRef.current && navigator.storage?.estimate ) {
+				const estimate = await navigator.storage.estimate();
+				if ( ! hasEnoughStorage( estimate ) ) {
+					throw new Error(
+						sprintf(
+							/* translators: %s: required free storage, e.g. "285 MB". */
+							__(
+								'Not enough free storage to download the voice model. About %s of free space is needed.',
+								'post-voice'
+							),
+							formatBytes( LANGUAGE_BUNDLE_BYTES * 1.5 )
+						)
+					);
+				}
+			}
 
-		return engineRef.current;
-	}, [ language, wasmSupported ] );
+			if ( ! engineRef.current ) {
+				engineRef.current = new PocketTtsEngine();
+				await engineRef.current.load( targetLanguage );
+			} else {
+				// The engine outlives a single generation; the selector does not
+				// have to agree with it.
+				await engineRef.current.ensureLanguage( targetLanguage );
+			}
+
+			return engineRef.current;
+		},
+		[ language, wasmSupported ]
+	);
 
 	/**
-	 * Store a synthesised sample phrase as a playable URL for the current
-	 * language/voice pair, and return that URL.
+	 * Store a synthesised sample phrase as a playable URL for a language/voice
+	 * pair, and return that URL.
 	 *
-	 * @param audio      Raw samples from the engine.
-	 * @param sampleRate Sample rate the engine reported.
+	 * @param audio          Raw samples from the engine.
+	 * @param sampleRate     Sample rate the engine reported.
+	 * @param sampleLanguage Bundle that spoke it. Defaults to the selector's
+	 *                       language, which is what the sample button loaded;
+	 *                       a generation's warm-up may have spoken another one
+	 *                       (see `startGeneration`), and filing that audio under
+	 *                       the selector's language would make the sample button
+	 *                       play the wrong language's phrase.
 	 */
 	const cacheSample = useCallback(
-		( audio: Float32Array, sampleRate: number ): string => {
-			const key = `${ language }:${ voice }`;
+		(
+			audio: Float32Array,
+			sampleRate: number,
+			sampleLanguage: string = language
+		): string => {
+			const key = `${ sampleLanguage }:${ voice }`;
 			const existingUrl = sampleCacheRef.current.get( key );
 			if ( existingUrl ) {
 				return existingUrl;
@@ -596,6 +618,25 @@ function NarrationPanel() {
 		try {
 			const segments = buildSegments();
 			const groups = groupByLanguage( segments );
+			// The bundles this narration is actually made of — nothing else is
+			// downloaded, which is what lets the storage check below count
+			// `groups` and be right.
+			//
+			// It is `groups[ 0 ]`, not `language`, that the engine is brought up
+			// on: `generateSegments` walks the groups in order and calls
+			// `ensureLanguage` for each, so the first group's bundle is the one it
+			// would load first anyway. Bringing the engine up on the selector's
+			// language instead cost a 199MB download that contributed nothing on
+			// any post where every block carries an explicit `pvLanguage` — the
+			// selector's language is then in no group, so it is never spoken, and
+			// the pre-check never counted it either. Same "all blocks explicitly
+			// marked" state the 2026-08-15 amendment §2 fixed for
+			// `_narration_languages`; this is the download half of it.
+			//
+			// The fallback is unreachable while the Generate button is disabled on
+			// an empty `segmentCount`, and is here because a disabled button is UX,
+			// not a guarantee.
+			const firstLanguage = groups[ 0 ]?.language ?? language;
 			const cached = await cachedBundles(
 				groups.map( ( group ) => group.language )
 			);
@@ -637,21 +678,22 @@ function NarrationPanel() {
 				}
 			}
 
-			const engine = await ensureEngine();
+			const engine = await ensureEngine( firstLanguage );
 
 			const { rtf, audio } = await engine.calibrate( voice );
 			// The warm-up spoke this bundle's sample phrase in the voice about to
 			// be used, so it is exactly what the sample button would synthesise.
-			// Keep it instead of discarding it.
-			cacheSample( audio, engine.sampleRate );
+			// Keep it instead of discarding it — filed under the bundle that spoke
+			// it, which is the first group's, not necessarily the selector's.
+			cacheSample( audio, engine.sampleRate, firstLanguage );
 			// rtf === 0 means the warm-up produced no measurable audio. Treat that as
 			// "unmeasured", not "instant" — otherwise a broken calibration looks like a
 			// blazing-fast device and every guard below silently stops firing.
 			if ( rtf > 0 ) {
-				rtfByLanguageRef.current.set( language, rtf );
+				rtfByLanguageRef.current.set( firstLanguage, rtf );
 			}
 			// Re-checked rather than reusing `pending`: `ensureEngine()` just spent
-			// however long it took to download the selected language's bundle (if it
+			// however long it took to download the first group's bundle (if it
 			// was not cached already), so counting it as still-pending here would add
 			// its download time to the estimate a second time — once for the seconds
 			// that already elapsed inside `ensureEngine()`, and once more for a

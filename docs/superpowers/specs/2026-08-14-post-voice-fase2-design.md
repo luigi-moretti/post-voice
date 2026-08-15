@@ -715,3 +715,51 @@ completa antes de ser dada por pronta**, nunca um `--grep`. Está registrada em
   "Array to string conversion" se o parâmetro chegar como `languages[]=`. A
   requisição ainda para em 400. Pré-existente à fase, e o mesmo padrão vale para
   `language`, `voice` e `source_hash`.
+
+### 6. Revisão final da branch — as costuras entre Fase 1 e Fase 2
+
+A revisão de branch inteira não achou defeito crítico nem falha de segurança,
+mas achou seis pontos importantes, e todos são a mesma espécie de problema: um
+caminho da Fase 1 e um caminho da Fase 2 assumindo coisas diferentes sobre o
+mesmo valor. O que cada um mudou está abaixo; os que não mexem em nada que esta
+spec descreve estão registrados só no relatório da execução.
+
+**A checagem de storage e o download passam a contar o mesmo conjunto.** O
+`startGeneration` calculava os bundles pendentes a partir de
+`groupByLanguage( segments )` — os idiomas realmente falados — e logo em seguida
+chamava `ensureEngine()`, que carregava incondicionalmente o idioma do seletor
+do painel. Num post em que **todo** bloco carrega `pvLanguage` explícito, o
+idioma do seletor não está em grupo nenhum: ele nunca é ouvido no áudio, nunca
+foi contado pela checagem, e mesmo assim era o primeiro a ser baixado. Com 250 MB
+livres, um post inteiramente marcado em inglês e o inglês já cacheado, a
+checagem não rodava (`pending === 0`) e o plugin ia buscar 199 MB de português
+que não entram no áudio — podendo esgotar o disco no meio do download.
+
+Havia duas correções possíveis: contar também o idioma do seletor (existe o
+helper `withPrimaryLanguage()` para exatamente essa união), ou parar de carregar
+um bundle que ninguém vai usar. **A decisão foi a segunda.** Contar a união
+tornaria a checagem honesta sobre um download de 199 MB que continua sendo puro
+desperdício — legitimaria o desperdício em vez de removê-lo — e ainda contradiria
+a linha da tabela de tratamento de erro acima, que soma "199 MB × (idiomas ainda
+não cacheados)" no sentido de idiomas *que a narração precisa*. Carregando
+`groups[0].language`, o conjunto baixado passa a ser exatamente o conjunto
+contado, e a linha da tabela volta a descrever o código sem precisar mudar de
+texto.
+
+`groups[0]` e não outro qualquer porque `generateSegments` percorre os grupos em
+ordem e chama `ensureLanguage` em cada um: o primeiro grupo é o bundle que ele
+carregaria primeiro de qualquer jeito, então o warm-up mede o bundle certo e
+nenhuma troca extra de sessão ONNX é paga. `ensureEngine` ganhou um parâmetro
+com default no idioma do seletor, que é o que o botão de amostra de voz quer.
+
+Consequência que não é óbvia: o cache de amostras do painel é indexado por
+`idioma:voz`, e o áudio do warm-up é guardado nele. Como o warm-up pode agora
+falar um idioma diferente do seletor, `cacheSample` recebe explicitamente o
+idioma que falou — sem isso, o botão de amostra passaria a tocar a frase do
+idioma errado.
+
+**Nada muda em `_narration_languages`.** A união com o idioma principal decidida
+na seção 2 desta emenda continua valendo: ela é sobre o que a meta registra e o
+que o servidor exige, não sobre o que o navegador baixa. Um post inteiramente
+marcado em inglês continua sendo salvo com o principal na lista, e agora sem
+baixar o bundle dele.
