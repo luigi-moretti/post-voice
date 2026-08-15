@@ -763,3 +763,22 @@ na seção 2 desta emenda continua valendo: ela é sobre o que a meta registra e
 que o servidor exige, não sobre o que o navegador baixa. Um post inteiramente
 marcado em inglês continua sendo salvo com o principal na lista, e agora sem
 baixar o bundle dele.
+
+**Um warm-up por bundle, não um por caminho de código.** A síntese multi-idioma
+warm-upa cada grupo antes de sintetizá-lo, e o painel já warm-upava o primeiro
+bundle antes disso — ele quer o áudio do warm-up para o cache de amostras. Como
+`generateSegments` chamava `calibrate()` para todo grupo incondicionalmente,
+o post de um idioma só (o caso comum) pagava **duas** sínteses completas da frase
+de amostra por geração, a segunda medindo um número que o motor já tinha. São
+alguns segundos parados atrás de um painel que já diz "Synthesising audio…".
+
+O motor passa a lembrar o RTF que mediu, por `(bundle, voz)`, e `generateSegments`
+só sintetiza a frase quando não há medição para ler. Zero não é memorizado:
+`computeRtf` devolve 0 para um warm-up sem áudio mensurável, e guardar isso faria
+todo mundo pular o warm-up e ler "não medido" para sempre. `dispose()` limpa o
+mapa — a medição descrevia um worker que deixou de existir.
+
+O cenário E2E "a generation warms each bundle up once, not once per code path"
+conta os warm-ups pelo único lugar de onde eles são observáveis por fora: as
+mensagens `generate` postadas ao worker cujo texto é a frase de amostra do bundle
+(`SAMPLE_TEXTS`). Nada é stubbado — o wrapper registra e repassa.

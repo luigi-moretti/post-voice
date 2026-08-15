@@ -1,6 +1,10 @@
 import { test, expect } from '@wordpress/e2e-test-utils-playwright';
 import type { Page } from '@playwright/test';
 import { openNarrationPanel } from './open-narration-panel';
+// The sample phrase is imported rather than copied: it is what `calibrate()`
+// speaks, and a copy that drifted would leave the warm-up count below matching
+// nothing and passing vacuously.
+import { sampleTextFor } from '../features/narration/editor/voice-catalog';
 
 /**
  * Playing length of the panel's audio, in seconds.
@@ -468,6 +472,93 @@ test.describe( 'Post Voice — Fase 2', () => {
 
 		const audio = page.locator( '.post-voice-panel audio' );
 		await expect( audio ).toHaveCount( 1 );
+	} );
+
+	test( 'a generation warms each bundle up once, not once per code path', async ( {
+		admin,
+		editor,
+		page,
+	} ) => {
+		test.setTimeout( 900_000 );
+
+		// Warm-ups are only observable from outside through the messages the
+		// panel posts to the worker: `calibrate()` synthesises the loaded
+		// bundle's own sample phrase (`SAMPLE_TEXTS` in `voice-catalog.ts`), so a
+		// `generate` message carrying exactly that text *is* a warm-up, and every
+		// other one is a piece of the post. Nothing is stubbed here — the wrapper
+		// records and forwards, and the generation below is a real one, with a
+		// real bundle and real inference.
+		//
+		// Installed before the first navigation so it is in place for every page
+		// this test loads.
+		await page.addInitScript( () => {
+			const texts: string[] = [];
+			(
+				window as unknown as { __postVoiceGenerateTexts: string[] }
+			 ).__postVoiceGenerateTexts = texts;
+			const original = Worker.prototype.postMessage;
+			Worker.prototype.postMessage = function (
+				this: Worker,
+				message: unknown,
+				...rest: unknown[]
+			) {
+				const payload = message as {
+					type?: string;
+					data?: { text?: string };
+				};
+				if ( payload && payload.type === 'generate' ) {
+					texts.push( payload.data?.text ?? '' );
+				}
+				return ( original as ( ...args: unknown[] ) => void ).apply(
+					this,
+					[ message, ...rest ]
+				);
+			} as typeof Worker.prototype.postMessage;
+		} );
+
+		await admin.createNewPost();
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: { content: 'Uma frase curta, num idioma só.' },
+		} );
+		await editor.saveDraft();
+
+		await openNarrationPanel( page );
+		// Forced rather than inherited from the locale, for the same reason as
+		// the scenarios above: `get_locale()` is `en_US` here, and this scenario
+		// has to know which bundle's sample phrase to count.
+		await page
+			.getByRole( 'combobox', { name: 'Language', exact: true } )
+			.selectOption( 'portuguese' );
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
+		).toBeVisible( { timeout: 180_000 } );
+
+		const texts = await page.evaluate(
+			() =>
+				(
+					window as unknown as {
+						__postVoiceGenerateTexts: string[];
+					}
+				 ).__postVoiceGenerateTexts
+		);
+		const samplePhrase = sampleTextFor( 'portuguese' );
+		const warmUps = texts.filter( ( text ) => text === samplePhrase );
+
+		// One. `startGeneration` calibrates the bundle itself (it keeps the audio
+		// for the sample cache) and `generateSegments` used to calibrate every
+		// group again unconditionally, so this post — one paragraph, one language,
+		// the common case — paid for two full sample-phrase syntheses on every
+		// click of Generate, the second one measuring a number the engine already
+		// had. Several seconds of dead time behind a panel already reading
+		// "Synthesising audio…".
+		expect( warmUps ).toHaveLength( 1 );
+		// And the post itself was synthesised, so the count above is one warm-up
+		// out of a real generation rather than a generation that never happened.
+		expect( texts.length ).toBeGreaterThan( warmUps.length );
 	} );
 
 	test( 'cancelling during a language warm-up leaves the editor recoverable', async ( {
