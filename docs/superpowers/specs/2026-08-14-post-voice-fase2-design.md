@@ -515,9 +515,9 @@ previa um filtro para preservar `data-pv-lang` no `post_content` de quem não te
 `unfiltered_html`. Ele foi deliberadamente não implementado: `data-*` é atributo
 global permitido pelo kses desde o WP 5.0
 (`wp-includes/kses.php`, `_wp_add_global_attributes()`, `'data-*' => true`, e o
-casamento por curinga em `wp_kses_attr()`). Adicionar o filtro seria ampliar a
-superfície de HTML aceito sem necessidade — o oposto do que a seção de segurança
-desta spec pede.
+casamento por curinga em `wp_kses_attr_check()`, chamada por `wp_kses_attr()`).
+Adicionar o filtro seria ampliar a superfície de HTML aceito sem necessidade —
+o oposto do que a seção de segurança desta spec pede.
 
 Isso não ficou no raciocínio: o cenário E2E "an inline marked run survives a save
 as Author" publica como um Author de verdade (papel sem `unfiltered_html`) e
@@ -536,8 +536,81 @@ o orçamento é o `DOMParser` do jsdom, muito mais lento que o parser do navegad
 que o editor realmente usa. Ou seja: o teto continua protegendo o que deveria
 proteger (recompilar o regex de 200 termos a cada chamada), mas a folga real num
 runner carregado é menor do que o número 50 sugere, e uma falha desse teste deve
-ser lida primeiro como carga de runner e só depois como regressão. Registrado no
-próprio teste e em `TESTING.md`.
+ser lida primeiro como carga de runner e só depois como regressão.
+
+**Atualização, mais tarde no mesmo dia — o teste moveu para o E2E, e o teto virou
+dois números.** O parágrafo acima identificou o problema mas não o resolveu: um
+teste cuja folga real (1,4×) é estreita o bastante para "piscar" num runner
+carregado não é um teto confiável, é uma fonte de alarme falso esperando a
+oportunidade certa. A decisão foi mover a medição para onde o `DOMParser` é o
+mesmo que o editor usa de verdade — um navegador real — em vez de continuar
+compensando o ambiente de teste com margem.
+
+`features/narration/tests/js/segment-pipeline-perf.test.ts` foi apagado.
+`e2e/segment-pipeline-perf.spec.ts` o substitui: mesmo pipeline
+(`extractSegments` → dicionário → `resolveSegments`/`mergeAdjacent` →
+`computeSegmentHash`), mesmo fixture de 64 KB, agora compilado pelo mesmo
+bundler de produção (`webpack.config.js`, entry `segment-pipeline-harness`) e
+executado num Chromium real via Playwright. O pipeline é texto puro — nunca
+toca ONNX, worker ou o host do modelo — então o cenário carrega só uma página
+front-end qualquer, sem editor e sem download; `e2e/mu-plugins/segment-pipeline-harness.php`
+expõe o pipeline em `window`, mapeado no wp-env só por `.wp-env.json`, do mesmo
+jeito que `coop-coep-headers.php` — nenhum `require` de `post-voice.php` carrega
+esse arquivo, então uma instalação de produção nunca o enfileira.
+
+Medido em 10 sessões de 30 execuções cada (300 amostras) na máquina de
+desenvolvimento: mínimo 1,24 ms, mediana 1,92 ms, p90 3,64 ms, p95 5,2 ms, p99
+7,41 ms, máximo 13,13 ms. Contra os ~36 ms do jsdom, isso é grosseiramente
+19× mais rápido — confirma o diagnóstico: **o parâmetro de 50 ms nunca esteve
+errado, a medição estava.** Uma sessão de exemplo (ordenada):
+
+```
+min=1.50ms median=2.42ms mean=2.63ms max=9.39ms
+samples=[1.50, 1.50, 1.61, 1.63, 1.65, 1.76, 1.77, 1.82, 1.83, 1.90, 1.94, 1.97,
+2.38, 2.40, 2.40, 2.42, 2.45, 2.48, 2.48, 2.48, 2.50, 2.53, 2.63, 2.65, 2.69,
+2.91, 3.25, 4.75, 5.20, 9.39]
+```
+
+E outra, a que teve o pico mais alto observado nas 10 sessões:
+
+```
+min=1.52ms median=1.91ms mean=2.45ms max=13.13ms
+samples=[1.52, 1.53, 1.54, 1.55, 1.58, 1.58, 1.61, 1.62, 1.66, 1.67, 1.68, 1.84,
+1.87, 1.87, 1.88, 1.91, 1.93, 1.95, 1.96, 1.99, 2.03, 2.03, 2.11, 2.20, 2.33,
+2.34, 3.29, 3.59, 5.67, 13.13]
+```
+
+Vinte e oito das trinta amostras de qualquer sessão típica ficam abaixo de 3 ms;
+os poucos picos de 5-13 ms lêem como ruído de GC/scheduling do processo do
+Chromium, não como o pipeline — eles não se repetem na mesma posição entre
+sessões, e não há nada no código sob medição (sem alocação incomum, sem I/O)
+que explicaria uma cauda tão distante da mediana.
+
+Isso deixou uma escolha: recalibrar os 50 ms para um número mais apertado que
+descreva a mediana, ou manter os 50 ms. Nenhum dos dois sozinhos estava certo.
+Um teto único apertado (por exemplo 15 ms) trataria o ruído de GC como parte do
+orçamento e voltaria a arriscar alarme falso num runner carregado — exatamente
+o defeito que motivou a mudança. Um teto único frouxo (manter 50 ms sozinho)
+perde poder de detecção: uma regressão de 3× (mediana indo de ~2 ms para ~6 ms)
+passaria sem ser notada, porque 6 ms ainda está bem abaixo de 50.
+
+A decisão foi afirmar os dois, cada um com um papel:
+
+- **`MEDIAN_CEILING_MS = 5`** — a rede de regressão de verdade. A mediana é
+  robusta à cauda ocasional de GC, então dispara a partir de uma regressão real
+  de ~2,7× (mediana ~1,9 ms → 5 ms), que é o tipo de coisa que recompilar o
+  regex de 200 termos a cada chamada produziria.
+- **`SAMPLE_CEILING_MS = 50`** — o número original desta spec, mantido como teto
+  absoluto sobre cada amostra individual. Existe para capturar uma regressão
+  catastrófica que uma mediana suavizaria (por exemplo, um pipeline que
+  ocasionalmente trava por dezenas de milissegundos mas cuja mediana continua
+  baixa), não para descrever a velocidade em regime normal.
+
+Nada foi descartado: o 50 ms da spec original continua significando o que
+sempre significou (um teto absoluto), e ganhou companhia em vez de ser
+substituído por um número ajustado à medição. O comentário no próprio teste
+(`e2e/segment-pipeline-perf.spec.ts`) e `TESTING.md` registram os dois números
+e o motivo de cada um.
 
 ### 2. Contradições — decisões que a execução teve de mudar
 

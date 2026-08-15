@@ -38,7 +38,7 @@ either complains.
 | `npm run test:unit -- --coverage` | same, with the coverage gate | ≥80% lines | ~5s |
 | `npm run test:php` | PHPUnit against wp-env | all pass | ~5s |
 | `npm run test:php:coverage` | PHPUnit + line coverage | ≥85% lines | ~30s |
-| `npm run test:e2e` | Playwright, 26 scenarios | all pass | ~9min |
+| `npm run test:e2e` | Playwright, 27 scenarios | all pass | ~9min |
 | `npm run i18n:check` | committed `.pot` matches the source | no drift | ~20s |
 | `npm run audit:npm` / `:production` | dependency advisories | see below | ~15s |
 | `npm run audit:composer` | same for PHP tooling | 0 critical, 0 high | ~5s |
@@ -56,28 +56,9 @@ ONNX Runtime and a Worker only produces a test that always passes; the risks
 there are threading, `crossOriginIsolated` and timing, which only a real browser
 exercises. That is what the E2E suite is for.
 
-#### The segment pipeline ceiling
-
-`features/narration/tests/js/segment-pipeline-perf.test.ts` is the one timing
-test in the suite. It runs the whole editor-side path — `extractSegments` →
-`resolveSegments` → `mergeAdjacent` → `applyDictionary` (200 terms) →
-`computeSegmentHash` — over a 120-block, ~61,000-character post, and fails above
-**50 ms**. The editor runs exactly this path on a debounced keystroke, so the
-number it protects is typing latency.
-
-It is a ceiling, not a benchmark: nothing is reported, and a passing run says
-only "still fast enough". What it exists to catch is a change that puts
-per-call work back on that path — recompiling the dictionary's 200-term regex
-on every invocation being the concrete case.
-
-Read a failure carefully before blaming the plugin. Measured at ~36 ms on the
-development machine, the split was `extractSegments` ~31 ms, merge ~0.2 ms,
-`applyDictionary` ~1.7 ms, `computeSegmentHash` ~3 ms. `extractSegments` parses
-with `DOMParser`, and jsdom's parser is far slower than the browser's — so most
-of that budget is the test environment, and the real headroom on a loaded runner
-is thinner than the ceiling suggests. If this test goes red on CI alone, suspect
-runner load before suspecting a regression, and confirm by running it locally a
-few times.
+The segment pipeline's performance ceiling used to live here too, timed under
+Jest. It moved to E2E — see "The segment pipeline ceiling" below — because
+jsdom's `DOMParser` turned out to be most of what that test was measuring.
 
 ### PHPUnit
 
@@ -161,6 +142,44 @@ A single scenario, headed, with the inspector:
 ```bash
 npx playwright test -g "double-click" --headed --debug
 ```
+
+#### The segment pipeline ceiling
+
+`e2e/segment-pipeline-perf.spec.ts` is the odd one out in this suite: pure
+text, no model, no worker, no download. It runs the whole editor-side path —
+`extractSegments` → `resolveSegments` → `mergeAdjacent` → `applyDictionary`
+(200 terms) → `computeSegmentHash` — over a 120-block, ~61,000-character post,
+30 times per run, and fails if any single run crosses **50 ms**. The editor
+runs exactly this path on a debounced keystroke, so the number it protects is
+typing latency.
+
+It used to be a Jest test. jsdom's `DOMParser` is a pure-JS implementation far
+slower than a browser's native one, and `extractSegments` was ~31 ms of that
+test's ~36 ms — so it mostly measured the test environment, and its real
+headroom (1.4x) was narrow enough to flake on a loaded runner. This scenario
+times the same modules, built by the same bundler
+(`e2e/fixtures/segment-pipeline-harness.ts`, entry `segment-pipeline-harness`
+in `webpack.config.js`), loaded on a plain front-end page by
+`e2e/mu-plugins/segment-pipeline-harness.php` — mapped into wp-env only by
+`.wp-env.json`, so a production install of the plugin never enqueues it.
+
+Measured across multiple 30-run sessions on the development machine: min
+~1.2 ms, median ~1.9 ms, p95 ~5 ms, with occasional single-sample tails up to
+~13 ms that are GC/scheduling noise rather than the pipeline. One ceiling
+cannot serve both "catch a real regression" and "tolerate a GC pause", so the
+test asserts two, per the 2026-08-15 amendment to the Fase 2 spec (see that
+section for the full distribution and the reasoning):
+
+- **`MEDIAN_CEILING_MS = 5`** — the regression net. The median is robust to the
+  occasional tail, so a real regression (e.g. the 200-term dictionary regex
+  recompiling on every call) moves it while noise does not.
+- **`SAMPLE_CEILING_MS = 50`** — the design spec's original number, kept as an
+  absolute cap on every single sample, to catch a catastrophic outlier a
+  median would smooth over.
+
+It is still a ceiling, not a benchmark: the console line each run prints
+(`segment-pipeline-perf: min=… median=… mean=… max=… samples=[…]`) is what a
+future recalibration should read, not this paragraph.
 
 ### Translations
 
