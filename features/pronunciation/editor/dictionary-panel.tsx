@@ -5,6 +5,7 @@ import {
 	TextControl,
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
+import { useState, useEffect } from '@wordpress/element';
 import { SUPPORTED_LANGUAGES } from '../../narration/editor/model-source';
 import {
 	MAX_ENTRIES,
@@ -40,6 +41,30 @@ export function DictionaryPanel( {
 	onChange,
 	settingsUrl,
 }: DictionaryPanelProps ) {
+	const [ ids, setIds ] = useState< string[] >( () => {
+		return entries.map( () => crypto.randomUUID() );
+	} );
+
+	// Keep IDs in sync with entries when the parent re-renders with a different
+	// entries array. If lengths disagree, generate or remove IDs as needed.
+	useEffect( () => {
+		setIds( ( prevIds ) => {
+			if ( prevIds.length === entries.length ) {
+				return prevIds;
+			}
+			if ( prevIds.length < entries.length ) {
+				// Entries grew; generate new IDs for new entries
+				const newIds = [ ...prevIds ];
+				for ( let i = prevIds.length; i < entries.length; i++ ) {
+					newIds.push( crypto.randomUUID() );
+				}
+				return newIds;
+			}
+			// Entries shrank; truncate IDs to match
+			return prevIds.slice( 0, entries.length );
+		} );
+	}, [ entries.length ] );
+
 	const update = ( index: number, patch: Partial< DictionaryEntry > ) => {
 		onChange(
 			entries.map( ( entry, i ) =>
@@ -62,10 +87,7 @@ export function DictionaryPanel( {
 				</p>
 			) }
 			{ entries.map( ( entry, index ) => (
-				<div
-					className="post-voice-dictionary-row"
-					key={ `${ index }-${ entry.language }` }
-				>
+				<div className="post-voice-dictionary-row" key={ ids[ index ] }>
 					<TextControl
 						label={ __( 'Term', 'post-voice' ) }
 						value={ entry.term }
@@ -94,11 +116,14 @@ export function DictionaryPanel( {
 					<Button
 						variant="link"
 						isDestructive
-						onClick={ () =>
+						onClick={ () => {
+							setIds( ( prevIds ) =>
+								prevIds.filter( ( _, i ) => i !== index )
+							);
 							onChange(
 								entries.filter( ( _, i ) => i !== index )
-							)
-						}
+							);
+						} }
 					>
 						{ __( 'Remove', 'post-voice' ) }
 					</Button>
@@ -107,7 +132,11 @@ export function DictionaryPanel( {
 			<Button
 				variant="secondary"
 				disabled={ entries.length >= MAX_ENTRIES }
-				onClick={ () =>
+				onClick={ () => {
+					setIds( ( prevIds ) => [
+						...prevIds,
+						crypto.randomUUID(),
+					] );
 					onChange( [
 						...entries,
 						{
@@ -115,8 +144,8 @@ export function DictionaryPanel( {
 							replacement: '',
 							language: defaultLanguage,
 						},
-					] )
-				}
+					] );
+				} }
 			>
 				{ __( 'Add term', 'post-voice' ) }
 			</Button>
