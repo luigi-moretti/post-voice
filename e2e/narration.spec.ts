@@ -1,5 +1,6 @@
 import { test, expect } from '@wordpress/e2e-test-utils-playwright';
 import type { Admin, Editor } from '@wordpress/e2e-test-utils-playwright';
+import { openNarrationPanel } from './open-narration-panel';
 
 // Short on purpose: every second of synthesised audio is a second of test runtime.
 const NARRATION_TEXT = 'Hello world, this is a test post.';
@@ -40,9 +41,7 @@ test.describe( 'Post Voice — narration generation', () => {
 	} ) => {
 		await createNarratableDraft( admin, editor, 'Narration happy path' );
 		await editor.openDocumentSettingsSidebar();
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -91,9 +90,7 @@ test.describe( 'Post Voice — narration generation', () => {
 	} ) => {
 		await createNarratableDraft( admin, editor, 'Narration removal' );
 		await editor.openDocumentSettingsSidebar();
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -135,9 +132,7 @@ test.describe( 'Post Voice — narration generation', () => {
 			'post.php',
 			`post=${ postId }&action=edit`
 		);
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 
 		await page
 			.getByRole( 'button', { name: 'Remove', exact: true } )
@@ -176,9 +171,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		requestUtils,
 	} ) => {
 		await createNarratableDraft( admin, editor, 'Regenerate test' );
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -241,9 +234,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		// edit while generation ran and get audio labelled "Up to date" that did not
 		// match a word of the post.
 		await createNarratableDraft( admin, editor, 'Stale after edit' );
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -278,9 +269,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		// worker now stores them in the Cache API; this proves a second session
 		// touches the network for none of them.
 		await createNarratableDraft( admin, editor, 'Model cache' );
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -298,9 +287,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		} );
 
 		await page.reload();
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -320,9 +307,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		// The preview state used to offer "Save narration" and nothing else, so an
 		// author who disliked the result had no way out but to persist it.
 		await createNarratableDraft( admin, editor, 'Discard preview' );
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -360,9 +345,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		requestUtils,
 	} ) => {
 		await createNarratableDraft( admin, editor, 'Voice selection' );
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 
 		await page
 			.getByRole( 'combobox', { name: 'Voice', exact: true } )
@@ -418,9 +401,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		// filename, so the next upload was handed the same name and the same URL —
 		// and an `<audio>` element whose `src` string did not change never reloads.
 		await createNarratableDraft( admin, editor, 'Fresh URL per narration' );
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 
 		const saveOnce = async () => {
 			await page
@@ -461,9 +442,7 @@ test.describe( 'Post Voice — narration generation', () => {
 	} ) => {
 		await createNarratableDraft( admin, editor, 'Removal confirmation' );
 		await editor.openDocumentSettingsSidebar();
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -525,9 +504,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		// both handlers ran; each request then read the attachment meta before the
 		// other wrote it, so neither deleted the other's upload.
 		await createNarratableDraft( admin, editor, 'Double save' );
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -576,9 +553,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		page,
 	} ) => {
 		await createNarratableDraft( admin, editor, 'Cancel test' );
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
@@ -600,9 +575,7 @@ test.describe( 'Post Voice — narration generation', () => {
 		// cancelled pipeline noticed the flag used to leave two pipelines streaming
 		// chunks into the same listener. The panel now disposes the worker on cancel.
 		await createNarratableDraft( admin, editor, 'Cancel then regenerate' );
-		await page
-			.getByRole( 'button', { name: 'Narration', exact: true } )
-			.click();
+		await openNarrationPanel( page );
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();

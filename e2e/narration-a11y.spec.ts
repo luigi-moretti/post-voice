@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { test, expect } from '@wordpress/e2e-test-utils-playwright';
 import type { RequestUtils } from '@wordpress/e2e-test-utils-playwright';
+import { openNarrationPanel } from './open-narration-panel';
 import AxeBuilder from '@axe-core/playwright';
 
 const BLOCKING_IMPACTS = [ 'serious', 'critical' ];
@@ -10,9 +11,7 @@ test( 'editor panel has zero serious/critical accessibility violations', async (
 	page,
 } ) => {
 	await admin.createNewPost( { title: 'A11y editor' } );
-	await page
-		.getByRole( 'button', { name: 'Narration', exact: true } )
-		.click();
+	await openNarrationPanel( page );
 
 	const results = await new AxeBuilder( { page } )
 		.include( '.post-voice-panel' )
