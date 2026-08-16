@@ -38,7 +38,7 @@ either complains.
 | `npm run test:unit -- --coverage` | same, with the coverage gate | ≥80% lines | ~5s |
 | `npm run test:php` | PHPUnit against wp-env | all pass | ~5s |
 | `npm run test:php:coverage` | PHPUnit + line coverage | ≥85% lines | ~30s |
-| `npm run test:e2e` | Playwright, 27 scenarios | all pass | ~9min |
+| `npm run test:e2e` | Playwright, 30 scenarios | all pass | ~9min |
 | `npm run i18n:check` | committed `.pot` matches the source | no drift | ~20s |
 | `npm run audit:npm` / `:production` | dependency advisories | see below | ~15s |
 | `npm run audit:composer` | same for PHP tooling | 0 critical, 0 high | ~5s |
@@ -108,21 +108,30 @@ Playwright drives a real browser against wp-env, so the build has to be current:
 npm run build && npm run test:e2e
 ```
 
-The 26 scenarios split in two. Eighteen are Fase 1's: happy path, no
+The 30 scenarios split in three. Eighteen are Fase 1's: happy path, no
 `crossOriginIsolated`, cancel mid-generation, insufficient storage, regenerate
 without orphans, axe with zero serious/critical violations in editor and
 frontend, full keyboard operation of the player, `prefers-reduced-motion`, plus
 regressions for stale badges, model caching, discarding a preview, voice
 selection, URL uniqueness and double-click saves.
 
-Eight are Fase 2's, in `narration-fase2.spec.ts`: a block excluded in the
+Eleven are Fase 2's, in `narration-fase2.spec.ts`: a block excluded in the
 inspector, a second language with no room to download, an inline marked run
 surviving a save as an Author (which is the only test of what `kses` does to
 `data-pv-lang`, and so reads the post back over REST rather than trusting the
 editor's own serialisation), a dictionary entry changing what is narrated,
 editing the dictionary marking existing audio stale, a two-language post
-producing one MP3, cancelling during a language warm-up, and cancelling a
-multi-segment generation then immediately regenerating.
+producing one MP3, cancelling during a language warm-up, cancelling a
+multi-segment generation then immediately regenerating, the pronunciation panel
+opening on a browser without `crypto.randomUUID`, one bundle warm-up per
+generation rather than one per code path, and one parse of the post per
+debounced pass rather than one per keystroke — the last two count calls rather
+than timing them, so they fail loudly instead of flaking.
+
+The thirtieth is the performance ceiling, in `segment-pipeline-perf.spec.ts`: a
+64KB post through the whole text pipeline, median under 5ms and every sample
+under 50ms. It lives here rather than in Jest because jsdom's `DOMParser` is a
+JavaScript implementation and was consuming 86% of the budget on its own.
 
 Most scenarios generate audio for real, which means downloading ~190MB of model
 on the first run and 30-45s of synthesis each. Failure artifacts land in

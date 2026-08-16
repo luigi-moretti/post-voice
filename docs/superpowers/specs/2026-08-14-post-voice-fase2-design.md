@@ -853,10 +853,19 @@ Duas consequências tiveram de ser tratadas:
   gastaria download de bundle, calibração e um MP3 de comprimento zero.
 
 O comentário que dizia que memoizar `postDictionary` impedia exatamente esse
-recálculo em render foi corrigido: memoizar aquele array estabiliza o cache de
-regex do dicionário, mas não podia impedir nada disso — `blocks` invalida
+recálculo em render foi corrigido: memoizar aquele array estabiliza a identidade
+de `deriveFromText`, que é a chave do timer de 300 ms — sem isso um re-render
+qualquer reinicia o timer, e o ticker de 250 ms durante a geração o mataria de
+fome. Mas não podia impedir o recálculo em render, porque `blocks` invalida
 `buildSegments` de qualquer forma. Era documentação afirmando uma garantia que o
 código não dava.
+
+Uma segunda correção da mesma frase, depois da revisão do delta: memoizar aquele
+array também não faz nada pelo cache de regex do dicionário, como uma versão
+intermediária deste texto chegou a afirmar. Esse cache é um `WeakMap` chaveado no
+array de entradas, e `buildSegments` monta um array mesclado novo a cada chamada,
+então o regex compilado nunca sobrevive a uma delas — ele só evita recompilar
+entre os segmentos de uma mesma passada.
 
 **O teto de performance E2E não pegava essa classe de defeito, e agora existe um
 cenário que pega.** `e2e/segment-pipeline-perf.spec.ts` cronometra o pipeline

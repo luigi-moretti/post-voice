@@ -196,11 +196,18 @@ function NarrationPanel() {
 
 	// Memoized rather than a plain `?? []`: that fallback is a new array literal
 	// on every render whenever the meta key is unset, which changed
-	// `buildSegments`'s identity every render too — and `buildSegments`'s
-	// identity is what `applyDictionary`'s per-array regex cache keys on.
+	// `buildSegments`'s identity every render too — and through it
+	// `deriveFromText`'s, which is what the 300ms timer is keyed on. Without
+	// this, an unrelated re-render restarts that timer, and the 250ms elapsed
+	// ticker during generation would starve the debounced pass entirely.
 	//
-	// It is *not* what keeps the parser off the render path, which an earlier
-	// version of this comment claimed: `blocks` is a fresh array from
+	// It buys nothing for `applyDictionary`'s regex cache, which an earlier
+	// version of this comment claimed: that cache is a WeakMap keyed on the
+	// entries array, and `buildSegments` merges a fresh array on every call, so
+	// the compiled regex never survives one. It only dedupes across the
+	// segments of a single pass.
+	//
+	// It is *not* what keeps the parser off the render path either: `blocks` is a fresh array from
 	// `getBlocks()` on every keystroke, so `buildSegments` is re-created every
 	// keystroke no matter how stable this array is. Anything memoized on it is a
 	// cache that never hits. That is why the segment count and the unrecognised
@@ -858,7 +865,17 @@ function NarrationPanel() {
 	const generateAfterConfirmation = useCallback( async () => {
 		setError( null );
 		try {
-			await runGeneration( buildSegments() );
+			// Re-derived and re-checked, not inherited from `startGeneration`:
+			// `confirming-long-text` makes the panel inert but leaves the canvas
+			// editable, so the author can empty the post while the confirmation
+			// card is open. Without this the engine throws its own untranslated
+			// 'No segments to narrate', which `failGeneration` would print
+			// verbatim in any locale.
+			const segments = buildSegments();
+			if ( segments.length === 0 ) {
+				throw new Error( NOTHING_TO_NARRATE_MESSAGE() );
+			}
+			await runGeneration( segments );
 		} catch ( err ) {
 			failGeneration( err );
 		}
