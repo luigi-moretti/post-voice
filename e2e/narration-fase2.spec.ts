@@ -425,14 +425,17 @@ test.describe( 'Post Voice — Fase 2', () => {
 		// API that is missing there — and nothing else, `crypto.getRandomValues`
 		// very much included, since the editor itself uses it — is the honest
 		// stand-in.
+		// `undefined`, not a function that throws: on a real insecure origin the
+		// property is absent, and the difference decides the test. WordPress mints
+		// every block's clientId through the bundled `uuid` v4, which reads
+		// `if ( native.randomUUID && … ) return native.randomUUID()` — absent falls
+		// back to `getRandomValues`, which is the path this scenario wants, while a
+		// throwing stub passes that guard and kills `createBlock` before the plugin
+		// is ever reached.
 		await page.addInitScript( () => {
 			Object.defineProperty( crypto, 'randomUUID', {
 				configurable: true,
-				value: () => {
-					throw new TypeError(
-						'crypto.randomUUID is not a function'
-					);
-				},
+				value: undefined,
 			} );
 		} );
 
