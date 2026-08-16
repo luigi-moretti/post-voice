@@ -804,4 +804,124 @@ test.describe( 'Post Voice — Fase 2', () => {
 			timeout: 60_000,
 		} );
 	} );
+	test( 'typing does not re-run the segment parser once per keystroke', async ( {
+		admin,
+		editor,
+		page,
+	} ) => {
+		// The guard this scenario protects is the spec's first performance guard:
+		// the segment pipeline runs once per 300ms debounce, not once per
+		// character. It was silently bypassed for a while — the segment count and
+		// the unrecognised-language notice were `useMemo`s keyed on values that
+		// change on every keystroke (`blocks` is a fresh array out of
+		// `getBlocks()` every time), so each character paid two full `DOMParser`
+		// passes plus a dictionary pass *in render*, on top of the debounced one.
+		//
+		// `e2e/segment-pipeline-perf.spec.ts` cannot see this: it times the
+		// pipeline in isolation, so it measures one call and says nothing about
+		// how many calls the editor makes. This counts the calls instead.
+		//
+		// The instrument is `DOMParser.prototype.parseFromString`, filtered on the
+		// `<body>` wrapper that `segmentsFromHtml` — and, in this editor, only
+		// `segmentsFromHtml` — puts in front of the markup it parses. Gutenberg
+		// and its own dependencies parse plenty of HTML while the editor runs;
+		// none of it carries that prefix.
+		await page.addInitScript( () => {
+			window.__postVoiceExtractorParses = 0;
+			const parse = DOMParser.prototype.parseFromString;
+			DOMParser.prototype.parseFromString = function (
+				this: DOMParser,
+				markup: string,
+				type: DOMParserSupportedType
+			): Document {
+				if (
+					typeof markup === 'string' &&
+					markup.startsWith( '<body>' )
+				) {
+					window.__postVoiceExtractorParses =
+						( window.__postVoiceExtractorParses ?? 0 ) + 1;
+				}
+				return parse.call( this, markup, type );
+			};
+		} );
+
+		await admin.createNewPost();
+		// An explicit empty paragraph rather than the canvas's default appender:
+		// the appender is a placeholder, not a block, so there is nothing to click
+		// into and nothing for `getBlocks()` to hand the panel.
+		await editor.insertBlock( {
+			name: 'core/paragraph',
+			attributes: { content: '' },
+		} );
+		await openNarrationPanel( page );
+
+		// An empty post first, for the other half of the change: the count is
+		// debounced now, so the panel has to seed it synchronously on mount or it
+		// would spend the first 300ms of every open claiming there is nothing to
+		// narrate. Here there genuinely is nothing, and the hint has to be up
+		// immediately rather than 300ms late — and, more to the point, it has to
+		// be a real signal, so that its disappearance below proves the deferred
+		// pass actually landed.
+		const nothingToNarrate = page.getByText( 'Nothing to narrate yet' );
+		await expect( nothingToNarrate ).toBeVisible();
+
+		await editor.canvas
+			.locator( '[data-type="core/paragraph"]' )
+			.first()
+			.click();
+		await expect( page.locator( '.post-voice-panel' ) ).toBeVisible();
+
+		// Zeroed after the panel has mounted and settled, so the count below is
+		// keystrokes and nothing else.
+		await page.evaluate( () => {
+			window.__postVoiceExtractorParses = 0;
+		} );
+
+		// 20ms apart: comfortably inside the 300ms window, so the whole burst
+		// collapses into a single debounced pass. This is what an author typing a
+		// sentence produces.
+		const typed = 'A BYD terminou o trimestre a frente de todas.';
+		await page.keyboard.type( typed, { delay: 20 } );
+
+		// The pass landed: the hint is gone, which only the debounced recount can
+		// do. Without this the parse count below could pass by the pipeline never
+		// running at all.
+		await expect( nothingToNarrate ).toBeHidden();
+		await expect(
+			editor.canvas.getByText( typed, { exact: true } )
+		).toBeVisible();
+
+		const parses = await page.evaluate(
+			() => window.__postVoiceExtractorParses ?? 0
+		);
+
+		// The number itself, not only the verdict: a future recalibration needs to
+		// know how much headroom the ceiling below actually has.
+		// eslint-disable-next-line no-console
+		console.log(
+			`extractor parses for ${ typed.length } keystrokes: ${ parses }`
+		);
+
+		// Measured on this machine, three runs each: 1 with the debounce
+		// respected — the single post-burst pass over the post's one paragraph —
+		// and 90 against the code as it stood at `cd14257`, which is exactly
+		// 2 x 45, the two render-path parses per character this scenario exists
+		// to catch. The ceiling sits far above the former and far below the
+		// latter, so a slower runner splitting the burst into two or three
+		// debounced passes stays green while any return of a per-keystroke parse
+		// fails.
+		expect( parses ).toBeLessThanOrEqual( 8 );
+		expect( parses ).toBeGreaterThan( 0 );
+	} );
 } );
+
+declare global {
+	interface Window {
+		/**
+		 * Extractor `DOMParser` calls counted by the scenario above. Installed by
+		 * that test's own init script and by nothing else — the plugin never reads
+		 * or writes it.
+		 */
+		__postVoiceExtractorParses?: number;
+	}
+}

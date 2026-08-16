@@ -23,7 +23,7 @@ import { PocketTtsEngine } from './engine/tts-engine';
 import { SUPPORTED_LANGUAGES } from './model-source';
 import { LANGUAGE_LABELS, languageLabel } from './language-labels';
 import { extractSegments } from './extract-segments';
-import type { EditorBlock, ResolvedSegment } from './segment';
+import type { EditorBlock, ResolvedSegment, Segment } from './segment';
 import { resolveSegments, mergeAdjacent, unknownLanguages } from './segment';
 import { computeSegmentHash } from './segment-hash';
 import { groupByLanguage, withPrimaryLanguage } from './group-segments';
@@ -64,6 +64,22 @@ import './style.scss';
 const WASM_UNAVAILABLE_MESSAGE = () =>
 	__(
 		'This browser cannot run WebAssembly, which narration needs. Try another browser, or ask an administrator whether a security policy is blocking it.',
+		'post-voice'
+	);
+
+/**
+ * Shown as the hint under a disabled "Generate audio", and thrown if a click
+ * reaches `startGeneration` anyway.
+ *
+ * One string for both because the segment count that disables the button is now
+ * debounced: for up to 300ms after the last keystroke the button describes the
+ * previous text, so "nothing to narrate" has to be enforced where the work
+ * actually starts, not only where it is drawn. A function, not a constant, for
+ * the same reason as the message above.
+ */
+const NOTHING_TO_NARRATE_MESSAGE = () =>
+	__(
+		'Nothing to narrate yet: every block is either excluded from the narration or of a type that is never read aloud.',
 		'post-voice'
 	);
 
@@ -180,9 +196,15 @@ function NarrationPanel() {
 
 	// Memoized rather than a plain `?? []`: that fallback is a new array literal
 	// on every render whenever the meta key is unset, which changed
-	// `buildSegments`'s identity every render too — defeating the 300ms
-	// staleness debounce by re-running the parser and the dictionary pass in
-	// render on every keystroke, the exact cost the debounce exists to avoid.
+	// `buildSegments`'s identity every render too — and `buildSegments`'s
+	// identity is what `applyDictionary`'s per-array regex cache keys on.
+	//
+	// It is *not* what keeps the parser off the render path, which an earlier
+	// version of this comment claimed: `blocks` is a fresh array from
+	// `getBlocks()` on every keystroke, so `buildSegments` is re-created every
+	// keystroke no matter how stable this array is. Anything memoized on it is a
+	// cache that never hits. That is why the segment count and the unrecognised
+	// languages below ride the debounced pass instead of a `useMemo`.
 	const postDictionary = useMemo(
 		() => ( meta._narration_dictionary ?? [] ) as DictionaryEntry[],
 		[ meta._narration_dictionary ]
@@ -267,19 +289,72 @@ function NarrationPanel() {
 		]
 	);
 
-	const buildSegments = useCallback( () => {
-		const dictionary = mergeDictionaries(
-			window.postVoiceData?.dictionary ?? [],
-			postDictionary
-		);
-		const resolved = mergeAdjacent(
-			resolveSegments( extractSegments( blocks ), language )
-		);
-		return resolved.map( ( segment ) => ( {
-			...segment,
-			text: applyDictionary( segment.text, segment.language, dictionary ),
-		} ) );
-	}, [ blocks, language, postDictionary ] );
+	/**
+	 * Everything the panel narrates, from the blocks as they stand now.
+	 *
+	 * @param raw The extraction, when the caller already has one. `extractSegments`
+	 *            is the expensive half of this — one `DOMParser` pass per block —
+	 *            and `deriveFromText` below needs both it (for the unrecognised
+	 *            language codes, which are only visible *before* resolution
+	 *            replaces them with the fallback) and the resolved segments.
+	 *            Passing it in is what keeps that a single parse.
+	 */
+	const buildSegments = useCallback(
+		( raw: Segment[] = extractSegments( blocks ) ) => {
+			const dictionary = mergeDictionaries(
+				window.postVoiceData?.dictionary ?? [],
+				postDictionary
+			);
+			const resolved = mergeAdjacent( resolveSegments( raw, language ) );
+			return resolved.map( ( segment ) => ( {
+				...segment,
+				text: applyDictionary(
+					segment.text,
+					segment.language,
+					dictionary
+				),
+			} ) );
+		},
+		[ blocks, language, postDictionary ]
+	);
+
+	/**
+	 * One pass over the post text, yielding everything derived from it: the
+	 * segments to narrate (and to hash), the count the panel displays, and the
+	 * language codes this version does not recognise.
+	 *
+	 * Grouped into one function because they all start from the same parse, and
+	 * every caller of this runs on the debounced path below.
+	 */
+	const deriveFromText = useCallback( () => {
+		const raw = extractSegments( blocks );
+		const segments = buildSegments( raw );
+		return {
+			segments,
+			stats: {
+				segmentCount: segments.length,
+				unknown: unknownLanguages( raw ),
+			},
+		};
+	}, [ blocks, buildSegments ] );
+
+	// What the panel says about the current text. Both of these used to be
+	// `useMemo`s in render — `buildSegments().length` keyed on `[ buildSegments ]`
+	// and `unknownLanguages( extractSegments( blocks ) )` keyed on `[ blocks ]` —
+	// and neither key is ever stable, because `getBlocks()` returns a fresh array
+	// on every keystroke. They were therefore two full re-parses (plus a second
+	// dictionary pass) per character, synchronously in render, on top of the
+	// debounced one: three passes where the spec's first performance guard asks
+	// for one. Both are display-only — a count, a disabled state and a notice —
+	// so they can lag typing by the same 300ms the hash does.
+	//
+	// Seeded synchronously rather than starting empty. A `null` or `0` start
+	// would flash "Nothing to narrate yet" and a disabled Generate button for the
+	// first 300ms of every panel open, on posts that have plenty to narrate.
+	// The seed costs exactly one pass, once per mount.
+	const [ textStats, setTextStats ] = useState(
+		() => deriveFromText().stats
+	);
 
 	// Reopen the panel on the settings the existing audio was made with, rather
 	// than on the defaults. Otherwise the selectors quietly describe a narration
@@ -354,7 +429,9 @@ function NarrationPanel() {
 		};
 	}, [ attachmentId ] );
 
-	// Recompute the current text hash and compare against what was saved.
+	// The single pass over the post text: it produces the segment count and the
+	// unrecognised languages the panel shows, and the hash the "up to date" badge
+	// compares against what was saved.
 	//
 	// Debounced, because `getBlocks()` returns a fresh array on every editor
 	// change: undebounced this re-extracted the whole post and ran SHA-256 on
@@ -364,12 +441,22 @@ function NarrationPanel() {
 	// unhandled rejection. A failed comparison leaves the badge alone rather
 	// than claiming freshness it could not verify.
 	useEffect( () => {
-		// 300ms: `blocks` changes on every keystroke, and this path now runs the
+		// 300ms: `blocks` changes on every keystroke, and this path runs the
 		// parser, the dictionary and the digest. Measured at ~18ms on a 64KB post —
 		// small, but not small enough to pay per character.
 		let cancelled = false;
 		const timer = setTimeout( () => {
-			computeSegmentHash( buildSegments() )
+			const { segments, stats } = deriveFromText();
+			if ( cancelled ) {
+				return;
+			}
+			// Set before the digest, not inside its `then`: the count and the
+			// notice are plain text processing and must keep updating on a
+			// plain-HTTP site, where `computeSegmentHash` rejects because
+			// `crypto.subtle` does not exist. Tying them to the hash would freeze
+			// the Generate button in whatever state the panel opened in.
+			setTextStats( stats );
+			computeSegmentHash( segments )
 				.then( ( hash ) => {
 					if ( ! cancelled ) {
 						setIsStale(
@@ -383,7 +470,7 @@ function NarrationPanel() {
 			cancelled = true;
 			clearTimeout( timer );
 		};
-	}, [ buildSegments, savedHash ] );
+	}, [ deriveFromText, savedHash ] );
 
 	const setPreview = useCallback( ( blob: Blob | null ) => {
 		setPreviewUrl( ( previous ) => {
@@ -617,6 +704,18 @@ function NarrationPanel() {
 		setProgress( null );
 		try {
 			const segments = buildSegments();
+			// The Generate button is disabled on an empty `segmentCount`, but a
+			// disabled button is UX rather than a guarantee — and that count is
+			// now debounced, so for up to 300ms after the author empties the post
+			// the button still describes the previous text. Without this check a
+			// click landing in that window would run the whole ceremony on an
+			// empty narration: a ~190MB bundle download, a calibration, and a
+			// zero-length MP3 offered for saving. Re-derived here rather than
+			// read from `segmentCount` precisely because this must see the text
+			// as it is now.
+			if ( segments.length === 0 ) {
+				throw new Error( NOTHING_TO_NARRATE_MESSAGE() );
+			}
 			const groups = groupByLanguage( segments );
 			// The bundles this narration is actually made of — nothing else is
 			// downloaded, which is what lets the storage check below count
@@ -633,9 +732,9 @@ function NarrationPanel() {
 			// marked" state the 2026-08-15 amendment §2 fixed for
 			// `_narration_languages`; this is the download half of it.
 			//
-			// The fallback is unreachable while the Generate button is disabled on
-			// an empty `segmentCount`, and is here because a disabled button is UX,
-			// not a guarantee.
+			// The fallback is now genuinely unreachable — `segments` is non-empty
+			// by the check above, so `groups` is too — and stays only because the
+			// type says the index may be undefined.
 			const firstLanguage = groups[ 0 ]?.language ?? language;
 			const cached = await cachedBundles(
 				groups.map( ( group ) => group.language )
@@ -943,15 +1042,9 @@ function NarrationPanel() {
 		return () => clearInterval( timer );
 	}, [ state ] );
 
-	const segmentCount = useMemo(
-		() => buildSegments().length,
-		[ buildSegments ]
-	);
+	// Computed on the debounced pass above, not here: see `textStats`.
+	const { segmentCount, unknown } = textStats;
 	const hasNothingToNarrate = segmentCount === 0;
-	const unknown = useMemo(
-		() => unknownLanguages( extractSegments( blocks ) ),
-		[ blocks ]
-	);
 
 	const isAutoDraft = postStatus === 'auto-draft';
 	const isSampling = state === 'sampling';
@@ -1372,10 +1465,7 @@ function NarrationPanel() {
 							</Button>
 							{ hasNothingToNarrate && (
 								<p className="post-voice-panel__hint">
-									{ __(
-										'Nothing to narrate yet: every block is either excluded from the narration or of a type that is never read aloud.',
-										'post-voice'
-									) }
+									{ NOTHING_TO_NARRATE_MESSAGE() }
 								</p>
 							) }
 							{ isStale && existing && ! previewUrl && (

@@ -814,3 +814,58 @@ o defeito no lugar. Dois testes novos cobrem o caso não-ASCII: um afirma o cort
 em caracteres (e que o resultado continua UTF-8 válido, isto é, que nada foi
 cortado no meio de um codepoint), o outro afirma que um valor dentro do teto
 chega intacto.
+
+**A guarda 1 de performance passa a valer de verdade — havia dois desvios
+síncronos.** O debounce de ~300 ms existe porque "esta fase empilha parse e
+dicionário no mesmo caminho", e ele estava aplicado só ao efeito do hash. Dois
+valores do painel ficaram de fora e rodavam **em render**: `segmentCount`, um
+`useMemo` sobre `buildSegments()` — parse completo mais passada de dicionário — e
+`unknown`, um `useMemo` sobre `extractSegments( blocks )`. As duas chaves de
+memoização (`buildSegments` e `blocks`) mudam a cada tecla, porque `getBlocks()`
+devolve array novo a cada mudança do editor: eram caches que nunca acertam. Na
+prática o post pagava **três** passadas por caractere, não uma por debounce — as
+duas em render, síncronas, mais a debounced.
+
+Havia como enfraquecer a spec para descrever o código ("a guarda vale só para o
+hash"). Foi rejeitado: os dois valores são de exibição — uma contagem, o estado
+desabilitado do botão e um aviso — e atrasar ambos 300 ms atrás da digitação não
+custa nada ao autor. Os dois passaram a andar na mesma passada debounced que já
+calculava o hash, agrupados num `deriveFromText()` que extrai **uma vez** e
+devolve segmentos, contagem e idiomas desconhecidos. `buildSegments` aceita a
+extração pronta como parâmetro para que isso continue sendo um único
+`DOMParser`.
+
+Duas consequências tiveram de ser tratadas:
+
+- **O estado inicial não pode piscar.** Valor debounced começa vazio, e vazio
+  aqui significa "nada para narrar": o painel exibiria a dica e o botão
+  desabilitado nos primeiros 300 ms de toda abertura, em posts cheios de texto.
+  O estado é semeado sincronamente no `useState` — uma passada, uma vez por
+  montagem — e só as atualizações são debounced.
+- **O botão desabilitado agora atrasa.** A spec já diz que "nenhum segmento
+  desabilita o botão de gerar"; isso continua verdade, mas por até 300 ms o botão
+  descreve o texto anterior. Como a spec também diz que sem essa guarda "a
+  geração seguiria para o worker com texto vazio", a garantia mudou de lugar:
+  `startGeneration` recusa explicitamente uma lista de segmentos vazia, com a
+  mesma frase que a dica do painel mostra. O botão desabilitado volta a ser o que
+  a convenção do projeto sempre disse que ele é — UX, não garantia — e a garantia
+  passa a estar onde o trabalho começa. Sem isso, um clique caindo nessa janela
+  gastaria download de bundle, calibração e um MP3 de comprimento zero.
+
+O comentário que dizia que memoizar `postDictionary` impedia exatamente esse
+recálculo em render foi corrigido: memoizar aquele array estabiliza o cache de
+regex do dicionário, mas não podia impedir nada disso — `blocks` invalida
+`buildSegments` de qualquer forma. Era documentação afirmando uma garantia que o
+código não dava.
+
+**O teto de performance E2E não pegava essa classe de defeito, e agora existe um
+cenário que pega.** `e2e/segment-pipeline-perf.spec.ts` cronometra o pipeline
+isolado: ele mede *uma* chamada e não diz nada sobre **quantas** chamadas o editor
+faz. O cenário novo, "typing does not re-run the segment parser once per
+keystroke", conta as chamadas em vez de cronometrá-las — instrumenta
+`DOMParser.prototype.parseFromString` filtrando pelo prefixo `<body>` que só
+`segmentsFromHtml` usa, digita uma frase dentro da janela do debounce e afirma
+sobre o total. Medido: **1** com o debounce respeitado, **90** contra o código
+como estava em `cd14257` — exatamente 2 × 45 teclas. O cenário também afirma que
+a dica "Nothing to narrate yet" desaparece depois da digitação, para que a
+contagem não possa passar por o pipeline simplesmente não ter rodado.
