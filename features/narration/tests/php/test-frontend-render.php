@@ -74,4 +74,46 @@ class Test_Post_Voice_Frontend_Render extends WP_UnitTestCase {
 
 		$this->assertSame( 'Original content.', $output );
 	}
+
+	public function test_markup_in_preview_mode_is_the_enhanced_player_without_audio(): void {
+		$html = Post_Voice_Frontend_Render::markup( null, true );
+
+		$this->assertStringContainsString( 'post-voice-player--enhanced', $html );
+		$this->assertStringNotContainsString( '<audio', $html );
+		$this->assertStringNotContainsString( 'aria-live', $html );
+		$this->assertStringNotContainsString( 'role="region"', $html );
+	}
+
+	public function test_preview_controls_are_disabled_rather_than_hidden(): void {
+		$html = Post_Voice_Frontend_Render::markup( null, true );
+
+		foreach ( array( 'play', 'rate', 'close' ) as $role ) {
+			$this->assertMatchesRegularExpression(
+				'/<button[^>]*data-role="' . $role . '"[^>]*\sdisabled/',
+				$html,
+				"The preview's {$role} button should be disabled."
+			);
+		}
+		// `aria-hidden` on a block containing focusable controls is an axe
+		// violation, so the preview disables them instead.
+		$this->assertStringNotContainsString( ' hidden', $html );
+	}
+
+	public function test_preview_shows_the_progress_bar_partly_filled(): void {
+		$html = Post_Voice_Frontend_Render::markup( null, true );
+
+		$this->assertMatchesRegularExpression(
+			'/<input[^>]*data-role="seek"[^>]*value="40"/',
+			$html
+		);
+	}
+
+	public function test_frontend_markup_keeps_the_audio_element_and_the_region(): void {
+		$html = Post_Voice_Frontend_Render::markup( 'https://example.com/n.mp3' );
+
+		$this->assertStringContainsString( '<audio controls src="https://example.com/n.mp3"', $html );
+		$this->assertStringContainsString( 'role="region"', $html );
+		$this->assertStringNotContainsString( 'post-voice-player--enhanced', $html );
+		$this->assertStringNotContainsString( 'disabled', $html );
+	}
 }
