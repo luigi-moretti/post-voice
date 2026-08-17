@@ -9,14 +9,8 @@
             -->
             <directory suffix=".php">features/narration/tests/php</directory>
             <directory suffix=".php">features/pronunciation/tests/php</directory>
+            <directory suffix=".php">features/player-style/tests/php</directory>
             <directory suffix=".php">shared/tests/php</directory>
-            <!--
-                features/player-style/tests/php is not listed yet: unlike
-                `wp i18n make-pot`, this PHPUnit version (9.6) throws
-                TestDirectoryNotFoundException for a <directory> that does not
-                exist, rather than skipping it. Add the entry in the task that
-                creates the directory.
-            -->
         </testsuite>
     </testsuites>
     <coverage>

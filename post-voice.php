@@ -36,6 +36,7 @@ require_once POST_VOICE_PATH . 'features/narration/php/class-frontend-render.php
 require_once POST_VOICE_PATH . 'shared/php/class-settings-page.php';
 require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-store.php';
 require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-section.php';
+require_once POST_VOICE_PATH . 'features/player-style/php/class-style-store.php';
 
 add_action(
 	'init',
