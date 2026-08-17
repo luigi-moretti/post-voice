@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-17T19:46:36+00:00\n"
+"POT-Creation-Date: 2026-08-17T22:21:48+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -24,33 +24,33 @@ msgstr ""
 msgid "Gera narração em áudio de posts 100% no navegador (client-side TTS), com voice cloning via Pocket TTS."
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:53
+#: features/narration/php/class-frontend-render.php:76
 msgid "Post narration player"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:64
+#: features/narration/php/class-frontend-render.php:91
 #: build/narration-editor.js:19
 msgid "Play narration"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:65
+#: features/narration/php/class-frontend-render.php:92
 msgid "Playing"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:66
+#: features/narration/php/class-frontend-render.php:93
 msgid "Paused"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:76
+#: features/narration/php/class-frontend-render.php:103
 #: build/narration-editor.js:19
 msgid "Seek within narration"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:77
+#: features/narration/php/class-frontend-render.php:104
 msgid "Playback speed"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:78
+#: features/narration/php/class-frontend-render.php:105
 msgid "Close player"
 msgstr ""
 
@@ -108,6 +108,54 @@ msgstr ""
 #: features/narration/php/class-rest-api.php:353
 #, php-format
 msgid "Narration — %s"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:49
+msgid "Player"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:55
+msgid "Background"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:55
+msgid "Pick the background colour"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:56
+msgid "Accent"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:56
+msgid "Pick the accent colour"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:57
+msgid "Text and icons"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:57
+msgid "Pick the text colour"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:77
+msgid "Corners"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:133
+msgid "Colours for the player readers see under a narrated post."
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:182
+msgid "Pill (default)"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:183
+msgid "Rounded corners"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:184
+msgid "Square corners"
 msgstr ""
 
 #: features/pronunciation/php/class-dictionary-section.php:49
