@@ -506,6 +506,37 @@ e na hora de sincronizar. Duas funções nascem disso —
 **O `pattern` do HTML é ancorado implicitamente.** O `^…$` escrito acima é
 redundante; o plano usa `#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})`, que é equivalente.
 
+## Emenda de 2026-08-17 (2) — reconciliando "byte-for-byte" com o desvio de color-mix nos tons derivados
+
+A frase de objetivo ("ship byte-for-byte the same HTML and CSS it ships
+today") e o critério de aceite 1 ("renderiza exatamente como hoje") descrevem
+corretamente o resultado para as três propriedades customizáveis
+(`--pv-surface`, `--pv-accent`, `--pv-text`, `--pv-radius`): o fallback dentro
+de cada `var()` garante que um site sem opção salva emita o mesmo CSS de hoje,
+byte a byte.
+
+Isso não vale, à risca, para os dois tons derivados descritos em "Os dois tons
+derivados": em um navegador que entende `color-mix`, a segunda declaração
+(`background: color-mix(...)`) vence a primeira mesmo quando o autor nunca
+abriu a tela, e o valor computado passa a ser `#323232` (hover) e `#4b4b4b`
+(trilha) em vez do hexadecimal literal de hoje (`#333`, `#4a4a4a`) — um valor
+de diferença por canal. A revisão de branch completa apontou essa
+contradição textual entre a frase de objetivo/critério 1 e essa seção.
+
+Isso é deliberado, não um defeito: a própria seção "Os dois tons derivados"
+já explica por que o arredondamento para 20%/9% troca um hex exato por uma
+aproximação imperceptível, e por que isso é preferível a `color-mix(...
+80.4%)`. O critério de aceite 7 já cobre a metade sem `color-mix`, que
+permanece byte-for-byte.
+
+Não altero a frase de objetivo nem o critério de aceite 1 — ambos continuam
+corretos para as quatro propriedades customizáveis, que são o que a Fase 3
+adiciona. Esta seção é a ressalva: "byte-for-byte" descreve o CSS que a
+Fase 3 escreve, não os dois tons derivados que já usavam `color-mix` com
+fallback antes desta emenda existir por escrito. Nenhum código muda por
+causa desta emenda; ela só torna a divergência explícita, como o CLAUDE.md
+deste projeto pede.
+
 ## Não-metas explícitas
 
 - Highlight sincronizado, auto-scroll e timestamps — fase futura.

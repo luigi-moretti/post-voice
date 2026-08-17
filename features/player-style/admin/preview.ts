@@ -54,17 +54,37 @@ const PAIRS: Array< { a: string; b: string; minimum: number; label: string } > =
 	];
 
 /**
- * Read the current colour of every hex field, falling back to the defaults.
+ * Read the current colour of every hex field.
  *
- * @param fields The hex text inputs.
+ * An invalid or half-typed hex field falls back to its paired picker's
+ * current value — the picker only ever gets `expandHex()` of a normalized
+ * value, so it always holds the last valid colour for that key. `DEFAULTS` is
+ * only a last resort for a field with no matching picker, which should not
+ * happen given how the server renders them.
+ *
+ * @param fields  The hex text inputs.
+ * @param pickers The colour pickers paired with the hex inputs.
  */
-function readColours( fields: HTMLInputElement[] ): Record< string, string > {
+function readColours(
+	fields: HTMLInputElement[],
+	pickers: HTMLInputElement[]
+): Record< string, string > {
 	const colours = { ...DEFAULTS };
 	for ( const field of fields ) {
 		const key = field.dataset.key ?? '';
+		if ( ! key ) {
+			continue;
+		}
 		const value = normalizeHex( field.value );
-		if ( key && value ) {
+		if ( value ) {
 			colours[ key ] = value;
+			continue;
+		}
+		const picker = pickers.find(
+			( candidate ) => candidate.dataset.key === key
+		);
+		if ( picker ) {
+			colours[ key ] = picker.value;
 		}
 	}
 	return colours;
@@ -146,7 +166,7 @@ export function initPreview( root: ParentNode = document ): void {
 		radiusField.selectedOptions[ 0 ]?.dataset.length ?? '999px';
 
 	const refresh = (): void => {
-		const colours = readColours( hexFields );
+		const colours = readColours( hexFields, pickers );
 		applyStyle( wrapper, colours, currentRadius() );
 		reportContrast( message, colours );
 	};
@@ -177,7 +197,8 @@ export function initPreview( root: ParentNode = document ): void {
 			const picker = pickers.find(
 				( candidate ) => candidate.dataset.key === field.dataset.key
 			);
-			field.value = picker?.value ?? DEFAULTS[ field.dataset.key ?? '' ];
+			field.value =
+				picker?.value ?? DEFAULTS[ field.dataset.key ?? '' ] ?? '';
 			refresh();
 		} );
 	}

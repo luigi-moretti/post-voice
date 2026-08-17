@@ -30,5 +30,6 @@ function _post_voice_manually_load_plugin(): void {
 tests_add_filter( 'muplugins_loaded', '_post_voice_manually_load_plugin' );
 
 require_once __DIR__ . '/trait-fires-admin-init.php';
+require_once __DIR__ . '/trait-with-asset-file.php';
 
 require $_tests_dir . '/includes/bootstrap.php';

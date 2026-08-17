@@ -13,6 +13,25 @@ declare(strict_types=1);
 class Test_Post_Voice_Style_Section extends WP_UnitTestCase {
 
 	use Post_Voice_Fires_Admin_Init;
+	use Post_Voice_With_Asset_File;
+
+	/**
+	 * Path of the preview screen's own asset manifest.
+	 */
+	private function asset_file(): string {
+		return POST_VOICE_PATH . 'build/player-style-admin.asset.php';
+	}
+
+	protected function setUp(): void {
+		parent::setUp();
+		$this->recover_parked_asset_file( $this->asset_file() );
+
+		// Enqueued handles are global and survive between tests, so a later
+		// test would see whatever an earlier one enqueued and pass (or fail)
+		// for the wrong reason.
+		$GLOBALS['wp_scripts'] = new WP_Scripts();
+		$GLOBALS['wp_styles']  = new WP_Styles();
+	}
 
 	/**
 	 * `register_setting()` and `add_settings_section()` write straight into
@@ -26,6 +45,7 @@ class Test_Post_Voice_Style_Section extends WP_UnitTestCase {
 		global $wp_settings_sections;
 		unset( $wp_settings_sections[ Post_Voice_Settings_Page::MENU_SLUG ] );
 		unregister_setting( Post_Voice_Settings_Page::OPTION_GROUP, Post_Voice_Style_Store::OPTION );
+		$this->tear_down_asset_files();
 		parent::tearDown();
 	}
 
@@ -138,9 +158,7 @@ class Test_Post_Voice_Style_Section extends WP_UnitTestCase {
 	}
 
 	public function test_enqueue_loads_the_real_player_stylesheet_on_this_screen(): void {
-		if ( ! file_exists( POST_VOICE_PATH . 'build/player-style-admin.asset.php' ) ) {
-			$this->markTestSkipped( 'Run `npm run build` first: the enqueue is guarded on the asset file.' );
-		}
+		$this->with_asset_file( $this->asset_file() );
 
 		Post_Voice_Style_Section::enqueue( 'settings_page_post-voice' );
 
@@ -148,5 +166,17 @@ class Test_Post_Voice_Style_Section extends WP_UnitTestCase {
 		$this->assertTrue( wp_style_is( 'post-voice-player', 'enqueued' ) );
 		$this->assertTrue( wp_style_is( 'post-voice-player-style-admin', 'enqueued' ) );
 		$this->assertTrue( wp_script_is( 'post-voice-player-style-admin', 'enqueued' ) );
+	}
+
+	public function test_enqueue_skips_everything_when_the_plugin_was_never_built(): void {
+		// Same guard as the frontend and editor enqueues: a plugin copied to a
+		// server without running the build must not 404 the settings screen.
+		$this->without_asset_file( $this->asset_file() );
+
+		Post_Voice_Style_Section::enqueue( 'settings_page_post-voice' );
+
+		$this->assertFalse( wp_style_is( 'post-voice-player', 'enqueued' ) );
+		$this->assertFalse( wp_style_is( 'post-voice-player-style-admin', 'enqueued' ) );
+		$this->assertFalse( wp_script_is( 'post-voice-player-style-admin', 'enqueued' ) );
 	}
 }
