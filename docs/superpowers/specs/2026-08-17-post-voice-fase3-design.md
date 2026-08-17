@@ -494,6 +494,18 @@ no axe.
 9. Tela de settings passa no axe com o preview visível, e a seção do dicionário
    continua funcionando como na Fase 2.
 
+## Emenda de 2026-08-17 — o que o planejamento descobriu
+
+**`<input type="color">` só entende a forma de seis dígitos.** Entregue `#abc`,
+ele não erra: mostra preto e não avisa. Como a opção preserva a forma curta como
+o autor digitou, o valor do seletor precisa ser expandido na hora de renderizar
+e na hora de sincronizar. Duas funções nascem disso —
+`Post_Voice_Style_Store::expand_hex()` no PHP e `expandHex()` no
+`hex-field.ts` — e o campo de texto continua guardando a forma curta.
+
+**O `pattern` do HTML é ancorado implicitamente.** O `^…$` escrito acima é
+redundante; o plano usa `#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})`, que é equivalente.
+
 ## Não-metas explícitas
 
 - Highlight sincronizado, auto-scroll e timestamps — fase futura.
