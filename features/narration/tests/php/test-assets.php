@@ -55,6 +55,7 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 	}
 
 	public function test_no_inline_style_when_the_player_was_never_customised(): void {
+		$this->with_asset_file( 'player' );
 		delete_option( Post_Voice_Style_Store::OPTION );
 		$post_id       = self::factory()->post->create();
 		$attachment_id = self::factory()->attachment->create_object(
@@ -75,6 +76,7 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 	}
 
 	public function test_customised_player_ships_its_declarations_inline(): void {
+		$this->with_asset_file( 'player' );
 		update_option(
 			Post_Voice_Style_Store::OPTION,
 			array( 'accent' => '#c00000' ) + Post_Voice_Style_Store::DEFAULTS
