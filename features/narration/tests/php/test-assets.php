@@ -54,6 +54,49 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 		$this->assertTrue( wp_script_is( 'post-voice-player', 'enqueued' ) );
 	}
 
+	public function test_no_inline_style_when_the_player_was_never_customised(): void {
+		delete_option( Post_Voice_Style_Store::OPTION );
+		$post_id       = self::factory()->post->create();
+		$attachment_id = self::factory()->attachment->create_object(
+			array(
+				'file'        => 'n.mp3',
+				'post_parent' => $post_id,
+			)
+		);
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
+
+		$this->go_to( get_permalink( $post_id ) );
+		Post_Voice_Assets::enqueue_frontend_assets();
+
+		// `get_data()` returns `false`, not an empty array, when `wp_add_inline_style`
+		// was never called for the handle — WP_Dependencies never sets the `after`
+		// key at registration time.
+		$this->assertFalse( wp_styles()->get_data( 'post-voice-player', 'after' ) );
+	}
+
+	public function test_customised_player_ships_its_declarations_inline(): void {
+		update_option(
+			Post_Voice_Style_Store::OPTION,
+			array( 'accent' => '#c00000' ) + Post_Voice_Style_Store::DEFAULTS
+		);
+		$post_id       = self::factory()->post->create();
+		$attachment_id = self::factory()->attachment->create_object(
+			array(
+				'file'        => 'n.mp3',
+				'post_parent' => $post_id,
+			)
+		);
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
+
+		$this->go_to( get_permalink( $post_id ) );
+		Post_Voice_Assets::enqueue_frontend_assets();
+
+		$this->assertContains(
+			'.post-voice-player{--pv-accent:#c00000}',
+			(array) wp_styles()->get_data( 'post-voice-player', 'after' )
+		);
+	}
+
 	public function test_frontend_assets_not_enqueued_on_non_singular_pages(): void {
 		$this->go_to( home_url( '/' ) );
 		Post_Voice_Assets::enqueue_frontend_assets();

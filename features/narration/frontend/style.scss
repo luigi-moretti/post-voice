@@ -42,9 +42,9 @@ $pv-text: #fff;
 	margin: 0 auto;
 	padding: 0.625rem 0.875rem;
 
-	background: $pv-surface;
-	color: $pv-text;
-	border-radius: 999px;
+	background: var( --pv-surface, #{ $pv-surface } );
+	color: var( --pv-text, #{ $pv-text } );
+	border-radius: var( --pv-radius, 999px );
 	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
 
 	animation: post-voice-player-in 200ms ease-out;
@@ -64,7 +64,7 @@ $pv-text: #fff;
 		line-height: 1;
 
 		&:focus-visible {
-			outline: 2px solid $pv-text;
+			outline: 2px solid var( --pv-text, #{ $pv-text } );
 			outline-offset: 2px;
 		}
 	}
@@ -77,7 +77,10 @@ $pv-text: #fff;
 		height: 2.75rem;
 		padding: 0;
 		font-size: 1rem;
-		background: $pv-accent;
+		background: var( --pv-accent, #{ $pv-accent } );
+		// Stays a circle at every radius: the preset shapes the pill's outline,
+		// not its controls, and a square play button inside a rounded card is
+		// nobody's intent.
 		border-radius: 50%;
 
 		&:hover {
@@ -90,7 +93,11 @@ $pv-text: #fff;
 		height: 2rem;
 		padding: 0 0.5rem;
 		font-size: 0.8125rem;
+		// Two declarations on purpose: a browser without `color-mix` keeps the
+		// first. The percentage reproduces today's #333 against the default
+		// surface (9.3% of the way to the text colour, rounded to 9).
 		background: $pv-surface-hover;
+		background: color-mix( in srgb, var( --pv-surface, #{ $pv-surface } ) 91%, var( --pv-text, #{ $pv-text } ) );
 		border-radius: 999px;
 
 		&:hover {
@@ -109,6 +116,7 @@ $pv-text: #fff;
 		&:hover {
 			opacity: 1;
 			background: $pv-surface-hover;
+			background: color-mix( in srgb, var( --pv-surface, #{ $pv-surface } ) 91%, var( --pv-text, #{ $pv-text } ) );
 		}
 	}
 
@@ -127,26 +135,29 @@ $pv-text: #fff;
 	cursor: pointer;
 
 	&:focus-visible {
-		outline: 2px solid $pv-text;
+		outline: 2px solid var( --pv-text, #{ $pv-text } );
 		outline-offset: 2px;
 		border-radius: 999px;
 	}
 
 	&::-webkit-slider-runnable-track {
 		height: 0.25rem;
+		// Same fallback pair as below; 80% reproduces today's #4a4a4a.
 		background: $pv-track;
+		background: color-mix( in srgb, var( --pv-surface, #{ $pv-surface } ) 80%, var( --pv-text, #{ $pv-text } ) );
 		border-radius: 999px;
 	}
 
 	&::-moz-range-track {
 		height: 0.25rem;
 		background: $pv-track;
+		background: color-mix( in srgb, var( --pv-surface, #{ $pv-surface } ) 80%, var( --pv-text, #{ $pv-text } ) );
 		border-radius: 999px;
 	}
 
 	&::-moz-range-progress {
 		height: 0.25rem;
-		background: $pv-accent;
+		background: var( --pv-accent, #{ $pv-accent } );
 		border-radius: 999px;
 	}
 
@@ -154,7 +165,7 @@ $pv-text: #fff;
 		width: 0.875rem;
 		height: 0.875rem;
 		margin-top: -0.3125rem; // centre the thumb on a 4px track
-		background: $pv-accent;
+		background: var( --pv-accent, #{ $pv-accent } );
 		border: none;
 		border-radius: 50%;
 		appearance: none;
@@ -163,7 +174,7 @@ $pv-text: #fff;
 	&::-moz-range-thumb {
 		width: 0.875rem;
 		height: 0.875rem;
-		background: $pv-accent;
+		background: var( --pv-accent, #{ $pv-accent } );
 		border: none;
 		border-radius: 50%;
 	}
