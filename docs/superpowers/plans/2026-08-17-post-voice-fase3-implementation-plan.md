@@ -1299,28 +1299,45 @@ Replace each usage as follows:
 }
 ```
 
-and in the seek block:
+and in the seek block. The existing file already keeps every vendor-prefixed
+pseudo-element in its own separate rule — `-webkit-` and `-moz-` selectors are
+never comma-joined anywhere in it — because a browser that does not recognise
+one pseudo-element in a grouped selector drops the *whole* rule, not just its
+own branch. Keep that structure: only the `background` line inside each
+existing rule changes, nothing is merged.
 
 ```scss
 	&:focus-visible {
 		outline: 2px solid var( --pv-text, #{ $pv-text } );
 	}
 
-	&::-webkit-slider-runnable-track,
-	&::-moz-range-track {
-		// Same fallback pair as above; 80% reproduces today's #4a4a4a.
+	&::-webkit-slider-runnable-track {
+		// Same fallback pair as below; 80% reproduces today's #4a4a4a.
 		background: $pv-track;
 		background: color-mix( in srgb, var( --pv-surface, #{ $pv-surface } ) 80%, var( --pv-text, #{ $pv-text } ) );
 	}
 
-	&::-moz-range-progress,
-	&::-webkit-slider-thumb,
+	&::-moz-range-track {
+		background: $pv-track;
+		background: color-mix( in srgb, var( --pv-surface, #{ $pv-surface } ) 80%, var( --pv-text, #{ $pv-text } ) );
+	}
+
+	&::-moz-range-progress {
+		background: var( --pv-accent, #{ $pv-accent } );
+	}
+
+	&::-webkit-slider-thumb {
+		background: var( --pv-accent, #{ $pv-accent } );
+	}
+
 	&::-moz-range-thumb {
 		background: var( --pv-accent, #{ $pv-accent } );
 	}
 ```
 
-> Keep the existing size, radius and `appearance` declarations in each of those blocks exactly as they are — only the colour declarations change. Do not merge the vendor-prefixed selectors beyond what is shown: `-webkit-` and `-moz-` pseudo-elements can share a rule here because each browser ignores the rule it does not understand only when they are *separate*; if a merged selector drops the styling in one browser, split it back apart.
+> Keep the existing `height`, `width`, `margin-top`, `border`, `border-radius`
+> and `appearance` declarations in each of those blocks exactly as they are —
+> only the `background` line changes, and each rule stays in its own block.
 
 - [ ] **Step 5: Build and verify both declarations survive minification**
 
