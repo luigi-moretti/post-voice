@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-15T19:41:38+00:00\n"
+"POT-Creation-Date: 2026-08-17T19:46:36+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -110,54 +110,54 @@ msgstr ""
 msgid "Narration — %s"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:41
-#: features/pronunciation/php/class-settings-page.php:42
-#: features/pronunciation/php/class-settings-page.php:103
-#: build/narration-editor.js:19
-msgid "Narration"
-msgstr ""
-
-#: features/pronunciation/php/class-settings-page.php:104
+#: features/pronunciation/php/class-dictionary-section.php:49
 msgid "Pronunciation dictionary"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:107
+#: features/pronunciation/php/class-dictionary-section.php:91
 msgid "Read a term aloud as something else. Entries apply to the language you choose, because a respelling is phonetic: the same correction read by another language model is a new mistake."
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:118
-#: features/pronunciation/php/class-settings-page.php:131
+#: features/pronunciation/php/class-dictionary-section.php:100
+#: features/pronunciation/php/class-dictionary-section.php:113
 #: build/dictionary-admin.js:19
 #: build/narration-editor.js:19
 msgid "Term"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:119
-#: features/pronunciation/php/class-settings-page.php:137
+#: features/pronunciation/php/class-dictionary-section.php:101
+#: features/pronunciation/php/class-dictionary-section.php:119
 #: build/dictionary-admin.js:19
 #: build/narration-editor.js:19
 msgid "Read as"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:120
-#: features/pronunciation/php/class-settings-page.php:141
+#: features/pronunciation/php/class-dictionary-section.php:102
+#: features/pronunciation/php/class-dictionary-section.php:123
 #: build/dictionary-admin.js:19
 #: build/narration-editor.js:19
 msgid "Language"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:121
+#: features/pronunciation/php/class-dictionary-section.php:103
 msgid "Actions"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:151
+#: features/pronunciation/php/class-dictionary-section.php:133
 #: build/dictionary-admin.js:19
 #: build/narration-editor.js:19
 msgid "Remove"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:163
+#: features/pronunciation/php/class-dictionary-section.php:145
 msgid "Add entry"
+msgstr ""
+
+#: shared/php/class-settings-page.php:43
+#: shared/php/class-settings-page.php:44
+#: shared/php/class-settings-page.php:72
+#: build/narration-editor.js:19
+msgid "Narration"
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -230,6 +230,10 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "This browser cannot run WebAssembly, which narration needs. Try another browser, or ask an administrator whether a security policy is blocking it."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Nothing to narrate yet: every block is either excluded from the narration or of a type that is never read aloud."
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -360,10 +364,6 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "Generate audio"
-msgstr ""
-
-#: build/narration-editor.js:19
-msgid "Nothing to narrate yet: every block is either excluded from the narration or of a type that is never read aloud."
 msgstr ""
 
 #: build/narration-editor.js:19
