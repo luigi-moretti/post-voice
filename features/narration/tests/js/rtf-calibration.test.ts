@@ -1,7 +1,9 @@
 import {
 	computeRtf,
+	downloadBytesPerSecond,
 	estimateAudioDurationSeconds,
 	estimateEtaSeconds,
+	estimateMultiBundleEta,
 	requiresLongTextConfirmation,
 	shouldWarnSlowDevice,
 } from '../../editor/rtf-calibration';
@@ -60,5 +62,121 @@ describe( 'requiresLongTextConfirmation', () => {
 	it( 'requires confirmation only above 2 minutes ETA', () => {
 		expect( requiresLongTextConfirmation( 121 ) ).toBe( true );
 		expect( requiresLongTextConfirmation( 120 ) ).toBe( false );
+	} );
+} );
+
+describe( 'estimateMultiBundleEta', () => {
+	const groups = [
+		{
+			language: 'portuguese',
+			items: [ { index: 0, text: 'a'.repeat( 100 ) } ],
+		},
+		{
+			language: 'english_2026-04',
+			items: [ { index: 1, text: 'b'.repeat( 100 ) } ],
+		},
+	];
+
+	it( 'sums the groups using each bundle measured RTF', () => {
+		const withMeasured = estimateMultiBundleEta(
+			groups,
+			new Map( [
+				[ 'portuguese', 1 ],
+				[ 'english_2026-04', 2 ],
+			] ),
+			1,
+			0,
+			0
+		);
+		const withDefault = estimateMultiBundleEta(
+			groups,
+			new Map( [ [ 'portuguese', 1 ] ] ),
+			1,
+			0,
+			0
+		);
+
+		expect( withMeasured ).toBeGreaterThan( withDefault );
+	} );
+
+	it( 'falls back to the default RTF for a bundle not yet measured', () => {
+		expect(
+			estimateMultiBundleEta( groups, new Map(), 2, 0, 0 )
+		).toBeGreaterThan( 0 );
+	} );
+
+	it( 'adds download time for bundles still to fetch', () => {
+		const withoutDownload = estimateMultiBundleEta(
+			groups,
+			new Map(),
+			1,
+			0,
+			1_000_000
+		);
+		const withDownload = estimateMultiBundleEta(
+			groups,
+			new Map(),
+			1,
+			1,
+			1_000_000
+		);
+
+		expect( withDownload - withoutDownload ).toBeGreaterThan( 100 );
+	} );
+
+	it( 'ignores download time when the connection speed is unknown', () => {
+		expect( estimateMultiBundleEta( groups, new Map(), 1, 2, 0 ) ).toBe(
+			estimateMultiBundleEta( groups, new Map(), 1, 0, 0 )
+		);
+	} );
+} );
+
+describe( 'downloadBytesPerSecond', () => {
+	// jsdom does not populate `navigator.connection` at all, so the Chromium-only
+	// shape is installed per test rather than left uncovered. The property is
+	// configurable, and deleting it afterwards restores jsdom's actual state —
+	// which is "absent", not "some earlier value".
+	const setConnection = ( connection: unknown ): void => {
+		Object.defineProperty( navigator, 'connection', {
+			value: connection,
+			configurable: true,
+			writable: true,
+		} );
+	};
+
+	afterEach( () => {
+		delete ( navigator as { connection?: unknown } ).connection;
+	} );
+
+	it( 'converts downlink megabits per second into bytes per second', () => {
+		// 8 Mbps is 8_000_000 bits, which is 1_000_000 bytes. Pinned as a number
+		// rather than a comparison: a missing `/ 8` would still be "greater than
+		// zero" and "larger for a faster link", so only the literal catches it.
+		setConnection( { downlink: 8 } );
+
+		expect( downloadBytesPerSecond() ).toBe( 1_000_000 );
+	} );
+
+	it( 'scales linearly with the reported downlink', () => {
+		setConnection( { downlink: 1.5 } );
+
+		expect( downloadBytesPerSecond() ).toBe( 187_500 );
+	} );
+
+	it( 'returns 0 when the browser reports no connection information', () => {
+		expect( navigator ).not.toHaveProperty( 'connection' );
+		expect( downloadBytesPerSecond() ).toBe( 0 );
+	} );
+
+	it( 'returns 0 when the connection object omits downlink', () => {
+		setConnection( {} );
+
+		expect( downloadBytesPerSecond() ).toBe( 0 );
+	} );
+
+	it( 'returns 0 for a non-positive downlink', () => {
+		setConnection( { downlink: 0 } );
+
+		expect( downloadBytesPerSecond() ).toBe( 0 );
 	} );
 } );

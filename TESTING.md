@@ -38,22 +38,27 @@ either complains.
 | `npm run test:unit -- --coverage` | same, with the coverage gate | ≥80% lines | ~5s |
 | `npm run test:php` | PHPUnit against wp-env | all pass | ~5s |
 | `npm run test:php:coverage` | PHPUnit + line coverage | ≥85% lines | ~30s |
-| `npm run test:e2e` | Playwright, 16 scenarios | all pass | ~9min |
+| `npm run test:e2e` | Playwright, 30 scenarios | all pass | ~9min |
 | `npm run i18n:check` | committed `.pot` matches the source | no drift | ~20s |
 | `npm run audit:npm` / `:production` | dependency advisories | see below | ~15s |
 | `npm run audit:composer` | same for PHP tooling | 0 critical, 0 high | ~5s |
 
 ### Jest — pure TypeScript
 
-Only pure functions are measured: block filtering, source hashing, RTF/ETA math,
-the storage pre-check, the MP3 encoder, the voice catalogue, the WebAssembly
-detect, the player state machine, time formatting. The list lives in
-`jest.config.js` under `collectCoverageFrom`.
+Only pure functions are measured: block filtering, segment extraction and
+resolution, segment hashing, dictionary application, RTF/ETA math, the storage
+pre-check, the MP3 encoder, the voice catalogue, the WebAssembly detect, the
+player state machine, time formatting. The list lives in `jest.config.js` under
+`collectCoverageFrom`.
 
 Glue — the worker wrapper, the React panel — is deliberately outside it. Mocking
 ONNX Runtime and a Worker only produces a test that always passes; the risks
 there are threading, `crossOriginIsolated` and timing, which only a real browser
 exercises. That is what the E2E suite is for.
+
+The segment pipeline's performance ceiling used to live here too, timed under
+Jest. It moved to E2E — see "The segment pipeline ceiling" below — because
+jsdom's `DOMParser` turned out to be most of what that test was measuring.
 
 ### PHPUnit
 
@@ -103,22 +108,87 @@ Playwright drives a real browser against wp-env, so the build has to be current:
 npm run build && npm run test:e2e
 ```
 
-The 16 scenarios cover the eight the spec requires — happy path, no
+The 30 scenarios split in three. Eighteen are Fase 1's: happy path, no
 `crossOriginIsolated`, cancel mid-generation, insufficient storage, regenerate
 without orphans, axe with zero serious/critical violations in editor and
-frontend, full keyboard operation of the player, `prefers-reduced-motion` — plus
+frontend, full keyboard operation of the player, `prefers-reduced-motion`, plus
 regressions for stale badges, model caching, discarding a preview, voice
 selection, URL uniqueness and double-click saves.
+
+Eleven are Fase 2's, in `narration-fase2.spec.ts`: a block excluded in the
+inspector, a second language with no room to download, an inline marked run
+surviving a save as an Author (which is the only test of what `kses` does to
+`data-pv-lang`, and so reads the post back over REST rather than trusting the
+editor's own serialisation), a dictionary entry changing what is narrated,
+editing the dictionary marking existing audio stale, a two-language post
+producing one MP3, cancelling during a language warm-up, cancelling a
+multi-segment generation then immediately regenerating, the pronunciation panel
+opening on a browser without `crypto.randomUUID`, one bundle warm-up per
+generation rather than one per code path, and one parse of the post per
+debounced pass rather than one per keystroke — the last two count calls rather
+than timing them, so they fail loudly instead of flaking.
+
+The thirtieth is the performance ceiling, in `segment-pipeline-perf.spec.ts`: a
+64KB post through the whole text pipeline, median under 5ms and every sample
+under 50ms. It lives here rather than in Jest because jsdom's `DOMParser` is a
+JavaScript implementation and was consuming 86% of the budget on its own.
 
 Most scenarios generate audio for real, which means downloading ~190MB of model
 on the first run and 30-45s of synthesis each. Failure artifacts land in
 `artifacts/`.
+
+**The multi-language scenarios cost a second download.** Each language bundle is
+its own ~190MB fetch, so the two-language scenario pays roughly twice the
+first-run model cost of a single-language one — and it pays it again after any
+`npx wp-env clean`, which drops the browser profile the bundles were cached in.
+On a cold machine budget an extra 3-5 minutes for that scenario alone; on a warm
+one it is cache-served and unremarkable. This is also why the storage pre-check
+scenario asserts *before* the fetch: the only affordable way to test "no room
+for a second bundle" is to never start it.
 
 A single scenario, headed, with the inspector:
 
 ```bash
 npx playwright test -g "double-click" --headed --debug
 ```
+
+#### The segment pipeline ceiling
+
+`e2e/segment-pipeline-perf.spec.ts` is the odd one out in this suite: pure
+text, no model, no worker, no download. It runs the whole editor-side path —
+`extractSegments` → `resolveSegments` → `mergeAdjacent` → `applyDictionary`
+(200 terms) → `computeSegmentHash` — over a 120-block, ~61,000-character post,
+30 times per run, and fails if any single run crosses **50 ms**. The editor
+runs exactly this path on a debounced keystroke, so the number it protects is
+typing latency.
+
+It used to be a Jest test. jsdom's `DOMParser` is a pure-JS implementation far
+slower than a browser's native one, and `extractSegments` was ~31 ms of that
+test's ~36 ms — so it mostly measured the test environment, and its real
+headroom (1.4x) was narrow enough to flake on a loaded runner. This scenario
+times the same modules, built by the same bundler
+(`e2e/fixtures/segment-pipeline-harness.ts`, entry `segment-pipeline-harness`
+in `webpack.config.js`), loaded on a plain front-end page by
+`e2e/mu-plugins/segment-pipeline-harness.php` — mapped into wp-env only by
+`.wp-env.json`, so a production install of the plugin never enqueues it.
+
+Measured across multiple 30-run sessions on the development machine: min
+~1.2 ms, median ~1.9 ms, p95 ~5 ms, with occasional single-sample tails up to
+~13 ms that are GC/scheduling noise rather than the pipeline. One ceiling
+cannot serve both "catch a real regression" and "tolerate a GC pause", so the
+test asserts two, per the 2026-08-15 amendment to the Fase 2 spec (see that
+section for the full distribution and the reasoning):
+
+- **`MEDIAN_CEILING_MS = 5`** — the regression net. The median is robust to the
+  occasional tail, so a real regression (e.g. the 200-term dictionary regex
+  recompiling on every call) moves it while noise does not.
+- **`SAMPLE_CEILING_MS = 50`** — the design spec's original number, kept as an
+  absolute cap on every single sample, to catch a catastrophic outlier a
+  median would smooth over.
+
+It is still a ceiling, not a benchmark: the console line each run prints
+(`segment-pipeline-perf: min=… median=… mean=… max=… samples=[…]`) is what a
+future recalibration should read, not this paragraph.
 
 ### Translations
 
@@ -160,6 +230,20 @@ Scenarios must insert a real `core/paragraph` and save a draft first.
 **A `getByRole( 'button', { name } )` matches two elements.** The editor's
 document bar exposes a button whose accessible name is the post title. Use
 `exact: true`, and avoid post titles that collide with control labels.
+
+**The whole suite goes red at once, every scenario failing in under two
+seconds.** Look for a duplicated accessible name before anything else. This has
+happened: the per-block inspector panel was titled "Narration", the same as the
+plugin sidebar's toggle, and Playwright's strict mode refused to guess between
+them — 14 of 14 scenarios failed on the first `openNarrationPanel`, and stayed
+red for five commits because nothing in between ran more than a `--grep`. The
+panel is now "Narration for this block", and `e2e/open-narration-panel.ts`
+locates the sidebar by `aria-controls` rather than by name so that a future
+string collision cannot reproduce it. Note that this class of defect is
+invisible to `narration-a11y.spec.ts`, which scopes axe to `.post-voice-panel`:
+a name duplicated *across* the panel and the block inspector falls outside that
+include. Run the full suite, never a `--grep`, before calling a task that
+touched the browser done.
 
 ## What CI runs
 

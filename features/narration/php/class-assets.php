@@ -52,6 +52,21 @@ class Post_Voice_Assets {
 		);
 		wp_set_script_translations( 'post-voice-editor', 'post-voice', POST_VOICE_PATH . 'languages' );
 
+		// The dictionary is read-only in the editor and small by construction
+		// (capped at 200 entries), so it rides along with the script rather than
+		// costing every panel open a REST round trip. The raw locale travels with
+		// it: mapping it to a bundle is the editor's job, and PHP has no business
+		// knowing the bundle names.
+		wp_localize_script(
+			'post-voice-editor',
+			'postVoiceData',
+			array(
+				'dictionary'       => Post_Voice_Dictionary_Store::get_global(),
+				'siteLanguage'     => get_locale(),
+				'canManageOptions' => current_user_can( 'manage_options' ),
+			)
+		);
+
 		wp_enqueue_style(
 			'post-voice-editor',
 			POST_VOICE_URL . 'build/style-narration-editor.css',

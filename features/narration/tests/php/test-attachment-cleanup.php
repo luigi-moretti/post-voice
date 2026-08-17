@@ -20,7 +20,7 @@ class Test_Post_Voice_Attachment_Cleanup extends WP_UnitTestCase {
 	public function test_deleting_post_deletes_its_narration_attachment(): void {
 		$post_id       = self::factory()->post->create();
 		$attachment_id = $this->create_narration( $post_id );
-		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		wp_delete_post( $post_id, true );
 
@@ -33,7 +33,7 @@ class Test_Post_Voice_Attachment_Cleanup extends WP_UnitTestCase {
 		$post_id = self::factory()->post->create();
 		$orphan  = $this->create_narration( $post_id );
 		$current = $this->create_narration( $post_id );
-		Post_Voice_Post_Meta::save( $post_id, $current, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, $current, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		wp_delete_post( $post_id, true );
 
@@ -51,7 +51,7 @@ class Test_Post_Voice_Attachment_Cleanup extends WP_UnitTestCase {
 			array( 'file' => 'site-logo.png' )
 		);
 		$post_id   = self::factory()->post->create();
-		Post_Voice_Post_Meta::save( $post_id, $victim_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, $victim_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		wp_delete_post( $post_id, true );
 
@@ -97,7 +97,7 @@ class Test_Post_Voice_Attachment_Cleanup extends WP_UnitTestCase {
 				'post_parent' => $post_id,
 			)
 		);
-		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		wp_delete_attachment( $attachment_id, true );
 
@@ -118,7 +118,7 @@ class Test_Post_Voice_Attachment_Cleanup extends WP_UnitTestCase {
 				'post_parent' => $post_id,
 			)
 		);
-		Post_Voice_Post_Meta::save( $post_id, $narration_id, 'portuguese', 'alba', str_repeat( 'a', 64 ) );
+		Post_Voice_Post_Meta::save( $post_id, $narration_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 
 		wp_delete_attachment( $unrelated_id, true );
 

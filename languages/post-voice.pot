@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-14T02:28:09+00:00\n"
+"POT-Creation-Date: 2026-08-15T19:41:38+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -59,6 +59,7 @@ msgid "Your role does not have permission to add media. Ask an administrator."
 msgstr ""
 
 #: features/narration/php/class-rest-api.php:96
+#: features/narration/php/class-rest-api.php:130
 msgid "Narration is only available for posts."
 msgstr ""
 
@@ -66,38 +67,97 @@ msgstr ""
 msgid "Save the post before generating narration."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:130
+#: features/narration/php/class-rest-api.php:138
 msgid "Your role does not have permission to edit this post."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:139
+#: features/narration/php/class-rest-api.php:147
 msgid "Your role does not have permission to delete this audio. Ask an administrator."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:167
+#: features/narration/php/class-rest-api.php:175
 msgid "This post has no narration to remove."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:201
+#: features/narration/php/class-rest-api.php:220
 msgid "No audio file was received."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:210
+#: features/narration/php/class-rest-api.php:229
+#: features/narration/php/class-rest-api.php:258
 msgid "Unsupported narration language."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:219
+#: features/narration/php/class-rest-api.php:247
+msgid "Too many languages."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:270
+msgid "The primary language must be one of the languages used."
+msgstr ""
+
+#: features/narration/php/class-rest-api.php:279
 msgid "Unsupported narration voice."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:228
+#: features/narration/php/class-rest-api.php:288
 msgid "Malformed source hash."
 msgstr ""
 
 #. translators: %s: title of the post being narrated.
-#: features/narration/php/class-rest-api.php:293
+#: features/narration/php/class-rest-api.php:353
 #, php-format
 msgid "Narration — %s"
+msgstr ""
+
+#: features/pronunciation/php/class-settings-page.php:41
+#: features/pronunciation/php/class-settings-page.php:42
+#: features/pronunciation/php/class-settings-page.php:103
+#: build/narration-editor.js:19
+msgid "Narration"
+msgstr ""
+
+#: features/pronunciation/php/class-settings-page.php:104
+msgid "Pronunciation dictionary"
+msgstr ""
+
+#: features/pronunciation/php/class-settings-page.php:107
+msgid "Read a term aloud as something else. Entries apply to the language you choose, because a respelling is phonetic: the same correction read by another language model is a new mistake."
+msgstr ""
+
+#: features/pronunciation/php/class-settings-page.php:118
+#: features/pronunciation/php/class-settings-page.php:131
+#: build/dictionary-admin.js:19
+#: build/narration-editor.js:19
+msgid "Term"
+msgstr ""
+
+#: features/pronunciation/php/class-settings-page.php:119
+#: features/pronunciation/php/class-settings-page.php:137
+#: build/dictionary-admin.js:19
+#: build/narration-editor.js:19
+msgid "Read as"
+msgstr ""
+
+#: features/pronunciation/php/class-settings-page.php:120
+#: features/pronunciation/php/class-settings-page.php:141
+#: build/dictionary-admin.js:19
+#: build/narration-editor.js:19
+msgid "Language"
+msgstr ""
+
+#: features/pronunciation/php/class-settings-page.php:121
+msgid "Actions"
+msgstr ""
+
+#: features/pronunciation/php/class-settings-page.php:151
+#: build/dictionary-admin.js:19
+#: build/narration-editor.js:19
+msgid "Remove"
+msgstr ""
+
+#: features/pronunciation/php/class-settings-page.php:163
+msgid "Add entry"
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -110,6 +170,62 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "Pause narration"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Pronunciation for this post"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Nothing here yet. Add a term when the narration mispronounces a name or an acronym."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Add term"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Edit the site-wide dictionary"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Post default"
+msgstr ""
+
+#. translators: %s: language name.
+#: build/narration-editor.js:19
+#, js-format
+msgid "%s — already downloaded"
+msgstr ""
+
+#. translators: 1: language name, 2: download size, e.g. "199 MB".
+#: build/narration-editor.js:19
+#, js-format
+msgid "%1$s — +%2$s to download"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Narration for this block"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Include in the narration"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Turned off, this block is left out of the audio and out of the up-to-date check."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Language for this block"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Narrate in another language"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Narration language"
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -126,8 +242,10 @@ msgstr ""
 msgid "Not enough free storage to download the voice model. About %s of free space is needed."
 msgstr ""
 
+#. translators: 1: required free space, e.g. "600 MB"; 2: comma-separated language names.
 #: build/narration-editor.js:19
-msgid "No readable text found in this post."
+#, js-format
+msgid "Not enough free space: this narration needs %1$s for the language models it still has to download (%2$s)."
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -135,11 +253,13 @@ msgid "This device is slower than usual for narration — it may take a while."
 msgstr ""
 
 #: build/narration-editor.js:19
-msgid "Narration"
+msgid "Save the post first to generate narration."
 msgstr ""
 
+#. translators: %s: comma-separated list of unrecognised language codes.
 #: build/narration-editor.js:19
-msgid "Save the post first to generate narration."
+#, js-format
+msgid "This post marks a language this version does not support (%s). Those parts will be narrated in the post language."
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -200,8 +320,10 @@ msgstr ""
 msgid "Up to date"
 msgstr ""
 
+#. translators: 1: languages used, e.g. "Português + English"; 2: voice name.
 #: build/narration-editor.js:19
-msgid "Remove"
+#, js-format
+msgid "%1$s · voice %2$s"
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -214,10 +336,6 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "No audio generated yet."
-msgstr ""
-
-#: build/narration-editor.js:19
-msgid "Language"
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -242,6 +360,10 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "Generate audio"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Nothing to narrate yet: every block is either excluded from the narration or of a type that is never read aloud."
 msgstr ""
 
 #: build/narration-editor.js:19

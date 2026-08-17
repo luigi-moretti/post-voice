@@ -12,6 +12,19 @@ module.exports = {
 			__dirname,
 			'features/narration/frontend/player.ts'
 		),
+		'dictionary-admin': path.resolve(
+			__dirname,
+			'features/pronunciation/admin/settings.ts'
+		),
+		// Test-only: exposes the segment pipeline on `window` for the
+		// `segment-pipeline-perf` E2E scenario. Nothing in the plugin's own PHP
+		// enqueues this handle — only `e2e/mu-plugins/segment-pipeline-harness.php`
+		// does, and that file is mapped into wp-env solely by `.wp-env.json`. A
+		// production install of the plugin never loads or executes it.
+		'segment-pipeline-harness': path.resolve(
+			__dirname,
+			'e2e/fixtures/segment-pipeline-harness.ts'
+		),
 	},
 	output: {
 		...defaultConfig.output,

@@ -1,5 +1,10 @@
-/** Approximate on-disk size of one language bundle (5 .onnx files + tokenizer + voices). */
-export const LANGUAGE_BUNDLE_BYTES = 190 * 1024 * 1024;
+/**
+ * On-disk size of one language bundle, measured against the pinned mirror on
+ * 2026-08-14: nine files totalling 198.6 MB, of which `flow_lm_main_int8.onnx`
+ * is 76.3 MB and `voices.bin` is 52.4 MB. Nothing is shared between bundles —
+ * every language ships its own copy of all nine, the eight voices included.
+ */
+export const LANGUAGE_BUNDLE_BYTES = Math.round( 198.6 * 1024 * 1024 );
 
 /**
  * Require half a bundle of slack on top of the bundle itself — the browser also
@@ -29,4 +34,13 @@ export function formatBytes( bytes: number ): string {
 		return `${ ( bytes / GB ).toFixed( 1 ) } GB`;
 	}
 	return `${ Math.round( bytes / MB ) } MB`;
+}
+
+/**
+ * Bytes still to download for a generation.
+ *
+ * @param pendingBundleCount Bundles not yet in the browser's cache.
+ */
+export function bytesForBundles( pendingBundleCount: number ): number {
+	return pendingBundleCount * LANGUAGE_BUNDLE_BYTES;
 }

@@ -6,6 +6,7 @@ export interface SaveNarrationResponse {
 	url: string;
 	generated_at: string;
 	language: string;
+	languages: string[];
 	voice: string;
 }
 
@@ -25,6 +26,7 @@ export interface SaveNarrationResponse {
  * @param postId
  * @param audio
  * @param language
+ * @param languages
  * @param voice
  * @param sourceHash
  */
@@ -32,12 +34,17 @@ export async function saveNarration(
 	postId: number,
 	audio: Blob,
 	language: string,
+	languages: string[],
 	voice: string,
 	sourceHash: string
 ): Promise< SaveNarrationResponse > {
 	const formData = new FormData();
 	formData.append( 'audio', audio, 'narration.mp3' );
 	formData.append( 'language', language );
+	// Comma-separated rather than a repeated field: this body is multipart, where
+	// repeated-field handling is a parser convention, and a single string is
+	// unambiguous on both ends.
+	formData.append( 'languages', languages.join( ',' ) );
 	formData.append( 'voice', voice );
 	formData.append( 'source_hash', sourceHash );
 

@@ -1,4 +1,5 @@
 import { test, expect } from '@wordpress/e2e-test-utils-playwright';
+import { openNarrationPanel } from './open-narration-panel';
 
 // Short on purpose: every second of synthesised audio is a second of test runtime.
 const NARRATION_TEXT = 'Hello world, this is a test post.';
@@ -38,9 +39,7 @@ test( 'generates audio single-threaded when crossOriginIsolated is unavailable',
 		false
 	);
 
-	await page
-		.getByRole( 'button', { name: 'Narration', exact: true } )
-		.click();
+	await openNarrationPanel( page );
 	await page
 		.getByRole( 'button', { name: 'Generate audio', exact: true } )
 		.click();
@@ -78,9 +77,7 @@ test( 'warns before downloading the model when storage is insufficient', async (
 		attributes: { content: NARRATION_TEXT },
 	} );
 	await editor.saveDraft();
-	await page
-		.getByRole( 'button', { name: 'Narration', exact: true } )
-		.click();
+	await openNarrationPanel( page );
 	await page
 		.getByRole( 'button', { name: 'Generate audio', exact: true } )
 		.click();

@@ -28,7 +28,7 @@ npm run build:dev
 # is relative to --env-cwd, which is the plugin root inside the container.
 npx wp-env run cli --env-cwd=wp-content/plugins/post-voice \
 	wp i18n make-pot . "$generated" \
-	--include=post-voice.php,features/narration/php,build/narration-editor.js,build/narration-player.js
+	--include=post-voice.php,features/narration/php,features/pronunciation/php,build/narration-editor.js,build/narration-player.js,build/dictionary-admin.js
 
 strings_in() {
 	grep -E '^(msgid|msgid_plural|msgctxt) ' "$1" | sort

@@ -231,6 +231,47 @@ class Post_Voice_Rest_Api {
 			);
 		}
 
+		// Absent means single-language, which is what every Fase 1 client sends.
+		$languages_param = (string) $request->get_param( 'languages' );
+		$languages_raw   = '' === $languages_param
+			? array( $language )
+			: array_values( array_filter( array_map( 'trim', explode( ',', $languages_param ) ) ) );
+
+		// Bounded before anything else touches it: a client sending 10,000 entries
+		// (valid, invalid, or duplicated) should not get a `foreach` or a dedupe
+		// pass over them — cardinality can never legitimately exceed the number of
+		// bundles that exist, so a list longer than that is rejected outright.
+		if ( count( $languages_raw ) > count( self::ALLOWED_LANGUAGES ) ) {
+			return new WP_Error(
+				'post_voice_invalid_language',
+				__( 'Too many languages.', 'post-voice' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$languages = array_values( array_unique( $languages_raw ) );
+
+		foreach ( $languages as $candidate ) {
+			if ( ! in_array( $candidate, self::ALLOWED_LANGUAGES, true ) ) {
+				return new WP_Error(
+					'post_voice_invalid_language',
+					__( 'Unsupported narration language.', 'post-voice' ),
+					array( 'status' => 400 )
+				);
+			}
+		}
+
+		// The primary language names the bundle the panel opened on, so audio that
+		// does not contain it means the client and the meta disagree about what was
+		// generated — and the meta is what the panel trusts afterwards.
+		if ( ! in_array( $language, $languages, true ) ) {
+			return new WP_Error(
+				'post_voice_invalid_language',
+				__( 'The primary language must be one of the languages used.', 'post-voice' ),
+				array( 'status' => 400 )
+			);
+		}
+
 		$voice = (string) $request->get_param( 'voice' );
 		if ( ! in_array( $voice, self::ALLOWED_VOICES, true ) ) {
 			return new WP_Error(
@@ -360,7 +401,7 @@ class Post_Voice_Rest_Api {
 
 		$kept_attachment_id = self::sweep_superseded_narrations( $post_id, $attachment_id );
 
-		Post_Voice_Post_Meta::save( $post_id, $kept_attachment_id, $language, $voice, $source_hash );
+		Post_Voice_Post_Meta::save( $post_id, $kept_attachment_id, $language, $languages, $voice, $source_hash );
 
 		return new WP_REST_Response(
 			array(
@@ -368,6 +409,12 @@ class Post_Voice_Rest_Api {
 				'url'           => wp_get_attachment_url( $kept_attachment_id ),
 				'generated_at'  => get_the_date( 'c', $kept_attachment_id ),
 				'language'      => $language,
+				// Echoed so the editor records what was actually stored rather
+				// than re-deriving it from its own request. The other four keys
+				// already came back from here; leaving this one out meant the
+				// panel wrote the list it had sent, which agreed only as long as
+				// nothing between the two ever normalised it.
+				'languages'     => $languages,
 				'voice'         => $voice,
 			),
 			200

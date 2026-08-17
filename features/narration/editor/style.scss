@@ -267,3 +267,18 @@
 		}
 	}
 }
+
+// Marked runs have to read as marked without being selected, or the author
+// forgets the marking exists and hears the surprise in the generated audio.
+.post-voice-lang {
+	text-decoration: underline dotted;
+	text-underline-offset: 3px;
+
+	&::after {
+		content: attr(data-pv-lang);
+		font-size: 0.7em;
+		vertical-align: super;
+		opacity: 0.7;
+		margin-left: 2px;
+	}
+}
