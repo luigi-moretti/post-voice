@@ -2683,3 +2683,65 @@ rendered."
 **Placeholders.** None: every step carries the code it needs, and no task refers to another for its content.
 
 **Type consistency.** `markup( ?string $src, bool $preview = false )` is used with that signature in Tasks 3, 6 and its tests. `css_declarations()` (no selector) feeds the preview wrapper; `inline_css()` (with selector) feeds `wp_add_inline_style` — the two are never swapped. The custom property names `--pv-surface`, `--pv-accent`, `--pv-text`, `--pv-radius` are identical in the SCSS (Task 4), the PHP serialiser (Task 2) and `PROPERTY` in `preview.ts` (Task 7). The DOM contract declared in Task 6 — `.post-voice-preview`, `.post-voice-style-hex`, `.post-voice-style-picker`, `.post-voice-style-radius`, `.post-voice-contrast-warning`, `data-key`, `data-length` — is exactly what Task 7 queries and what Task 8 asserts against.
+
+---
+
+## Revision 2026-08-17 — execution findings
+
+Executing the plan surfaced defects that only a real run could show. Fixes are
+inline above where they belong to one task; the rest are recorded here.
+
+**Configuration**
+
+1. **Task 1: the plan assumed `wp i18n make-pot` and PHPUnit both silently
+   tolerate a `<directory>` entry pointing at a path that does not exist yet.**
+   True for `wp i18n make-pot`'s `--include` and for PHPUnit's
+   `<coverage><include>`/`<exclude>`, but PHPUnit 9.6 throws
+   `TestDirectoryNotFoundException` on a `<testsuite><directory>` entry pointing
+   at a nonexistent path. Task 1 added `features/player-style/tests/php` only to
+   `<coverage><exclude>`, with a comment explaining why, and Task 2 — which is
+   what actually created that directory's first file — added the
+   `<testsuite>` entry.
+
+**Task briefs' reference code**
+
+2. **Task 4: the asset-enqueue test brief asserted
+   `assertSame( array(), (array) wp_styles()->get_data(...) )`.** WP core's
+   `get_data()` returns the scalar `false` for an unset key, and
+   `(array) false === array( 0 => false )`, not `array()` — that assertion would
+   fail unconditionally even against a correct implementation. Fixed to
+   `assertFalse(...)`, asserted directly rather than cast.
+3. **Task 4: a fix-round finding — the two new asset-enqueue tests omitted the
+   `with_asset_file( 'player' )` helper every sibling test in that file uses.**
+   Without it, `enqueue_frontend_assets()` returns early on a fresh CI checkout
+   (`build/` is gitignored and CI's unit job never runs `npm run build` before
+   `test:php`): one test would fail and the other would pass vacuously,
+   exercising only the file-existence guard rather than the inline-style call it
+   was named for. This was masked locally by a stale `build/` directory left
+   over from manual testing. Fixed by adding the helper call to both tests,
+   verified by moving `build/narration-player.asset.php` aside and confirming
+   the customised-player test now fails without the call.
+4. **Task 6: the brief's reference code for `render_radius_field()` put the
+   `data-length` attribute between `value="…"` and `selected()`'s output, but the
+   brief's own PHPUnit regex assertion (`/value="square"\s+selected/`) can only
+   match when `selected()` immediately follows `value`.** Fixed by reordering
+   the attributes so `selected()` comes first — HTML-semantically inert,
+   verified no test or CSS depends on attribute order.
+5. **Task 7: the brief's reference code for `initPreview()` in `preview.ts`
+   declared `const pickers = Array.from( … )` before the function's early-return
+   guard clause.** ESLint's `@wordpress/no-unused-vars-before-return` rule
+   (part of this project's enabled recommended config) flags any variable
+   initialised by a call expression, declared before a return, with zero
+   references before that return — `pickers` is only used after the guard, so
+   it triggered the rule. Fixed by moving the declaration to immediately after
+   the guard: a pure reorder, no behavioural change, confirmed by tracing all
+   three use sites, which already all ran after the guard.
+6. **Task 8: the brief's reference code for `e2e/player-style.spec.ts` failed
+   both `lint:js` and `tsc --noEmit` verbatim.** Three lines exceeded
+   `wp-prettier`'s wrap width (the `await expect( … ).toBeVisible()` call and
+   both `createPostWithNarration` call sites), and `setAccent`'s `page`
+   parameter carried no type, tripping `strict`'s `noImplicitAny`. Fixed with
+   `wp-scripts lint-js --fix` for the first (verified whitespace-only by diff)
+   and by importing `Page` from `@playwright/test` and annotating the parameter
+   for the second — the same pattern already used by `e2e/open-narration-panel.ts`
+   and `e2e/narration-fase2.spec.ts`. Neither changes the scenario's behaviour.

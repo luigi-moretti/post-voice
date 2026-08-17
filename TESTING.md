@@ -245,6 +245,16 @@ a name duplicated *across* the panel and the block inspector falls outside that
 include. Run the full suite, never a `--grep`, before calling a task that
 touched the browser done.
 
+**A colour saved on the settings screen does not reach the reader.** Check the
+page source for `<style id="post-voice-player-inline-css">`. Absent means the
+value equals the shipped default (nothing is emitted, by design) or the
+enqueue's asset-file guard bailed out because `npm run build` has not run.
+
+**The preview pill floats over wp-admin.** `build/style-player-style-admin.css`
+did not load. The real player is `position: fixed`; only the admin stylesheet
+puts it back in the flow, and it is enqueued through the same guard as the
+screen's script.
+
 ## What CI runs
 
 `.github/workflows/ci.yml`, one job each: `lint` (ESLint, PHPCS, PHPStan),
