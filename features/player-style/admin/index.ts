@@ -7,3 +7,6 @@
  */
 
 import './style.scss';
+import { initPreview } from './preview';
+
+document.addEventListener( 'DOMContentLoaded', () => initPreview() );
