@@ -38,7 +38,7 @@ either complains.
 | `npm run test:unit -- --coverage` | same, with the coverage gate | ≥80% lines | ~5s |
 | `npm run test:php` | PHPUnit against wp-env | all pass | ~5s |
 | `npm run test:php:coverage` | PHPUnit + line coverage | ≥85% lines | ~30s |
-| `npm run test:e2e` | Playwright, 30 scenarios | all pass | ~9min |
+| `npm run test:e2e` | Playwright, 32 scenarios | all pass | ~9min |
 | `npm run i18n:check` | committed `.pot` matches the source | no drift | ~20s |
 | `npm run audit:npm` / `:production` | dependency advisories | see below | ~15s |
 | `npm run audit:composer` | same for PHP tooling | 0 critical, 0 high | ~5s |
@@ -128,7 +128,17 @@ generation rather than one per code path, and one parse of the post per
 debounced pass rather than one per keystroke — the last two count calls rather
 than timing them, so they fail loudly instead of flaking.
 
-The thirtieth is the performance ceiling, in `segment-pipeline-perf.spec.ts`: a
+Two more, in `narration-audio-quality.spec.ts`, are issue #5's audio-quality
+fix: a long multi-sentence paragraph that spans several of the worker's
+internal ~50-token chunks, and a single sentence past that limit with commas,
+a colon, a parenthetical and a quoted phrase — the combination that used to
+cut mid-word under a raw token boundary. Both are black-box like the rest of
+this suite: they prove the pipeline completes without error on adversarial
+input, not that the audio sounds better — that part is judged by ear and
+reported in the PR, per the spec's decision not to chase an automated
+prosody metric.
+
+The thirty-second is the performance ceiling, in `segment-pipeline-perf.spec.ts`: a
 64KB post through the whole text pipeline, median under 5ms and every sample
 under 50ms. It lives here rather than in Jest because jsdom's `DOMParser` is a
 JavaScript implementation and was consuming 86% of the budget on its own.

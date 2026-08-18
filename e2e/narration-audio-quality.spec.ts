@@ -13,6 +13,19 @@ const LONG_PARAGRAPH =
 	'seams even when they cannot name them, and short posts never show ' +
 	'the same problem at all.';
 
+// Deliberately over the ~50-token max_token_per_chunk with no early pause:
+// comma-heavy clauses, a colon-introduced clause, a parenthetical, and a
+// quoted phrase — the exact combination issue #5 reported as cutting mid-word
+// or mid-clause under the old raw-token split.
+const OVERSIZED_PUNCTUATED_SENTENCE =
+	'The engineer explained the failure calmly, in careful detail, ' +
+	'walking through each step of the process: the model loaded ' +
+	'correctly, the voice cache warmed up as expected, and only then did ' +
+	'the narrator turn to the paragraph that had been flagged as ' +
+	'suspicious (the one the reviewer quoted directly as "impossible to ' +
+	'sit through"), before finally admitting the real cause had been ' +
+	'hiding in plain sight the whole time.';
+
 async function createNarratableDraft(
 	admin: Admin,
 	editor: Editor,
@@ -38,6 +51,57 @@ test.describe( 'Post Voice — narration audio quality (issue #5)', () => {
 			editor,
 			'Long paragraph narration',
 			LONG_PARAGRAPH
+		);
+		await editor.openDocumentSettingsSidebar();
+		await openNarrationPanel( page );
+		await page
+			.getByRole( 'button', { name: 'Generate audio', exact: true } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: 'Save narration', exact: true } )
+		).toBeVisible( { timeout: 180_000 } );
+		await expect(
+			page.locator( '.components-notice.is-error' )
+		).toHaveCount( 0 );
+
+		await page
+			.getByRole( 'button', { name: 'Save narration', exact: true } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: 'Generate again', exact: true } )
+		).toBeVisible();
+
+		const postId = await page.evaluate( () =>
+			(
+				window as unknown as {
+					wp: {
+						data: {
+							select: ( s: string ) => {
+								getCurrentPostId: () => number;
+							};
+						};
+					};
+				}
+			 ).wp.data
+				.select( 'core/editor' )
+				.getCurrentPostId()
+		);
+		await page.goto( `/?p=${ postId }` );
+		await expect( page.locator( '.post-voice-player audio' ) ).toHaveCount(
+			1
+		);
+	} );
+
+	test( 'a sentence with commas, a colon, a parenthetical, and a quote past the token limit generates without error', async ( {
+		admin,
+		editor,
+		page,
+	} ) => {
+		await createNarratableDraft(
+			admin,
+			editor,
+			'Punctuated long sentence narration',
+			OVERSIZED_PUNCTUATED_SENTENCE
 		);
 		await editor.openDocumentSettingsSidebar();
 		await openNarrationPanel( page );

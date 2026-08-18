@@ -481,6 +481,79 @@ function splitTokenIdsIntoChunks(tokenIds, maxTokens) {
     return chunks;
 }
 
+// Cuts *after* a closing pause mark — comma, colon, semicolon, closing
+// paren/bracket, curly closing quote, guillemet — never at an opening one.
+// Straight ASCII '"' is deliberately excluded: it is the same glyph for open
+// and close, so a single regex cannot tell them apart, and including it cuts
+// right after the OPENING quote — worse than the raw-token fallback this
+// function replaces. Verified by running this regex against a quoted clause:
+// with '"' included, the split landed inside the quotation; without it, the
+// whole quoted clause stays intact. Straight quotes surviving into narrated
+// text is rare in practice — Gutenberg's RichText converts them to curly
+// quotes as the author types, by default — and when one does survive, it
+// falls through to the splitTokenIdsIntoChunks() fallback below, same as any
+// clause with no usable pause point. No regression either way.
+const NATURAL_BREAK_RE = /[^,:;)\]”»]+[,:;)\]”»]+\s*|[^,:;)\]”»]+$/g;
+
+function splitIntoClauses(text) {
+    const matches = text.match(NATURAL_BREAK_RE);
+    if (!matches) return [];
+    return matches.map((clause) => clause.trim()).filter(Boolean);
+}
+
+// Same greedy-accumulation shape as the sentence-combining loop in
+// splitIntoBestSentences below, one level down: pack pause-delimited clauses
+// into a chunk until the next one would overflow, then start a new chunk.
+// A single clause that overflows on its own (no internal pause) falls back to
+// splitTokenIdsIntoChunks — the old raw-token cut — for that clause only; the
+// rest of the sentence is unaffected.
+function splitSentenceAtNaturalBreaks(sentenceText, maxTokens) {
+    const clauses = splitIntoClauses(sentenceText);
+    if (!clauses.length) {
+        return [];
+    }
+
+    const chunks = [];
+    let currentChunk = "";
+
+    for (const clause of clauses) {
+        const clauseTokenIds = tokenizerProcessor.encodeIds(clause);
+
+        if (clauseTokenIds.length > maxTokens) {
+            if (currentChunk) {
+                chunks.push(currentChunk.trim());
+                currentChunk = "";
+            }
+            for (const rawChunk of splitTokenIdsIntoChunks(clauseTokenIds, maxTokens)) {
+                if (rawChunk) {
+                    chunks.push(rawChunk.trim());
+                }
+            }
+            continue;
+        }
+
+        if (!currentChunk) {
+            currentChunk = clause;
+            continue;
+        }
+
+        const combined = `${currentChunk} ${clause}`;
+        const combinedTokens = tokenizerProcessor.encodeIds(combined).length;
+        if (combinedTokens > maxTokens) {
+            chunks.push(currentChunk.trim());
+            currentChunk = clause;
+        } else {
+            currentChunk = combined;
+        }
+    }
+
+    if (currentChunk) {
+        chunks.push(currentChunk.trim());
+    }
+
+    return chunks;
+}
+
 function splitIntoBestSentences(text) {
     const prepared = prepareTextPrompt(text);
     if (!prepared.text) {
@@ -504,7 +577,7 @@ function splitIntoBestSentences(text) {
                 chunks.push(currentChunk.trim());
                 currentChunk = "";
             }
-            const splitChunks = splitTokenIdsIntoChunks(sentenceTokenIds, currentMaxTokenPerChunk);
+            const splitChunks = splitSentenceAtNaturalBreaks(sentenceText, currentMaxTokenPerChunk);
             for (const splitChunk of splitChunks) {
                 if (splitChunk) {
                     chunks.push(splitChunk.trim());
