@@ -56,10 +56,11 @@ Escopo fechado nesta sessão de brainstorming:
 
 | Ponto | Decisão |
 |---|---|
-| Alcance do carry-over de estado | Só dentro do mesmo segmento. Reset continua no início de cada `generate()` (novo segmento/idioma/voz) — comportamento entre segmentos do usuário não muda. Carregar estado entre segmentos consecutivos de mesma voz/idioma foi considerado e descartado: fora do que a issue pede, mexeria no contrato do loop de segmentos. |
-| `CHUNK_GAP_SEC` | Reduzir de `0.25` para `0.06` (60ms), não remover. Motivo do gap original era mascarar o reset de estado; com estado preservado a razão prosódica desaparece, mas mantém-se uma pausa mínima de segurança contra artefato de borda entre chunks. `SEGMENT_GAP_SECONDS` (gap entre segmentos do usuário) não muda. |
-| Split de sentença > 50 tokens | Tentar cortar em ponto de pausa natural (vírgula, dois-pontos, fechamento de aspas/parênteses) dentro do limite de tokens. Sem nenhum ponto de pausa disponível, cai para o corte bruto atual (`splitTokenIdsIntoChunks`) como fallback — nunca regride o comportamento hoje. |
-| Métrica de qualidade | Sem métrica objetiva automatizada de prosódia/continuidade (exigiria modelo de avaliação próprio, fora de escopo). Verificação é E2E (não crasha/não trava em texto adversarial) + audição manual documentada no PR. |
+| Alcance do carry-over de estado | Só dentro do mesmo segmento (= um `generate()` do worker = um `ResolvedSegment`/bloco de idioma do Fase 2). Reset continua no início de cada `generate()`. Carregar estado entre segmentos consecutivos de mesma voz/idioma foi considerado e descartado: fora do que a issue pede, mexeria no contrato de `generateSegments`/`reassemble` em `tts-engine.ts`. O gap **entre segmentos** é `SEGMENT_GAP_SECONDS = 0.12` (120ms), definido em `features/narration/editor/engine/tts-engine.ts:7` — arquivo diferente do tocado aqui, não muda. |
+| `CHUNK_GAP_SEC` (gap **entre chunks internos do mesmo segmento**, em `pocket-tts.worker.js`) | Reduzir de `0.25` para `0.06` (60ms). Faixa aprovada foi 50-80ms; 60ms é o valor escolhido dentro dela, ajustável em code review se a audição indicar necessidade — não é um número já testado empiricamente. Motivo do gap original era mascarar o reset de estado; com estado preservado a razão prosódica desaparece, mantém-se pausa mínima de segurança contra artefato de borda. |
+| Split de sentença > 50 tokens | Cortar em ponto de pausa natural — ver algoritmo decidido na seção "3. Split em ponto de pausa natural" abaixo. Sem nenhum ponto de pausa disponível, cai para o corte bruto atual (`splitTokenIdsIntoChunks`) como fallback — nunca regride o comportamento hoje. |
+| Métrica de qualidade | Sem métrica objetiva automatizada de prosódia/continuidade (exigiria modelo de avaliação próprio, fora de escopo). Verificação é E2E black-box (não crasha/não trava em texto adversarial, player recebe áudio) + audição manual documentada no PR. |
+| Ciclo de vida de tensores ORT | Verificado em código: zero chamadas `.dispose()` em `pocket-tts.worker.js`. Estado (`flowLmState`/`mimiState`) é objeto JS plano referenciando tensores, substituído por atribuição, sem free manual em nenhum lugar do arquivo hoje. Remover o reset por chunk não introduz vazamento nem exige disposal novo — confirma a afirmação da issue de custo de memória zero, não é só a palavra da issue. |
 
 ## Mudanças
 
@@ -83,31 +84,49 @@ como está — só o zeramento *entre* chunks internos some.
 
 Sentença que estoura `currentMaxTokenPerChunk` (hoje sempre chamado com 50)
 passa primeiro por uma tentativa de split em sub-cláusulas por pontuação de
-pausa (vírgula, dois-pontos, fechamento de aspas `”`/`"`, fechamento de
-parênteses `)`/colchete `]`), operando em nível de **texto** (mais simples e
-robusto que mapear posição de token para caractere): a sentença é dividida em
-candidatos de sub-cláusula por regex de pontuação de pausa, cada candidato é
-tokenizado e, se algum candidato isolado ainda estourar o limite de tokens,
-**esse candidato específico** cai para `splitTokenIdsIntoChunks` (corte bruto
-por token) como fallback local — o resto da sentença que já coube em
-sub-cláusulas válidas não é afetado.
+pausa, operando em nível de **texto** (mais simples e robusto que mapear
+posição de token para caractere). Algoritmo, em `splitSentenceAtNaturalBreaks`
+(nome sugerido), chamada no lugar da chamada direta a `splitTokenIdsIntoChunks`
+dentro de `splitIntoBestSentences` quando `sentenceTokens > currentMaxTokenPerChunk`:
 
-Função nova (nome sugerido: `splitSentenceAtNaturalBreaks`), chamada no lugar
-da chamada direta a `splitTokenIdsIntoChunks` dentro de
-`splitIntoBestSentences` quando `sentenceTokens > currentMaxTokenPerChunk`.
-`splitTokenIdsIntoChunks` em si não muda — continua existindo, usado como
-fallback.
+1. **Dividir em candidatos de cláusula** por regex análoga a
+   `SENTENCE_SPLIT_RE` já existente no arquivo, cortando **depois** de
+   `, : ; ) ] ” " »` — fechamento, nunca abertura (aspas retas, curvas e
+   guillemets porque o worker atende 5 idiomas: en/de/it/pt/es, não só
+   inglês). Ex.: `/[^,:;)\]”"»]+[,:;)\]”"»]+\s*|[^,:;)\]”"»]+$/g`.
+2. **Empacotar os candidatos gulosamente** até `currentMaxTokenPerChunk`,
+   mesma lógica que o loop de `splitIntoBestSentences` já usa pra acumular
+   sentenças inteiras (`currentChunk` + próximo candidato; se ultrapassar o
+   limite, fecha o chunk atual e começa um novo com o candidato). Isso evita
+   fragmentar em um chunk por vírgula — só quebra quando precisa.
+3. Se um **candidato isolado** já estourar o limite sozinho (cláusula longa
+   sem pontuação de pausa interna), só **esse candidato** cai para
+   `splitTokenIdsIntoChunks` (corte bruto por token) como fallback local — o
+   resto da sentença que já coube em cláusulas válidas não é afetado.
+
+`splitTokenIdsIntoChunks` em si não muda — continua existindo, usado só como
+fallback de último recurso (passo 3).
 
 ## Testes
 
 Segue convenção do projeto (`CLAUDE.md`): código de Worker/ONNX não leva
 mock/Jest, leva E2E. Nenhum teste unitário novo.
 
-- **E2E novo** (arquivo dedicado ou cenário adicional em
-  `e2e/narration.spec.ts`): post com (a) um parágrafo extenso (vários
-  chunks internos) e (b) uma sentença com aspas + parênteses + oração após
-  dois-pontos que ultrapasse 50 tokens. Cobre: geração completa sem
-  erro/timeout, número de `audio_chunk` plausível, nenhum chunk vazio.
+- **E2E novo, arquivo dedicado**: `e2e/narration-audio-quality.spec.ts`,
+  seguindo o padrão de nome-por-tópico já usado (`narration-a11y.spec.ts`,
+  `narration-fallbacks.spec.ts`, `narration-fase2.spec.ts`). Os specs de
+  narração são **black-box via Playwright** — nenhum intercepta mensagens
+  internas do worker (`audio_chunk`, contagem de chunk) hoje, e este não
+  inaugura esse padrão. Asserções: geração completa sem erro/timeout (chega
+  a estado salvo), player recebe `<audio>` com fonte válida, sem estado de
+  erro na UI — mesmo padrão de `e2e/narration.spec.ts`.
+- **Fixture**: um post com um bloco de texto contendo (a) parágrafo longo o
+  bastante pra forçar vários chunks internos (múltiplas sentenças, ~40-60
+  palavras) e (b) uma sentença deliberadamente > 50 tokens com vírgula,
+  dois-pontos, aspas e parênteses juntos — texto exato finalizado na
+  implementação, não precisa fixar aqui. Fixture curto o bastante pra não
+  inflar o tempo do E2E (~9min hoje, CPU single-thread em CI — ver spec de
+  performance) — não usar um post inteiro de tamanho real.
 - **Verificação manual**: ouvir o áudio gerado antes/depois da mudança para
   os dois casos acima, documentar no PR (qualitativo — não é gate de CI).
 - Gates normais de `TESTING.md` (lint, tsc, PHP — não tocado aqui mas roda
