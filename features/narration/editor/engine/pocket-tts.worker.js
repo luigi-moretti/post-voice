@@ -8,10 +8,11 @@
  * installed by `installModelCache()` below, because Hugging Face serves them
  * with no Cache-Control at all. See CREDITS.md for full attribution.
  *
- * Also modified: the chunking pipeline no longer resets flow-LM/mimi state
- * between internal chunks of the same segment, the gap between those chunks
- * is shorter, and an oversized sentence is split at a punctuation pause
- * instead of a raw token boundary. See
+ * Also modified: the mimi decoder's state now carries forward across a
+ * segment's internal chunks (flow-LM state still resets per chunk — carrying
+ * it forward was tried and reverted, see below), the gap between chunks is
+ * shorter, and an oversized sentence is split at a punctuation pause instead
+ * of a raw token boundary. See
  * docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md
  * for why — the demo's defaults were tuned for short standalone phrases, not
  * whole posts.
@@ -942,6 +943,7 @@ async function runGenerationPipeline(voiceName, chunks, framesAfterEos) {
         if (chunkIdx > 0) {
             flowLmState = cloneState(baseFlowState);
         }
+
         const chunkText = chunks[chunkIdx];
         let isFirstAudioChunkOfTextChunk = true;
         const tokenIds = tokenizerProcessor.encodeIds(chunkText);

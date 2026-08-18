@@ -24,9 +24,14 @@ Derived from `inference-worker.js` in the Pocket TTS ONNX web demo, licensed
 5. Added an import and call of `installModelCache()` at the top of the file, so
    model files are stored in the Cache API. Hugging Face sends no `Cache-Control`
    header, so without it the ~190MB bundle is re-downloaded every editor session.
-6. The chunking pipeline no longer resets flow-LM/mimi state between internal
-   chunks of the same segment — state now carries forward across chunks within a
-   segment, matching how the model was trained to use it.
+6. The mimi decoder's state now carries forward across a segment's internal
+   chunks instead of resetting at every chunk boundary, smoothing the audio-level
+   splice between chunks. Flow-LM state still resets per chunk as in the
+   original demo — carrying it forward was tried and reverted; it breaks the
+   model's own end-of-speech signal (`eos_logit` is a function of that same
+   state). See
+   `docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md`,
+   2026-08-18 (parte B), for the investigation.
 7. `CHUNK_GAP_SEC`, the pause inserted between internal chunks, shrank from
    0.25s (the demo's default) to 0.06s.
 8. Added `splitSentenceAtNaturalBreaks()`, which splits an oversized sentence at

@@ -87,9 +87,22 @@ test.describe( 'Post Voice — narration audio quality (issue #5)', () => {
 				.getCurrentPostId()
 		);
 		await page.goto( `/?p=${ postId }` );
-		await expect( page.locator( '.post-voice-player audio' ) ).toHaveCount(
-			1
-		);
+		const audio = page.locator( '.post-voice-player audio' );
+		await expect( audio ).toHaveCount( 1 );
+		// Regression guard for issue #5's actual production symptom: state
+		// carried across internal chunks broke the model's own end-of-speech
+		// signal, and every chunk after the first stopped after ~1 frame —
+		// audio that "generates without error" but is capped at ~10s no
+		// matter how long the paragraph is. This paragraph reads in ~20s at a
+		// normal pace; 12s sits well above the truncation bug's ceiling and
+		// well below the real duration, so this fails loudly if the bug
+		// returns without needing to intercept the worker's internal
+		// `postMessage` traffic.
+		await expect
+			.poll( () =>
+				audio.evaluate( ( el: HTMLAudioElement ) => el.duration )
+			)
+			.toBeGreaterThan( 12 );
 	} );
 
 	test( 'a sentence with commas, a colon, a parenthetical, and a quote past the token limit generates without error', async ( {
@@ -138,8 +151,15 @@ test.describe( 'Post Voice — narration audio quality (issue #5)', () => {
 				.getCurrentPostId()
 		);
 		await page.goto( `/?p=${ postId }` );
-		await expect( page.locator( '.post-voice-player audio' ) ).toHaveCount(
-			1
-		);
+		const audio = page.locator( '.post-voice-player audio' );
+		await expect( audio ).toHaveCount( 1 );
+		// Same regression guard as the long-paragraph test above. This single
+		// sentence reads in ~25-30s; 12s is well above the truncation bug's
+		// ~10s ceiling and well below the real duration.
+		await expect
+			.poll( () =>
+				audio.evaluate( ( el: HTMLAudioElement ) => el.duration )
+			)
+			.toBeGreaterThan( 12 );
 	} );
 } );

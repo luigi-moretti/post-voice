@@ -136,7 +136,13 @@ cut mid-word under a raw token boundary. Both are black-box like the rest of
 this suite: they prove the pipeline completes without error on adversarial
 input, not that the audio sounds better — that part is judged by ear and
 reported in the PR, per the spec's decision not to chase an automated
-prosody metric.
+prosody metric. Both also assert a duration floor (12s) on the saved
+`<audio>` element — added after a state-carry-over bug shipped that made
+every chunk past the first stop after ~1 frame, satisfying every assertion
+above (no error, one `<audio>` element) while capping real narration at
+~10s regardless of paragraph length. The floor catches that specific
+failure mode without intercepting the worker's internal `postMessage`
+traffic.
 
 The thirty-second is the performance ceiling, in `segment-pipeline-perf.spec.ts`: a
 64KB post through the whole text pipeline, median under 5ms and every sample

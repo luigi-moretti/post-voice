@@ -561,3 +561,30 @@ Claude-Session: https://claude.ai/code/session_018QM3MK7XcADH5qiW2dbYSA"
 ## After both tasks
 
 Run the full pre-PR gate from `CLAUDE.md` before opening any pull request — this plan only covers the two tasks above, not the gate itself. If anything in that gate fails, stop and present correction options per `CLAUDE.md`; do not weaken a check to get it green.
+
+## Revision 2026-08-18 — Task 1's flow-LM carry-over reverted
+
+Both tasks above were implemented, reviewed, and pushed as described. Manual
+QA on real posts after the PR was opened found narration truncating to
+roughly 10 seconds regardless of post length — the flow-LM/mimi state
+carry-over this plan's Architecture line and Task 1 title describe (`stop
+reprocessing the flow-LM/mimi state from scratch at every internal chunk
+boundary — carry it forward within a segment instead`) breaks the model's
+own `eos_logit` completion signal for every chunk after the first.
+
+**What actually shipped, after the revert:** flow-LM state resets per
+internal chunk again (the behavior this plan's Task 1 removed). Mimi decoder
+state still carries forward across chunks — that half of Task 1 holds up.
+`CHUNK_GAP_SEC` stays at `0.06`. Task 2 (natural-pause splitting) is
+unaffected and unchanged.
+
+Two alternative fixes that would have preserved full flow-LM continuity were
+tried and rejected, both with real generated audio as evidence, not just
+logs. Full investigation record — root cause, ONNX graph inspection, both
+rejected attempts, and a residual limitation confirmed on real content that
+neither this plan nor the rejected attempts resolve — is in the spec's
+**2026-08-18 (parte B)** amendment, not repeated here. Text above this
+section (the Architecture line, Task 1's title and step text, the header
+text Task 1 Step 1 wrote) describes what was *attempted*, not what
+*shipped*. Treat this revision section, not the text above it, as the
+record of the final state.

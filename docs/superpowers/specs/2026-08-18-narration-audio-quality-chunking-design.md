@@ -148,11 +148,11 @@ mock/Jest, leva E2E. Nenhum teste unitário novo.
 - Métrica objetiva de prosódia/continuidade automatizada.
 - Carry-over de estado entre segmentos consecutivos do usuário.
 
-## 2026-08-18 (parte B) — QA manual pós-implementação: carry-over de
-## `flowLmState` reintroduz o bug que deveria corrigir
+## 2026-08-18 (parte B) — QA manual pós-implementação: carry-over de `flowLmState` reintroduz o bug que deveria corrigir
 
-**Contexto.** Depois da Task 1/Task 2 implementadas, revisadas e mergeadas
-nesta branch, QA manual (dois posts reais, `post=74` e `post=5`) encontrou
+**Contexto.** Depois da Task 1/Task 2 implementadas, revisadas e enviadas
+nesta branch (PR aberto, ainda não mergeado), QA manual (dois posts reais,
+`post=74` e `post=5`) encontrou
 áudio cortado sempre por volta de 10s, independente do tamanho do post.
 Investigação sistemática (`superpowers:systematic-debugging`) nesta sessão,
 resumida abaixo — tentativas, evidência, e o que ficou provado impossível
@@ -203,8 +203,9 @@ fosse um limite físico do grafo — mas também não revelou nenhum mecanismo
 do grafo que sustente continuação pós-EOS. A arquitetura do loop (cada chunk
 = sua própria passagem de condicionamento + sua própria decisão de EOS) é
 uma escolha do wrapper/demo, não do grafo em si — mas o comportamento
-aprendido do modelo (função 4 acima) trata essa escolha como não-opcional na
-prática.
+aprendido do modelo (a função `(sequence, text_embeddings, estado) →
+(conditioning, eos_logit, novo estado)` citada acima) trata essa escolha
+como não-opcional na prática.
 
 ### Tentativa 1 (rejeitada): manter `flowLmState` completo entre chunks
 
@@ -269,11 +270,22 @@ texto/split. É a mesma limitação arquitetural das duas tentativas acima,
 apenas mais perceptível em texto de produção do que nos fixtures curtos do
 E2E automatizado.
 
-**Não é um regressão desta branch** — é o comportamento que já existia antes
-de qualquer trabalho deste branch (reset a cada chunk sempre existiu); só
-ficou mais visível porque o E2E automatizado usa fixtures deliberadamente
-curtos (ver Global Constraints do plano) que não expõem tantas fronteiras de
-chunk quanto um post real.
+**Atribuição parcial, não totalmente estabelecida.** O reset de `flowLmState`
+a cada chunk sempre existiu — isso não é novo desta branch. Mas a
+configuração que está no ar agora não é idêntica à de antes desta branch:
+`CHUNK_GAP_SEC` caiu de 0.25s para 0.06s, e a própria tabela de decisão deste
+spec (seção "Decisão" acima) registra que o gap de 250ms existia
+especificamente para mascarar o reset — com o reset de volta e o gap
+reduzido, essa máscara não está mais lá. E `mimiState` agora fica
+compartilhado atravessando uma descontinuidade dura do flow-LM, combinação
+que o demo original nunca rodou (ele resetava os dois juntos). Ou seja: reset
+do flow-LM não é novo; a combinação reset-do-flow-LM + `mimiState`
+compartilhado + gap de 60ms É nova desta branch, e foi validada por audição
+só nessa configuração — não existe um teste de controle (mesmo conteúdo,
+gap de 0.25s, `mimiState` também resetado) que isole se o gap/mimiState
+contribuem para o artefato relatado. Até esse controle ser rodado, o correto
+é dizer: não atribuível ao reset do flow-LM isoladamente; a contribuição do
+gap/mimiState não foi descartada.
 
 ### Ideia não testada para uma próxima rodada
 
