@@ -147,3 +147,142 @@ mock/Jest, leva E2E. Nenhum teste unitário novo.
   inconsistente até nativo, exigiria bundle fp16/fp32 paralelo).
 - Métrica objetiva de prosódia/continuidade automatizada.
 - Carry-over de estado entre segmentos consecutivos do usuário.
+
+## 2026-08-18 (parte B) — QA manual pós-implementação: carry-over de
+## `flowLmState` reintroduz o bug que deveria corrigir
+
+**Contexto.** Depois da Task 1/Task 2 implementadas, revisadas e mergeadas
+nesta branch, QA manual (dois posts reais, `post=74` e `post=5`) encontrou
+áudio cortado sempre por volta de 10s, independente do tamanho do post.
+Investigação sistemática (`superpowers:systematic-debugging`) nesta sessão,
+resumida abaixo — tentativas, evidência, e o que ficou provado impossível
+dentro do escopo desta branch.
+
+### Causa raiz confirmada
+
+Instrumentado o worker com log por chunk/step (`console.log` temporário,
+removido antes de cada commit) e reproduzido via Playwright com texto real
+multi-chunk. Evidência: com `flowLmState` carregado entre chunks (o que a
+Task 1 implementou), todo chunk após o primeiro atinge `eos_logit` no
+`step=0`, não importa o texto novo injetado na passagem de condicionamento
+daquele chunk. Chunk 0 sempre se comporta corretamente (state fresco).
+
+`eos_logit` é saída da mesma sessão ONNX (`flow_lm_main_int8.onnx`) que
+consome o `flowLmState` carregado — é uma função desse estado, não do texto
+isolado. O modelo, ao ver estado que já registrou um evento de fim de fala,
+volta a sinalizar fim imediatamente diante de texto novo — comportamento
+consistente com um modelo cuja cabeça de EOS foi treinada/calibrada para
+tratar essa condição como terminal dentro de uma única sessão de decode, não
+para retomar depois de já ter sinalizado o fim. A hipótese de que fosse
+esgotamento da capacidade do cache de atenção (1000 posições, ver seção
+"Causa raiz" acima) foi **descartada**: o total de posições usadas nos casos
+testados (~100-150) fica bem abaixo de 1000; o EOS prematuro acontece mesmo
+com cache quase vazio.
+
+### Investigação de arquitetura (acesso ao fork HF do usuário)
+
+A pedido do usuário — que criou o fork `luigi-moretti/pocket-tts-onnx-mirror`
+justamente para permitir essa investigação — os grafos ONNX reais (não só o
+manifest de runtime em `bundle.json`) foram baixados e inspecionados
+(`onnx` Python, `hf download`). Achados:
+
+- `flow_lm_main_int8.onnx`: 6 camadas de self-attention, cada uma com cache
+  KV `[2,1,1000,16,64]` e contador de posição (`step`), confirmando a leitura
+  do manifest de runtime.
+- **`sequence` e `text_embeddings` têm eixo dinâmico** (`seq_len`,
+  `text_len`) — o grafo não impõe limite fixo de tokens por chamada.
+  `max_token_per_chunk=50` em `bundle.json` é recomendação do autor do
+  bundle, não restrição do grafo exportado.
+- O grafo não tem nenhum input de controle tipo "ignore o EOS anterior,
+  continue" — é uma função pura de `(sequence, text_embeddings, estado) →
+  (conditioning, eos_logit, novo estado)`. Qualquer decisão de "continuar
+  apesar do EOS" teria que vir inteiramente do lado do worker.
+
+Essa investigação **descartou** a hipótese de que `max_token_per_chunk=50`
+fosse um limite físico do grafo — mas também não revelou nenhum mecanismo
+do grafo que sustente continuação pós-EOS. A arquitetura do loop (cada chunk
+= sua própria passagem de condicionamento + sua própria decisão de EOS) é
+uma escolha do wrapper/demo, não do grafo em si — mas o comportamento
+aprendido do modelo (função 4 acima) trata essa escolha como não-opcional na
+prática.
+
+### Tentativa 1 (rejeitada): manter `flowLmState` completo entre chunks
+
+A implementação original da Task 1. Falha: reproduz o bug de truncamento
+acima. Único aspecto que se sustenta: `mimiState` (decoder/vocoder — nenhuma
+decisão de EOS lê esse estado) pode continuar compartilhado sem esse
+problema, porque é uma sessão ONNX inteiramente separada
+(`mimi_decoder_int8.onnx`), sem `eos_logit` nem cache que a etapa de decisão
+de fim consulte.
+
+### Tentativa 2 (rejeitada): ignorar `eos_logit` nos chunks internos, orçamento de steps calibrado pelo chunk 0
+
+Testada por completo, com áudio real gerado e ouvido pelo usuário (não só
+inspeção de log). Mecanismo: chunk 0 roda normalmente (EOS real, confiável),
+calibra uma razão passos-por-caractere a partir do seu próprio EOS real;
+chunks seguintes ignoram `eos_logit` e decodificam um número fixo de passos
+proporcional ao tamanho do texto daquele chunk.
+
+Resultado: não trunca, não erra — mas a fala fica incoerente a partir da
+fronteira do primeiro chunk que usa o orçamento (confirmado em dois idiomas,
+PT e EN, com áudio gerado e ouvido pelo usuário; o ponto onde a fala "fica
+esquisita" bate, minuto a minuto, com o fim do chunk 0 real em ambos os
+testes — evidência de que o problema é exatamente na transição, não
+espalhado). Conclusão: o grafo tecnicamente aceita continuar decodificando
+depois do ponto onde sinalizaria fim, mas o conteúdo gerado ali não é fala
+coerente — não é só a decisão de parar que quebra ao carregar estado
+pós-EOS, é a geração em si.
+
+**Ruído lateral descoberto durante os testes desta tentativa, sem relação
+com o worker:** o primeiro teste em português usou por engano o idioma
+inglês (script de teste nunca selecionou "Português" no seletor do painel —
+o plugin não detecta idioma pelo conteúdo, precisa de seleção explícita).
+Produziu áudio em português lido pelo bundle errado ("tentando ler em
+inglês"). Corrigido selecionando o idioma explicitamente; não é bug do
+plugin, é lição para desenho de teste manual/automatizado futuro.
+
+### Fix final adotado (o que está no código)
+
+- `flowLmState` volta a resetar a cada chunk interno (comportamento
+  original, pré-Task-1) — necessário porque `eos_logit` depende dele.
+- `mimiState` continua compartilhado entre chunks (não quebra nada, sem
+  decisão de EOS o lendo).
+- `CHUNK_GAP_SEC` continua em `0.06` (a suavização de transição que o
+  `mimiState` compartilhado + gap menor entregam ainda vale, mesmo sem a
+  continuidade de prosódia do flow-LM).
+- Task 2 (split em pausa natural para sentença estourando o limite de
+  token) segue intacta e válida — não depende de nada disto.
+
+### Limitação residual confirmada, não resolvida nesta branch
+
+QA manual em conteúdo real (`post=5`, produção) relatou, após o fix acima:
+uma palavra quase-repetida perto de "...sobre essa pergunta: [...] É a
+pergunta que faço..." e uma pausa estranha entre duas cláusulas entre aspas.
+Rastreado o texto exato entregue a cada chunk (via trace, reproduzindo o
+mesmo conteúdo por Playwright): **confirmado que não há duplicação nem corte
+de texto** — os chunks reconstroem a entrada original palavra por palavra.
+As duas ocorrências problemáticas caem exatamente sobre fronteiras de chunk
+novo (onde `flowLmState` reseta). Não foi possível confirmar (sem ouvir o
+áudio) se o artefato é duplicação literal no áudio decodificado ou apenas o
+reset de prosódia soando mal ali — mas está descartado que seja bug de
+texto/split. É a mesma limitação arquitetural das duas tentativas acima,
+apenas mais perceptível em texto de produção do que nos fixtures curtos do
+E2E automatizado.
+
+**Não é um regressão desta branch** — é o comportamento que já existia antes
+de qualquer trabalho deste branch (reset a cada chunk sempre existiu); só
+ficou mais visível porque o E2E automatizado usa fixtures deliberadamente
+curtos (ver Global Constraints do plano) que não expõem tantas fronteiras de
+chunk quanto um post real.
+
+### Ideia não testada para uma próxima rodada
+
+Proposta do usuário, registrada para investigação futura, fora do escopo
+desta branch: sanitizar caracteres sem valor fonético (aspas, parênteses,
+travessão) do texto **só no que é enviado ao tokenizer/modelo**, mantendo o
+texto original intacto para a decisão de onde cortar
+(`splitSentenceAtNaturalBreaks` continua precisando da pontuação real).
+Hipótese: parte do artefato relatado como "estranho perto de aspas" pode ser
+o modelo tentando vocalizar pontuação sem equivalente fonético, não (só) o
+reset de chunk. Não implementado, não testado — precisa de spec própria
+antes de qualquer código.
