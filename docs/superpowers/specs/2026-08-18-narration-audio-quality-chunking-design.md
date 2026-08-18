@@ -91,9 +91,15 @@ dentro de `splitIntoBestSentences` quando `sentenceTokens > currentMaxTokenPerCh
 
 1. **Dividir em candidatos de cláusula** por regex análoga a
    `SENTENCE_SPLIT_RE` já existente no arquivo, cortando **depois** de
-   `, : ; ) ] ” " »` — fechamento, nunca abertura (aspas retas, curvas e
-   guillemets porque o worker atende 5 idiomas: en/de/it/pt/es, não só
-   inglês). Ex.: `/[^,:;)\]”"»]+[,:;)\]”"»]+\s*|[^,:;)\]”"»]+$/g`.
+   `, : ; ) ] ” »` — fechamento, nunca abertura. Aspa reta (`"`) fica de fora
+   de propósito: é o mesmo glyph pra abrir e fechar, então o regex não
+   consegue distinguir as duas — testado e confirmado que incluí-la corta
+   logo **depois da abertura** da citação, pior que o corte bruto que isso
+   deveria substituir. Aspas curvas (`”`) e guillemet (`»`) entram porque são
+   inequívocas e o worker atende 5 idiomas (en/de/it/pt/es). Caso raro de
+   aspas retas sobreviverem no texto (o Gutenberg converte `"`→`"`/`"` ao
+   digitar, por padrão) cai no fallback do passo 3 abaixo, sem regressão. Ex.:
+   `/[^,:;)\]”»]+[,:;)\]”»]+\s*|[^,:;)\]”»]+$/g`.
 2. **Empacotar os candidatos gulosamente** até `currentMaxTokenPerChunk`,
    mesma lógica que o loop de `splitIntoBestSentences` já usa pra acumular
    sentenças inteiras (`currentChunk` + próximo candidato; se ultrapassar o
