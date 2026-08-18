@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-15T19:41:38+00:00\n"
+"POT-Creation-Date: 2026-08-17T23:10:37+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -24,33 +24,33 @@ msgstr ""
 msgid "Gera narração em áudio de posts 100% no navegador (client-side TTS), com voice cloning via Pocket TTS."
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:53
+#: features/narration/php/class-frontend-render.php:76
 msgid "Post narration player"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:64
+#: features/narration/php/class-frontend-render.php:91
 #: build/narration-editor.js:19
 msgid "Play narration"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:65
+#: features/narration/php/class-frontend-render.php:92
 msgid "Playing"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:66
+#: features/narration/php/class-frontend-render.php:93
 msgid "Paused"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:76
+#: features/narration/php/class-frontend-render.php:103
 #: build/narration-editor.js:19
 msgid "Seek within narration"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:77
+#: features/narration/php/class-frontend-render.php:104
 msgid "Playback speed"
 msgstr ""
 
-#: features/narration/php/class-frontend-render.php:78
+#: features/narration/php/class-frontend-render.php:105
 msgid "Close player"
 msgstr ""
 
@@ -110,54 +110,102 @@ msgstr ""
 msgid "Narration — %s"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:41
-#: features/pronunciation/php/class-settings-page.php:42
-#: features/pronunciation/php/class-settings-page.php:103
-#: build/narration-editor.js:19
-msgid "Narration"
+#: features/player-style/php/class-style-section.php:49
+msgid "Player"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:104
+#: features/player-style/php/class-style-section.php:55
+msgid "Background"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:55
+msgid "Pick the background colour"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:56
+msgid "Accent"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:56
+msgid "Pick the accent colour"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:57
+msgid "Text and icons"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:57
+msgid "Pick the text colour"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:77
+msgid "Corners"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:133
+msgid "Colours for the player readers see under a narrated post."
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:182
+msgid "Pill (default)"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:183
+msgid "Rounded corners"
+msgstr ""
+
+#: features/player-style/php/class-style-section.php:184
+msgid "Square corners"
+msgstr ""
+
+#: features/pronunciation/php/class-dictionary-section.php:49
 msgid "Pronunciation dictionary"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:107
+#: features/pronunciation/php/class-dictionary-section.php:91
 msgid "Read a term aloud as something else. Entries apply to the language you choose, because a respelling is phonetic: the same correction read by another language model is a new mistake."
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:118
-#: features/pronunciation/php/class-settings-page.php:131
+#: features/pronunciation/php/class-dictionary-section.php:100
+#: features/pronunciation/php/class-dictionary-section.php:113
 #: build/dictionary-admin.js:19
 #: build/narration-editor.js:19
 msgid "Term"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:119
-#: features/pronunciation/php/class-settings-page.php:137
+#: features/pronunciation/php/class-dictionary-section.php:101
+#: features/pronunciation/php/class-dictionary-section.php:119
 #: build/dictionary-admin.js:19
 #: build/narration-editor.js:19
 msgid "Read as"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:120
-#: features/pronunciation/php/class-settings-page.php:141
+#: features/pronunciation/php/class-dictionary-section.php:102
+#: features/pronunciation/php/class-dictionary-section.php:123
 #: build/dictionary-admin.js:19
 #: build/narration-editor.js:19
 msgid "Language"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:121
+#: features/pronunciation/php/class-dictionary-section.php:103
 msgid "Actions"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:151
+#: features/pronunciation/php/class-dictionary-section.php:133
 #: build/dictionary-admin.js:19
 #: build/narration-editor.js:19
 msgid "Remove"
 msgstr ""
 
-#: features/pronunciation/php/class-settings-page.php:163
+#: features/pronunciation/php/class-dictionary-section.php:145
 msgid "Add entry"
+msgstr ""
+
+#: shared/php/class-settings-page.php:43
+#: shared/php/class-settings-page.php:44
+#: shared/php/class-settings-page.php:72
+#: build/narration-editor.js:19
+msgid "Narration"
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -230,6 +278,10 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "This browser cannot run WebAssembly, which narration needs. Try another browser, or ask an administrator whether a security policy is blocking it."
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Nothing to narrate yet: every block is either excluded from the narration or of a type that is never read aloud."
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -363,9 +415,27 @@ msgid "Generate audio"
 msgstr ""
 
 #: build/narration-editor.js:19
-msgid "Nothing to narrate yet: every block is either excluded from the narration or of a type that is never read aloud."
+msgid "The post text changed since the last generation."
 msgstr ""
 
-#: build/narration-editor.js:19
-msgid "The post text changed since the last generation."
+#: build/player-style-admin.js:19
+msgid "Text and icons against the background"
+msgstr ""
+
+#: build/player-style-admin.js:19
+msgid "The play icon against the accent"
+msgstr ""
+
+#: build/player-style-admin.js:19
+msgid "The accent against the background"
+msgstr ""
+
+#. translators: %s: comma-separated list of colour pairs with low contrast.
+#: build/player-style-admin.js:19
+#, js-format
+msgid "Low contrast, which can make the player hard to read: %s. You can still save."
+msgstr ""
+
+#: build/player-style-admin.js:19
+msgid "Restore defaults"
 msgstr ""

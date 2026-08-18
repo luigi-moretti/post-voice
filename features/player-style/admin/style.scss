@@ -1,0 +1,28 @@
+// Admin-only rules for the settings preview. Nothing here ships to the reader.
+//
+// The real player is `position: fixed` at the bottom of the viewport, which is
+// right in a post and wrong in wp-admin, where it would float over the screen
+// the author is editing. These three rules put it back in the flow; everything
+// else about the preview is the player's own CSS.
+
+.post-voice-preview {
+	margin: 0 0 1.5rem;
+
+	.post-voice-player--enhanced {
+		position: static;
+		animation: none;
+		margin: 0;
+	}
+}
+
+.post-voice-contrast-warning:empty {
+	display: none;
+}
+
+.post-voice-style-picker {
+	// Line the swatch up with the text field next to it.
+	block-size: 2.25rem;
+	inline-size: 3rem;
+	margin-inline-end: 0.5rem;
+	vertical-align: middle;
+}

@@ -33,8 +33,11 @@ require_once POST_VOICE_PATH . 'features/narration/php/class-rest-api.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-attachment-cleanup.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-assets.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-frontend-render.php';
+require_once POST_VOICE_PATH . 'shared/php/class-settings-page.php';
 require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-store.php';
-require_once POST_VOICE_PATH . 'features/pronunciation/php/class-settings-page.php';
+require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-section.php';
+require_once POST_VOICE_PATH . 'features/player-style/php/class-style-store.php';
+require_once POST_VOICE_PATH . 'features/player-style/php/class-style-section.php';
 
 add_action(
 	'init',
@@ -48,5 +51,7 @@ Post_Voice_Attachment_Cleanup::register();
 Post_Voice_Assets::register();
 Post_Voice_Frontend_Render::register();
 Post_Voice_Settings_Page::register();
+Post_Voice_Dictionary_Section::register();
+Post_Voice_Style_Section::register();
 
 add_action( 'rest_api_init', array( 'Post_Voice_Rest_Api', 'register_routes' ) );

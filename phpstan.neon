@@ -4,6 +4,7 @@ parameters:
     level: 6
     paths:
         - features
+        - shared
     # The plugin's constants are defined in the bootstrap, which is not itself
     # analysed (it is not under `features/`). Scanning it lets PHPStan resolve
     # POST_VOICE_PATH/URL/VERSION without analysing WordPress's own load order.
@@ -19,3 +20,4 @@ parameters:
         # an undefined method. The PHP tests are verified by actually running
         # them (`composer run test`), not by static analysis.
         - features/*/tests/php/*
+        - shared/tests/php/*

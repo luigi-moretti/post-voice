@@ -9,15 +9,20 @@
             -->
             <directory suffix=".php">features/narration/tests/php</directory>
             <directory suffix=".php">features/pronunciation/tests/php</directory>
+            <directory suffix=".php">features/player-style/tests/php</directory>
+            <directory suffix=".php">shared/tests/php</directory>
         </testsuite>
     </testsuites>
     <coverage>
         <include>
             <directory suffix=".php">features</directory>
+            <directory suffix=".php">shared</directory>
         </include>
         <exclude>
             <directory suffix=".php">features/narration/tests</directory>
             <directory suffix=".php">features/pronunciation/tests</directory>
+            <directory suffix=".php">features/player-style/tests</directory>
+            <directory suffix=".php">shared/tests</directory>
         </exclude>
         <report>
             <clover outputFile="coverage/clover.xml"/>

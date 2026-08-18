@@ -111,5 +111,13 @@ class Post_Voice_Assets {
 			array(),
 			$asset['version']
 		);
+
+		// Only what differs from the shipped defaults, and nothing at all when
+		// the site never customised the player — the stylesheet already carries
+		// today's values as `var()` fallbacks, so silence here is correct.
+		$inline = Post_Voice_Style_Store::inline_css();
+		if ( '' !== $inline ) {
+			wp_add_inline_style( 'post-voice-player', $inline );
+		}
 	}
 }
