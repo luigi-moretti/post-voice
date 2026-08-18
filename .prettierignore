@@ -3,8 +3,9 @@ node_modules/
 vendor/
 coverage/
 
-# Vendored verbatim from the pocket-tts reference repo. Task 26's attribution
-# records these as byte-identical copies, so reformatting them would both make
-# that claim false and destroy the diff against upstream.
+# Vendored from the pocket-tts reference repo — pocket-tts.worker.js carries
+# first-party modifications on top of that base (see CREDITS.md for the list),
+# so reformatting would destroy the minimal diff against upstream that record
+# depends on.
 features/narration/editor/engine/sentencepiece.js
 features/narration/editor/engine/pocket-tts.worker.js

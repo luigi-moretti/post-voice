@@ -17,9 +17,10 @@ module.exports = {
 		'node_modules/',
 		'vendor/',
 		'coverage/',
-		// Vendored verbatim from the pocket-tts reference repo — copied, not
-		// authored, so our style rules do not apply to them. sentencepiece.js is a
-		// 3.9MB Emscripten bundle; linting it makes a full run take minutes.
+		// Vendored from the pocket-tts reference repo (pocket-tts.worker.js now
+		// carries first-party modifications on top of that base — see CREDITS.md),
+		// so our style rules still don't apply. sentencepiece.js is a 3.9MB
+		// Emscripten bundle; linting it makes a full run take minutes.
 		'features/narration/editor/engine/sentencepiece.js',
 		'features/narration/editor/engine/pocket-tts.worker.js',
 	],

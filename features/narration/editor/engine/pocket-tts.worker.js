@@ -495,10 +495,18 @@ function splitTokenIdsIntoChunks(tokenIds, maxTokens) {
 // clause with no usable pause point. No regression either way.
 const NATURAL_BREAK_RE = /[^,:;)\]”»]+[,:;)\]”»]+\s*|[^,:;)\]”»]+$/g;
 
+// Returns clause descriptors — trimmed text plus the [start, end) span it came
+// from in the ORIGINAL `text` — instead of just trimmed strings. The span is
+// what lets splitSentenceAtNaturalBreaks() below reconstruct kept-together
+// clauses by slicing the source text rather than rejoining trimmed fragments.
 function splitIntoClauses(text) {
-    const matches = text.match(NATURAL_BREAK_RE);
-    if (!matches) return [];
-    return matches.map((clause) => clause.trim()).filter(Boolean);
+    const clauses = [];
+    for (const match of text.matchAll(NATURAL_BREAK_RE)) {
+        const trimmed = match[0].trim();
+        if (!trimmed) continue;
+        clauses.push({ text: trimmed, start: match.index, end: match.index + match[0].length });
+    }
+    return clauses;
 }
 
 // Same greedy-accumulation shape as the sentence-combining loop in
@@ -510,20 +518,34 @@ function splitIntoClauses(text) {
 function splitSentenceAtNaturalBreaks(sentenceText, maxTokens) {
     const clauses = splitIntoClauses(sentenceText);
     if (!clauses.length) {
-        return [];
+        // Pathological case: the sentence has no character outside the pause
+        // delimiter set (e.g. a run of only commas/brackets), so there is no
+        // clause to split on. Fall back to the raw-token cut rather than
+        // silently contributing nothing to the audio.
+        return splitTokenIdsIntoChunks(tokenizerProcessor.encodeIds(sentenceText), maxTokens);
     }
 
     const chunks = [];
-    let currentChunk = "";
+    // Track the accumulated chunk by SPAN into sentenceText (start of its
+    // first clause, end of its last), not by concatenating clause strings.
+    let chunkStart = null;
+    let chunkEnd = null;
+
+    const flushChunk = () => {
+        if (chunkStart === null) return;
+        const chunkText = sentenceText.slice(chunkStart, chunkEnd).trim();
+        if (chunkText) {
+            chunks.push(chunkText);
+        }
+        chunkStart = null;
+        chunkEnd = null;
+    };
 
     for (const clause of clauses) {
-        const clauseTokenIds = tokenizerProcessor.encodeIds(clause);
+        const clauseTokenIds = tokenizerProcessor.encodeIds(clause.text);
 
         if (clauseTokenIds.length > maxTokens) {
-            if (currentChunk) {
-                chunks.push(currentChunk.trim());
-                currentChunk = "";
-            }
+            flushChunk();
             for (const rawChunk of splitTokenIdsIntoChunks(clauseTokenIds, maxTokens)) {
                 if (rawChunk) {
                     chunks.push(rawChunk.trim());
@@ -532,24 +554,37 @@ function splitSentenceAtNaturalBreaks(sentenceText, maxTokens) {
             continue;
         }
 
-        if (!currentChunk) {
-            currentChunk = clause;
+        if (chunkStart === null) {
+            chunkStart = clause.start;
+            chunkEnd = clause.end;
             continue;
         }
 
-        const combined = `${currentChunk} ${clause}`;
-        const combinedTokens = tokenizerProcessor.encodeIds(combined).length;
-        if (combinedTokens > maxTokens) {
-            chunks.push(currentChunk.trim());
-            currentChunk = clause;
+        // IMPORTANT: when a clause stays in the same chunk as the ones
+        // before it, reconstruct the chunk by slicing sentenceText from
+        // chunkStart to this clause's end — never by rejoining trimmed
+        // clause strings with a literal " ". The clauses were trimmed only
+        // so their length could be measured; the actual text between two
+        // clauses (no space after a decimal comma, ": " after a time, "://"
+        // in a URL) is whatever the author wrote, and a naive `${a} ${b}`
+        // join inserts a space that was never there — e.g. "1,000" becomes
+        // "1, 000", "10:30" becomes "10: 30". Only the two OUTER edges of a
+        // finished chunk get trimmed, in flushChunk() above, because a real
+        // cut happens there; internal joins never do.
+        const candidateEnd = clause.end;
+        const candidateText = sentenceText.slice(chunkStart, candidateEnd).trim();
+        const candidateTokens = tokenizerProcessor.encodeIds(candidateText).length;
+
+        if (candidateTokens > maxTokens) {
+            flushChunk();
+            chunkStart = clause.start;
+            chunkEnd = clause.end;
         } else {
-            currentChunk = combined;
+            chunkEnd = candidateEnd;
         }
     }
 
-    if (currentChunk) {
-        chunks.push(currentChunk.trim());
-    }
+    flushChunk();
 
     return chunks;
 }
