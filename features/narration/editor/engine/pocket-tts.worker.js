@@ -915,7 +915,7 @@ async function runGenerationPipeline(voiceName, chunks, framesAfterEos) {
     if (!baseFlowState) {
         throw new Error(`Voice conditioning cache missing for '${voiceName}'.`);
     }
-    const flowLmState = cloneState(baseFlowState);
+    let flowLmState = cloneState(baseFlowState);
 
     const firstChunkFrames = 3;
     const normalChunkFrames = 12;
@@ -928,6 +928,20 @@ async function runGenerationPipeline(voiceName, chunks, framesAfterEos) {
     for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
         if (!isGenerating) break;
 
+        // flowLmState resets to the segment's base voice conditioning at every
+        // internal chunk boundary. This looks like it throws away exactly what
+        // Task 1 set out to preserve, but it isn't optional: eos_logit (below)
+        // is a function of this same carried state, and the model was not
+        // trained to keep speaking past its own EOS signal within one context.
+        // Carrying flowLmState across chunks was tried and reverted — see
+        // docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md
+        // for the investigation (issue #5 follow-up) and why it doesn't hold on
+        // this exported bundle. mimiState (the audio decoder, no EOS decision
+        // reads it) still carries over below, which is what CHUNK_GAP_SEC's
+        // smaller value is actually buying.
+        if (chunkIdx > 0) {
+            flowLmState = cloneState(baseFlowState);
+        }
         const chunkText = chunks[chunkIdx];
         let isFirstAudioChunkOfTextChunk = true;
         const tokenIds = tokenizerProcessor.encodeIds(chunkText);
