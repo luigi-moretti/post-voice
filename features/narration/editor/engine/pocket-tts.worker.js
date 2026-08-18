@@ -6,8 +6,15 @@
  * ONNX Runtime CDN import is marked webpackIgnore so the bundler leaves it as a
  * runtime URL, and model files are routed through a Cache API interceptor
  * installed by `installModelCache()` below, because Hugging Face serves them
- * with no Cache-Control at all. See CREDITS.md for full attribution. Otherwise
- * unchanged from upstream.
+ * with no Cache-Control at all. See CREDITS.md for full attribution.
+ *
+ * Also modified: the chunking pipeline no longer resets flow-LM/mimi state
+ * between internal chunks of the same segment, the gap between those chunks
+ * is shorter, and an oversized sentence is split at a punctuation pause
+ * instead of a raw token boundary. See
+ * docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md
+ * for why — the demo's defaults were tuned for short standalone phrases, not
+ * whole posts.
  */
 // Pocket TTS ONNX Web Worker
 import { MODEL_BASE_URL } from '../model-source';
@@ -32,11 +39,9 @@ const MODEL_STEMS = {
     mimi_decoder: "mimi_decoder_int8.onnx",
 };
 const DEBUG_LOGS = false;
-const CHUNK_GAP_SEC = 0.25;
+const CHUNK_GAP_SEC = 0.06;
 const MAX_FRAMES = 500;
 const LSD_STEPS = 1;
-const RESET_FLOW_STATE_EACH_CHUNK = true;
-const RESET_MIMI_STATE_EACH_CHUNK = true;
 
 let currentLanguage = DEFAULT_LANGUAGE;
 let currentBundleDir = null;
@@ -795,14 +800,14 @@ async function startGeneration(text, voiceName) {
 }
 
 async function runGenerationPipeline(voiceName, chunks, framesAfterEos) {
-    let mimiState = initStateFromManifest(bundleMetadata.mimi_state_manifest);
+    const mimiState = initStateFromManifest(bundleMetadata.mimi_state_manifest);
     const emptySeq = createTensor("float32", new Float32Array(0), [1, 0, currentLatentDim]);
     const emptyTextEmb = createTensor("float32", new Float32Array(0), [1, 0, currentConditioningDim]);
     const baseFlowState = voiceConditioningCache.get(voiceName);
     if (!baseFlowState) {
         throw new Error(`Voice conditioning cache missing for '${voiceName}'.`);
     }
-    let flowLmState = cloneState(baseFlowState);
+    const flowLmState = cloneState(baseFlowState);
 
     const firstChunkFrames = 3;
     const normalChunkFrames = 12;
@@ -814,13 +819,6 @@ async function runGenerationPipeline(voiceName, chunks, framesAfterEos) {
 
     for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
         if (!isGenerating) break;
-
-        if (RESET_FLOW_STATE_EACH_CHUNK && chunkIdx > 0) {
-            flowLmState = cloneState(baseFlowState);
-        }
-        if (RESET_MIMI_STATE_EACH_CHUNK && chunkIdx > 0) {
-            mimiState = initStateFromManifest(bundleMetadata.mimi_state_manifest);
-        }
 
         const chunkText = chunks[chunkIdx];
         let isFirstAudioChunkOfTextChunk = true;
