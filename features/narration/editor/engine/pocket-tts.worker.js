@@ -6,12 +6,26 @@
  * ONNX Runtime CDN import is marked webpackIgnore so the bundler leaves it as a
  * runtime URL, and model files are routed through a Cache API interceptor
  * installed by `installModelCache()` below, because Hugging Face serves them
- * with no Cache-Control at all. See CREDITS.md for full attribution. Otherwise
- * unchanged from upstream.
+ * with no Cache-Control at all. See CREDITS.md for full attribution.
+ *
+ * Also modified: the mimi decoder's state now carries forward across a
+ * segment's internal chunks (flow-LM state still resets per chunk — carrying
+ * it forward was tried and reverted, see below), the gap between chunks is
+ * shorter, an oversized sentence is split at a punctuation pause instead of a
+ * raw token boundary, and text is run through sanitizeForTokenizer() before
+ * every encodeIds() call — the tokenizer has no vocabulary piece for curly
+ * quotes/guillemets/ellipsis, and falls back to raw bytes that decode to
+ * U+FFFD. See
+ * docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md
+ * and
+ * docs/superpowers/specs/2026-08-18-narration-punctuation-sanitization-design.md
+ * for why — the demo's defaults were tuned for short standalone phrases, not
+ * whole posts.
  */
 // Pocket TTS ONNX Web Worker
 import { MODEL_BASE_URL } from '../model-source';
 import { installModelCache } from './model-cache';
+import { sanitizeForTokenizer } from './tokenizer-sanitize';
 
 // Must run before any model file is requested: Hugging Face sends no
 // Cache-Control, so without this the ~190MB bundle is re-fetched every session.
@@ -32,11 +46,9 @@ const MODEL_STEMS = {
     mimi_decoder: "mimi_decoder_int8.onnx",
 };
 const DEBUG_LOGS = false;
-const CHUNK_GAP_SEC = 0.25;
+const CHUNK_GAP_SEC = 0.06;
 const MAX_FRAMES = 500;
 const LSD_STEPS = 1;
-const RESET_FLOW_STATE_EACH_CHUNK = true;
-const RESET_MIMI_STATE_EACH_CHUNK = true;
 
 let currentLanguage = DEFAULT_LANGUAGE;
 let currentBundleDir = null;
@@ -476,6 +488,120 @@ function splitTokenIdsIntoChunks(tokenIds, maxTokens) {
     return chunks;
 }
 
+// Cuts *after* a closing pause mark — comma, colon, semicolon, closing
+// paren/bracket, curly closing quote, guillemet — never at an opening one.
+// Straight ASCII '"' is deliberately excluded: it is the same glyph for open
+// and close, so a single regex cannot tell them apart, and including it cuts
+// right after the OPENING quote — worse than the raw-token fallback this
+// function replaces. Verified by running this regex against a quoted clause:
+// with '"' included, the split landed inside the quotation; without it, the
+// whole quoted clause stays intact. Straight quotes surviving into narrated
+// text is rare in practice — Gutenberg's RichText converts them to curly
+// quotes as the author types, by default — and when one does survive, it
+// falls through to the splitTokenIdsIntoChunks() fallback below, same as any
+// clause with no usable pause point. No regression either way.
+//
+// This regex reads the RAW text on purpose, curly quote/paren included — it
+// is the other half of the boundary tokenizer-sanitize.ts documents:
+// splitting decisions use the real characters the author typed;
+// sanitizeForTokenizer() only touches what gets handed to encodeIds().
+// Normalizing here instead would erase this exact split signal.
+const NATURAL_BREAK_RE = /[^,:;)\]”»]+[,:;)\]”»]+\s*|[^,:;)\]”»]+$/g;
+
+// Returns clause descriptors — trimmed text plus the [start, end) span it came
+// from in the ORIGINAL `text` — instead of just trimmed strings. The span is
+// what lets splitSentenceAtNaturalBreaks() below reconstruct kept-together
+// clauses by slicing the source text rather than rejoining trimmed fragments.
+function splitIntoClauses(text) {
+    const clauses = [];
+    for (const match of text.matchAll(NATURAL_BREAK_RE)) {
+        const trimmed = match[0].trim();
+        if (!trimmed) continue;
+        clauses.push({ text: trimmed, start: match.index, end: match.index + match[0].length });
+    }
+    return clauses;
+}
+
+// Same greedy-accumulation shape as the sentence-combining loop in
+// splitIntoBestSentences below, one level down: pack pause-delimited clauses
+// into a chunk until the next one would overflow, then start a new chunk.
+// A single clause that overflows on its own (no internal pause) falls back to
+// splitTokenIdsIntoChunks — the old raw-token cut — for that clause only; the
+// rest of the sentence is unaffected.
+function splitSentenceAtNaturalBreaks(sentenceText, maxTokens) {
+    const clauses = splitIntoClauses(sentenceText);
+    if (!clauses.length) {
+        // Pathological case: the sentence has no character outside the pause
+        // delimiter set (e.g. a run of only commas/brackets), so there is no
+        // clause to split on. Fall back to the raw-token cut rather than
+        // silently contributing nothing to the audio.
+        return splitTokenIdsIntoChunks(tokenizerProcessor.encodeIds(sanitizeForTokenizer(sentenceText) || sentenceText), maxTokens);
+    }
+
+    const chunks = [];
+    // Track the accumulated chunk by SPAN into sentenceText (start of its
+    // first clause, end of its last), not by concatenating clause strings.
+    let chunkStart = null;
+    let chunkEnd = null;
+
+    const flushChunk = () => {
+        if (chunkStart === null) return;
+        const chunkText = sentenceText.slice(chunkStart, chunkEnd).trim();
+        if (chunkText) {
+            chunks.push(chunkText);
+        }
+        chunkStart = null;
+        chunkEnd = null;
+    };
+
+    for (const clause of clauses) {
+        const clauseTokenIds = tokenizerProcessor.encodeIds(sanitizeForTokenizer(clause.text));
+
+        if (clauseTokenIds.length > maxTokens) {
+            flushChunk();
+            for (const rawChunk of splitTokenIdsIntoChunks(clauseTokenIds, maxTokens)) {
+                if (rawChunk) {
+                    chunks.push(rawChunk.trim());
+                }
+            }
+            continue;
+        }
+
+        if (chunkStart === null) {
+            chunkStart = clause.start;
+            chunkEnd = clause.end;
+            continue;
+        }
+
+        // IMPORTANT: when a clause stays in the same chunk as the ones
+        // before it, reconstruct the chunk by slicing sentenceText from
+        // chunkStart to this clause's end — never by rejoining trimmed
+        // clause strings with a literal " ". The clauses were trimmed only
+        // so their length could be measured; the actual text between two
+        // clauses (no space after a decimal comma, ": " after a time, "://"
+        // in a URL) is whatever the author wrote, and a naive `${a} ${b}`
+        // join inserts a space that was never there — e.g. "1,000" becomes
+        // "1, 000", "10:30" becomes "10: 30". Only the two OUTER edges of a
+        // finished chunk get trimmed, in flushChunk() above, because a real
+        // cut happens there; internal joins never do.
+        const candidateEnd = clause.end;
+        const candidateText = sentenceText.slice(chunkStart, candidateEnd).trim();
+        const candidateTokens = tokenizerProcessor.encodeIds(sanitizeForTokenizer(candidateText)).length;
+
+        if (candidateTokens > maxTokens) {
+            flushChunk();
+            chunkStart = clause.start;
+            chunkEnd = clause.end;
+        } else {
+            chunkEnd = candidateEnd;
+        }
+    }
+
+    flushChunk();
+
+    return chunks;
+}
+
 function splitIntoBestSentences(text) {
     const prepared = prepareTextPrompt(text);
     if (!prepared.text) {
@@ -491,7 +617,7 @@ function splitIntoBestSentences(text) {
     let currentChunk = "";
 
     for (const sentenceText of sentences) {
-        const sentenceTokenIds = tokenizerProcessor.encodeIds(sentenceText);
+        const sentenceTokenIds = tokenizerProcessor.encodeIds(sanitizeForTokenizer(sentenceText));
         const sentenceTokens = sentenceTokenIds.length;
 
         if (sentenceTokens > currentMaxTokenPerChunk) {
@@ -499,7 +625,7 @@ function splitIntoBestSentences(text) {
                 chunks.push(currentChunk.trim());
                 currentChunk = "";
             }
-            const splitChunks = splitTokenIdsIntoChunks(sentenceTokenIds, currentMaxTokenPerChunk);
+            const splitChunks = splitSentenceAtNaturalBreaks(sentenceText, currentMaxTokenPerChunk);
             for (const splitChunk of splitChunks) {
                 if (splitChunk) {
                     chunks.push(splitChunk.trim());
@@ -514,7 +640,7 @@ function splitIntoBestSentences(text) {
         }
 
         const combined = `${currentChunk} ${sentenceText}`;
-        const combinedTokens = tokenizerProcessor.encodeIds(combined).length;
+        const combinedTokens = tokenizerProcessor.encodeIds(sanitizeForTokenizer(combined)).length;
         if (combinedTokens > currentMaxTokenPerChunk) {
             chunks.push(currentChunk.trim());
             currentChunk = sentenceText;
@@ -795,7 +921,7 @@ async function startGeneration(text, voiceName) {
 }
 
 async function runGenerationPipeline(voiceName, chunks, framesAfterEos) {
-    let mimiState = initStateFromManifest(bundleMetadata.mimi_state_manifest);
+    const mimiState = initStateFromManifest(bundleMetadata.mimi_state_manifest);
     const emptySeq = createTensor("float32", new Float32Array(0), [1, 0, currentLatentDim]);
     const emptyTextEmb = createTensor("float32", new Float32Array(0), [1, 0, currentConditioningDim]);
     const baseFlowState = voiceConditioningCache.get(voiceName);
@@ -815,16 +941,24 @@ async function runGenerationPipeline(voiceName, chunks, framesAfterEos) {
     for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
         if (!isGenerating) break;
 
-        if (RESET_FLOW_STATE_EACH_CHUNK && chunkIdx > 0) {
+        // flowLmState resets to the segment's base voice conditioning at every
+        // internal chunk boundary. This looks like it throws away exactly what
+        // Task 1 set out to preserve, but it isn't optional: eos_logit (below)
+        // is a function of this same carried state, and the model was not
+        // trained to keep speaking past its own EOS signal within one context.
+        // Carrying flowLmState across chunks was tried and reverted — see
+        // docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md
+        // for the investigation (issue #5 follow-up) and why it doesn't hold on
+        // this exported bundle. mimiState (the audio decoder, no EOS decision
+        // reads it) still carries over below, which is what CHUNK_GAP_SEC's
+        // smaller value is actually buying.
+        if (chunkIdx > 0) {
             flowLmState = cloneState(baseFlowState);
-        }
-        if (RESET_MIMI_STATE_EACH_CHUNK && chunkIdx > 0) {
-            mimiState = initStateFromManifest(bundleMetadata.mimi_state_manifest);
         }
 
         const chunkText = chunks[chunkIdx];
         let isFirstAudioChunkOfTextChunk = true;
-        const tokenIds = tokenizerProcessor.encodeIds(chunkText);
+        const tokenIds = tokenizerProcessor.encodeIds(sanitizeForTokenizer(chunkText) || chunkText);
         const textInput = createTensor(
             "int64",
             BigInt64Array.from(tokenIds.map((token) => BigInt(token))),

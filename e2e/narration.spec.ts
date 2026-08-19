@@ -508,9 +508,15 @@ test.describe( 'Post Voice — narration generation', () => {
 		await page
 			.getByRole( 'button', { name: 'Generate audio', exact: true } )
 			.click();
+		// 180s, not 120s: this generation wait timed out once on a loaded
+		// machine (CPU-only WASM inference, no hard cap on ONNX Runtime's wasm
+		// heap — see the 2026-08-19 investigation) with no code path involved
+		// that isn't already exercised by other 120s-waiting tests in this same
+		// file, so this one gets the same generous budget several neighbors
+		// already use (e.g. 'cancelling and immediately regenerating...' below).
 		await expect(
 			page.getByRole( 'button', { name: 'Save narration', exact: true } )
-		).toBeVisible( { timeout: 120_000 } );
+		).toBeVisible( { timeout: 180_000 } );
 
 		const postId = await page.evaluate( () =>
 			( window as any ).wp.data.select( 'core/editor' ).getCurrentPostId()
@@ -529,7 +535,7 @@ test.describe( 'Post Voice — narration generation', () => {
 
 		await expect(
 			page.getByRole( 'button', { name: 'Generate again', exact: true } )
-		).toBeVisible( { timeout: 120_000 } );
+		).toBeVisible( { timeout: 180_000 } );
 
 		const attachments = await requestUtils.rest( {
 			path: '/wp/v2/media',

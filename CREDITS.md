@@ -24,8 +24,40 @@ Derived from `inference-worker.js` in the Pocket TTS ONNX web demo, licensed
 5. Added an import and call of `installModelCache()` at the top of the file, so
    model files are stored in the Cache API. Hugging Face sends no `Cache-Control`
    header, so without it the ~190MB bundle is re-downloaded every editor session.
+6. The mimi decoder's state now carries forward across a segment's internal
+   chunks instead of resetting at every chunk boundary, smoothing the audio-level
+   splice between chunks. Flow-LM state still resets per chunk as in the
+   original demo — carrying it forward was tried and reverted; it breaks the
+   model's own end-of-speech signal (`eos_logit` is a function of that same
+   state). See
+   `docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md`,
+   2026-08-18 (parte B), for the investigation.
+7. `CHUNK_GAP_SEC`, the pause inserted between internal chunks, shrank from
+   0.25s (the demo's default) to 0.06s.
+8. Added `splitSentenceAtNaturalBreaks()`, which splits an oversized sentence at
+   a punctuation pause (comma, colon, semicolon, closing bracket/quote) instead
+   of a raw token boundary, so a forced cut lands somewhere a speaker would
+   actually pause.
+9. Text is now run through `sanitizeForTokenizer()` (a separate first-party
+   module, `tokenizer-sanitize.ts`) before every `encodeIds()` call. The
+   tokenizer has no vocabulary piece for curly/low quotes, guillemets or the
+   ellipsis character — it falls back to raw UTF-8 bytes that individually
+   decode to U+FFFD — so those are mapped to a plain-ASCII equivalent.
+   Parentheses, brackets and em/en dashes are also removed, as an unverified
+   prosody bet — pending validation by ear; per the design spec, if that
+   listening test doesn't show a clear improvement, only this half should be
+   reverted, keeping the glyph-mapping half (which has direct tokenizer
+   evidence), never touching the ASCII hyphen. Colon (`:`) is replaced with a
+   comma outside a numeric context (time, ratio, chapter:verse reference) —
+   also non-OOV, but reported noisy by ear; same class of fix as the
+   `remove_semicolons` flag already shipped in the German bundle. See
+   `docs/superpowers/specs/2026-08-18-narration-punctuation-sanitization-design.md`,
+   2026-08-19 amendment.
 
-No other line was changed. Both vendored files are excluded from ESLint and
+See
+`docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md`
+for why (issue #5): the demo's defaults were tuned for short standalone
+phrases, not whole posts. Both vendored files are excluded from ESLint and
 Prettier (`.eslintrc.js`, `.prettierignore`) so that tooling cannot silently
 reformat them and invalidate this record.
 

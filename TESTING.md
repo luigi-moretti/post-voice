@@ -38,7 +38,7 @@ either complains.
 | `npm run test:unit -- --coverage` | same, with the coverage gate | ≥80% lines | ~5s |
 | `npm run test:php` | PHPUnit against wp-env | all pass | ~5s |
 | `npm run test:php:coverage` | PHPUnit + line coverage | ≥85% lines | ~30s |
-| `npm run test:e2e` | Playwright, 30 scenarios | all pass | ~9min |
+| `npm run test:e2e` | Playwright, 37 scenarios | all pass | ~20-25min |
 | `npm run i18n:check` | committed `.pot` matches the source | no drift | ~20s |
 | `npm run audit:npm` / `:production` | dependency advisories | see below | ~15s |
 | `npm run audit:composer` | same for PHP tooling | 0 critical, 0 high | ~5s |
@@ -48,7 +48,9 @@ either complains.
 Only pure functions are measured: block filtering, segment extraction and
 resolution, segment hashing, dictionary application, RTF/ETA math, the storage
 pre-check, the MP3 encoder, the voice catalogue, the WebAssembly detect, the
-player state machine, time formatting. The list lives in `jest.config.js` under
+player state machine, time formatting, and — as of issue #5's
+punctuation-sanitization fix — the text sanitized ahead of the tokenizer
+(`tokenizer-sanitize.ts`). The list lives in `jest.config.js` under
 `collectCoverageFrom`.
 
 Glue — the worker wrapper, the React panel — is deliberately outside it. Mocking
@@ -108,7 +110,8 @@ Playwright drives a real browser against wp-env, so the build has to be current:
 npm run build && npm run test:e2e
 ```
 
-The 30 scenarios split in three. Eighteen are Fase 1's: happy path, no
+The 37 scenarios split in four families, plus the performance ceiling
+described further below. Eighteen are Fase 1's: happy path, no
 `crossOriginIsolated`, cancel mid-generation, insufficient storage, regenerate
 without orphans, axe with zero serious/critical violations in editor and
 frontend, full keyboard operation of the player, `prefers-reduced-motion`, plus
@@ -128,7 +131,33 @@ generation rather than one per code path, and one parse of the post per
 debounced pass rather than one per keystroke — the last two count calls rather
 than timing them, so they fail loudly instead of flaking.
 
-The thirtieth is the performance ceiling, in `segment-pipeline-perf.spec.ts`: a
+Two more, in `narration-audio-quality.spec.ts`, are issue #5's audio-quality
+fix: a long multi-sentence paragraph that spans several of the worker's
+internal ~50-token chunks, and a single sentence past that limit with commas,
+a colon, a parenthetical and a quoted phrase — the combination that used to
+cut mid-word under a raw token boundary. Both are black-box like the rest of
+this suite: they prove the pipeline completes without error on adversarial
+input, not that the audio sounds better — that part is judged by ear and
+reported in the PR, per the spec's decision not to chase an automated
+prosody metric. Both also assert a duration floor (12s) on the saved
+`<audio>` element — added after a state-carry-over bug shipped that made
+every chunk past the first stop after ~1 frame, satisfying every assertion
+above (no error, one `<audio>` element) while capping real narration at
+~10s regardless of paragraph length. The floor catches that specific
+failure mode without intercepting the worker's internal `postMessage`
+traffic.
+
+Five more, in `player-style.spec.ts`: an uncustomised site ships no inline
+player CSS at all, a saved accent colour reaches the reader (round-tripped
+through `options-general.php` and asserted via `toHaveCSS` on the real
+computed `background-color`), the settings screen's colour preview follows
+the field live before anything is saved and reverts on reload, a low-contrast
+accent/surface combination warns but still saves, and axe finds zero
+serious/critical violations on the settings screen. All five are DOM/CSS
+integration tests — no Worker, no ONNX, no model download — so each runs in
+well under a second.
+
+The last is the performance ceiling, in `segment-pipeline-perf.spec.ts`: a
 64KB post through the whole text pipeline, median under 5ms and every sample
 under 50ms. It lives here rather than in Jest because jsdom's `DOMParser` is a
 JavaScript implementation and was consuming 86% of the budget on its own.
