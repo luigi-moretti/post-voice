@@ -100,8 +100,10 @@ const PAREN_BRACKET_RE = /[()[\]]/g;
  *
  * Runs first, against the untouched input `text`, before any other
  * substitution in `sanitizeForTokenizer` — the ellipsis mapping in
- * `GLYPH_MAP` is the only step that changes string length, and the digit
- * guard below must never read an index that step has shifted.
+ * `GLYPH_MAP` is the only step in the whole pipeline that changes string
+ * length (dash and colon both replace one character with another single
+ * character), and the digit guards in this function and in `replaceColons`
+ * below must never read an index that step has shifted.
  */
 const DASH_RE = /[—–]/g;
 
@@ -143,6 +145,11 @@ function replaceDashes( text: string ): string {
  */
 const COLON_RE = /:/g;
 
+// Same footgun as replaceDashes above: the callback destructures `offset`
+// positionally as the 2nd argument, which is only correct because COLON_RE
+// has no capture groups — with one, `replace()` would insert the captured
+// substring there instead, and `offset` would silently become that string
+// rather than the numeric match offset.
 function replaceColons( text: string ): string {
 	return text.replace( COLON_RE, ( match, offset: number ) => {
 		const before = text[ offset - 1 ];

@@ -138,6 +138,22 @@ describe( 'sanitizeForTokenizer — colon replacement, with the numeric-context 
 			'Figures for 10:30.'
 		);
 	} );
+
+	it( 'replaces a colon with a digit on only one side', () => {
+		// Digit before, non-digit after: not a time/ratio/reference, so the
+		// guard must not treat this as numeric context.
+		expect( sanitizeForTokenizer( 'At step 3: go.' ) ).toBe(
+			'At step 3, go.'
+		);
+		// Non-digit before, digit after: same guard, other side.
+		expect( sanitizeForTokenizer( 'Answer: 42.' ) ).toBe( 'Answer, 42.' );
+	} );
+
+	it( 'handles multiple colons in one string independently', () => {
+		expect(
+			sanitizeForTokenizer( 'See 3:16-3:18, then note: done.' )
+		).toBe( 'See 3:16-3:18, then note, done.' );
+	} );
 } );
 
 describe( 'sanitizeForTokenizer — edges and the combined real-world case', () => {
