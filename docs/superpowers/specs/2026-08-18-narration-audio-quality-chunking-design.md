@@ -298,3 +298,98 @@ Hipótese: parte do artefato relatado como "estranho perto de aspas" pode ser
 o modelo tentando vocalizar pontuação sem equivalente fonético, não (só) o
 reset de chunk. Não implementado, não testado — precisa de spec própria
 antes de qualquer código.
+
+## 2026-08-18 (parte C) — Investigação: escopo da sanitização de pontuação, evidência de tokenizer
+
+**Contexto.** Sessão de brainstorming separada, spike, a pedido do usuário —
+que testou nas demos públicas do kyutai e do KevinAHM
+(https://kyutai.org/blog/2026-01-13-pocket-tts/,
+https://huggingface.co/spaces/KevinAHM/pocket-tts-web) e reportou que remover
+só aspas já produziu áudio melhor nesses ambientes externos, sem tocar em
+código do plugin. Objetivo desta rodada: entender em que cenários
+aspas/parênteses/travessão aparecem em prosa real, se removê-los arrisca
+prejudicar a formação do áudio, e investigar especificamente a ideia de
+substituir por pausa em vez de deletar sem mais.
+
+### Achado principal: o risco não está distribuído igualmente entre os três
+
+Análise inicial (catálogo de uso: aspas = marca de voz/citação; parênteses =
+aparte/sigla/nota; travessão = aparte pareado ou range numérico) levantou
+riscos textuais qualitativos, mas não indicava qual caractere realmente
+importa pro tokenizer. Para checar isso, rodou-se o tokenizer real do modelo
+— mesma classe `SentencePieceProcessor` de `sentencepiece.js` que o worker
+usa em produção — direto contra `tokenizer.model` de dois bundles (`english`,
+`portuguese`), fora da branch, só leitura, via Node, sem gerar áudio.
+Resultado (`sp.encodeIds(...)`, reproduzido nos dois idiomas):
+
+| Caractere | Resultado | Interpretação |
+|---|---|---|
+| Aspa curva `“ ”` (a que o Gutenberg gera ao digitar) | 4 tokens: 1 marcador + 3 bytes UTF-8 crus | **Byte-fallback — sem piece dedicada no vocab** |
+| Guillemet `« »` | 3-4 tokens, mesmo padrão | **Byte-fallback** |
+| Reticências `…` (glyph único) | 4 tokens, mesmo padrão | **Byte-fallback** |
+| Aspa reta `"` | 1 token único (piece dedicada) | Token normal, não-OOV |
+| Parênteses `( ) [ ]` | 1 token único cada | Token normal, não-OOV |
+| Travessão `— –` (em dash / en dash) | 1 token único cada | Token normal, não-OOV |
+| Vírgula, ponto, dois-pontos, ponto-e-vírgula, hífen | 1 token único cada | Token normal, não-OOV |
+
+Decodificar cada byte-token isolado dos casos "byte-fallback" retorna `�`
+(U+FFFD, replacement character) — evidência direta de que o vocab não tem
+mapeamento próprio pra esses glyphs; o SentencePiece decompõe em bytes crus
+pra manter o encode sem-perda, mas entrega ao modelo fragmentos sem
+significado de subpalavra que ele provavelmente nunca viu de forma
+consistente em treino. Isso é candidato concreto e verificável ao mecanismo
+por trás do sintoma "estranho perto de aspas"/"palavra quase-repetida" — não
+é só a hipótese qualitativa original.
+
+**Isso muda o escopo da recomendação anterior desta mesma seção.** Aspas
+curvas, guillemets e reticências (glyph único) têm evidência direta de OOV.
+Parênteses e travessão **não têm** — são tokens de vocab normais nos dois
+idiomas testados. Removê-los seria aposta de prosódia sem verificação, a
+mesma categoria de chute que a ideia original tentava evitar. A investigação
+de aspa aninhada em parêntese (`OVERSIZED_PUNCTUATED_SENTENCE` do e2e,
+artefato real de `post=5`) continua sendo o padrão de maior risco combinado,
+mas pelo lado da aspa curva ali dentro, não do parêntese.
+
+### Investigação da ideia "substituir por pausa" (pedido específico do usuário)
+
+Três estratégias testadas por token count/estrutura para o conjunto
+confirmado-OOV (aspa curva/guillemet/reticências), usando
+`'She said "hello there" to me.'` como caso de referência:
+
+1. **Deletar sem substituir** — volta pro mesmo token count de uma frase sem
+   nenhuma pontuação de citação (8 tokens). Perde inteiramente a marca de
+   "isso é fala citada"; o modelo não tem nenhum sinal textual do aparte.
+2. **Substituir por vírgula** — 10 tokens, usa uma piece de vocab normal e
+   bem representada (pausa real), mas muda a estrutura da frase de citação
+   pra aposto — não é equivalente semântico, é uma pausa genérica no lugar
+   de uma pausa de citação.
+3. **Normalizar pra ASCII equivalente** (aspa curva → aspa reta `"`,
+   reticências → `...`) — 11 tokens, cada um deles piece de vocab dedicada,
+   nenhum byte-fallback. Não é bem "pausa": é trocar o glyph OOV pelo glyph
+   in-vocab que já carrega o mesmo papel sintático. Zero perda de informação
+   — os limites da citação continuam marcados no texto, só deixam de ser
+   bytes crus pro tokenizer.
+
+**Recomendação desta investigação:** estratégia 3 (normalização Unicode→ASCII
+só no texto enviado ao tokenizer) é a mais forte candidata — ataca o
+mecanismo confirmado por evidência (OOV), não remove informação que o autor
+codificou, e não conflita com a decisão já registrada nesta spec de manter o
+texto original intacto para `splitSentenceAtNaturalBreaks`/
+`splitIntoClauses` (que dependem da aspa curva/guillemet real como marcador
+de fechamento de cláusula — normalizar só o texto do tokenizer não toca
+nisso). Parênteses e travessão ficam **fora** de qualquer normalização até
+uma rodada de audição real os justificar especificamente — não há evidência
+de tokenizer que sustente removê-los ou substituí-los.
+
+### Ainda não feito
+
+Nenhum código de produção mudou nesta sessão. Não implementado: a própria
+função de normalização, sua integração em `prepareTextPrompt`/antes de
+`encodeIds`, cobertura para `‘ ’` (aspa simples curva, mesmo padrão esperado
+mas não testado individualmente), nem validação com áudio real gerado e
+ouvido (a spec original desta investigação já pede isso antes de qualquer
+código: "precisa de spec própria antes de qualquer código" — mantido).
+Scripts de prova usados (`probe.mjs`/`probe2.mjs`/`probe3.mjs`, Node +
+`sentencepiece.js` do projeto de teste local, contra os `tokenizer.model`
+reais de en/pt) ficaram fora da branch, descartáveis, não fazem parte deste
+repositório.
