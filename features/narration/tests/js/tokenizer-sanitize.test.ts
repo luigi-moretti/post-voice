@@ -119,7 +119,7 @@ describe( 'sanitizeForTokenizer — edges and the combined real-world case', () 
 
 	it( 'handles a curly quote nested inside a parenthetical — the post=5 artifact pattern', () => {
 		const input =
-			'(the one the reviewer quoted directly as "impossible to sit through"), before finally admitting';
+			'(the one the reviewer quoted directly as “impossible to sit through”), before finally admitting';
 		expect( sanitizeForTokenizer( input ) ).toBe(
 			'the one the reviewer quoted directly as "impossible to sit through" , before finally admitting'
 		);
