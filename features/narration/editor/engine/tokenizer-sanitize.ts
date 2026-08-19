@@ -20,6 +20,12 @@
  * `docs/superpowers/specs/2026-08-18-narration-punctuation-sanitization-design.md`
  * for the full reasoning and how this is validated by ear before it is kept.
  *
+ * Colon (`:`) is a third category, added 2026-08-19: also tokenizes cleanly
+ * (no OOV evidence) but reported noisy by ear outside a numeric context.
+ * Replaced with a comma, guarded so a time/ratio/chapter:verse colon survives
+ * intact — see `replaceColons` below and the dated amendment in the spec
+ * above for the `remove_semicolons` bundle precedent this follows.
+ *
  * Called only to decide what the tokenizer receives
  * (`tokenizerProcessor.encodeIds(...)` in `pocket-tts.worker.js`) — never in
  * the regex-based split functions (`splitTextIntoSentences`,
@@ -39,7 +45,8 @@
  */
 export function sanitizeForTokenizer( text: string ): string {
 	const withDashesHandled = replaceDashes( text );
-	const withBracketsRemoved = withDashesHandled.replace(
+	const withColonsHandled = replaceColons( withDashesHandled );
+	const withBracketsRemoved = withColonsHandled.replace(
 		PAREN_BRACKET_RE,
 		' '
 	);
@@ -112,5 +119,39 @@ function replaceDashes( text: string ): string {
 			/\d/.test( before ) &&
 			/\d/.test( after );
 		return isNumericRange ? match : ' ';
+	} );
+}
+
+/**
+ * Colon (`:`) — confirmed non-OOV (single dedicated vocab piece, all 5
+ * tokenizers), but reported noisy in synthesized audio outside a numeric
+ * context. Same category as the `remove_semicolons` flag already shipped in
+ * the German bundle (`onnx/german/bundle.json`), applied unconditionally by
+ * `prepareTextPrompt()` in `pocket-tts.worker.js`: a punctuation mark can
+ * tokenize cleanly and still be under-represented in the model's spoken
+ * training data. See the 2026-08-19 amendment in
+ * `docs/superpowers/specs/2026-08-18-narration-punctuation-sanitization-design.md`
+ * for the full reasoning.
+ *
+ * Replaced with a comma — not a space — same substitution the German bundle
+ * flag already applies to semicolons, and the reason a literal-comma-in-place
+ * of colon reads naturally in most prose. Guarded against a numeric context
+ * (time `10:30`, ratio `3:2`, chapter:verse reference `3:16`) using the same
+ * digit-before/digit-after positional check as `replaceDashes` — replacing
+ * those would change the reading (`"10:30"` read as "ten thirty" would become
+ * "ten, thirty").
+ */
+const COLON_RE = /:/g;
+
+function replaceColons( text: string ): string {
+	return text.replace( COLON_RE, ( match, offset: number ) => {
+		const before = text[ offset - 1 ];
+		const after = text[ offset + match.length ];
+		const isNumericContext =
+			before !== undefined &&
+			after !== undefined &&
+			/\d/.test( before ) &&
+			/\d/.test( after );
+		return isNumericContext ? match : ',';
 	} );
 }

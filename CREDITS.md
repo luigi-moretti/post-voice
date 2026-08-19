@@ -47,8 +47,12 @@ Derived from `inference-worker.js` in the Pocket TTS ONNX web demo, licensed
    prosody bet — pending validation by ear; per the design spec, if that
    listening test doesn't show a clear improvement, only this half should be
    reverted, keeping the glyph-mapping half (which has direct tokenizer
-   evidence), never touching the ASCII hyphen. See
-   `docs/superpowers/specs/2026-08-18-narration-punctuation-sanitization-design.md`.
+   evidence), never touching the ASCII hyphen. Colon (`:`) is replaced with a
+   comma outside a numeric context (time, ratio, chapter:verse reference) —
+   also non-OOV, but reported noisy by ear; same class of fix as the
+   `remove_semicolons` flag already shipped in the German bundle. See
+   `docs/superpowers/specs/2026-08-18-narration-punctuation-sanitization-design.md`,
+   2026-08-19 amendment.
 
 See
 `docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md`

@@ -102,6 +102,44 @@ describe( 'sanitizeForTokenizer — dash removal, with the numeric-range guard',
 	} );
 } );
 
+describe( 'sanitizeForTokenizer — colon replacement, with the numeric-context guard', () => {
+	it( 'replaces a list-header colon with a comma', () => {
+		expect( sanitizeForTokenizer( 'Ingredients: sugar, flour.' ) ).toBe(
+			'Ingredients, sugar, flour.'
+		);
+	} );
+
+	it( 'replaces a colon with no space around it', () => {
+		expect( sanitizeForTokenizer( 'Note:important.' ) ).toBe(
+			'Note,important.'
+		);
+	} );
+
+	it( 'keeps a colon intact in a time expression', () => {
+		expect( sanitizeForTokenizer( 'The train leaves at 10:30.' ) ).toBe(
+			'The train leaves at 10:30.'
+		);
+	} );
+
+	it( 'keeps a colon intact in a numeric ratio', () => {
+		expect( sanitizeForTokenizer( 'Mix it 3:2 and stir.' ) ).toBe(
+			'Mix it 3:2 and stir.'
+		);
+	} );
+
+	it( 'keeps a colon intact in a chapter:verse reference', () => {
+		expect( sanitizeForTokenizer( 'Quoted John 3:16 from memory.' ) ).toBe(
+			'Quoted John 3:16 from memory.'
+		);
+	} );
+
+	it( 'keeps a numeric-context colon intact at the end of the string', () => {
+		expect( sanitizeForTokenizer( 'Figures for 10:30.' ) ).toBe(
+			'Figures for 10:30.'
+		);
+	} );
+} );
+
 describe( 'sanitizeForTokenizer — edges and the combined real-world case', () => {
 	it( 'returns an empty string unchanged', () => {
 		expect( sanitizeForTokenizer( '' ) ).toBe( '' );
@@ -122,6 +160,13 @@ describe( 'sanitizeForTokenizer — edges and the combined real-world case', () 
 			'(the one the reviewer quoted directly as “impossible to sit through”), before finally admitting';
 		expect( sanitizeForTokenizer( input ) ).toBe(
 			'the one the reviewer quoted directly as "impossible to sit through" , before finally admitting'
+		);
+	} );
+
+	it( 'handles a colon-introduced clause alongside a curly quote', () => {
+		const input = 'The reviewer said: “impossible to sit through”.';
+		expect( sanitizeForTokenizer( input ) ).toBe(
+			'The reviewer said, "impossible to sit through".'
 		);
 	} );
 } );
