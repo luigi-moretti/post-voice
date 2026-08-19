@@ -44,7 +44,10 @@ Derived from `inference-worker.js` in the Pocket TTS ONNX web demo, licensed
    ellipsis character — it falls back to raw UTF-8 bytes that individually
    decode to U+FFFD — so those are mapped to a plain-ASCII equivalent.
    Parentheses, brackets and em/en dashes are also removed, as an unverified
-   prosody bet validated by ear, never touching the ASCII hyphen. See
+   prosody bet — pending validation by ear; per the design spec, if that
+   listening test doesn't show a clear improvement, only this half should be
+   reverted, keeping the glyph-mapping half (which has direct tokenizer
+   evidence), never touching the ASCII hyphen. See
    `docs/superpowers/specs/2026-08-18-narration-punctuation-sanitization-design.md`.
 
 See

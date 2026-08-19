@@ -20,12 +20,20 @@
  * `docs/superpowers/specs/2026-08-18-narration-punctuation-sanitization-design.md`
  * for the full reasoning and how this is validated by ear before it is kept.
  *
- * Called only where text is about to be tokenized
+ * Called only to decide what the tokenizer receives
  * (`tokenizerProcessor.encodeIds(...)` in `pocket-tts.worker.js`) — never in
  * the regex-based split functions (`splitTextIntoSentences`,
  * `splitIntoClauses`, near `NATURAL_BREAK_RE`), which still need the real
  * closing quote/paren characters to decide where to cut. See the comment
  * next to `NATURAL_BREAK_RE` for the other half of this boundary.
+ *
+ * One exception to "only decides what the tokenizer receives": the raw-token
+ * fallback path in `pocket-tts.worker.js` (`splitTokenIdsIntoChunks`, reached
+ * from `splitSentenceAtNaturalBreaks`) decodes the *sanitized* token ids back
+ * into text via `decodeIds`, and that decoded text becomes real chunk text
+ * that is pushed onward. This is harmless — re-sanitizing already-sanitized
+ * text is a no-op, the same idempotency property this module's tests cover —
+ * but it is a real propagation, not merely a tokenizer-input decision.
  *
  * @param text Raw text, as authored, about to be encoded by the tokenizer.
  */
@@ -60,11 +68,11 @@ const GLYPH_MAP: Record< string, string > = {
 };
 
 function applyGlyphMap( text: string ): string {
-	let result = text;
-	for ( const [ key, value ] of Object.entries( GLYPH_MAP ) ) {
-		result = result.replace( new RegExp( key, 'g' ), value );
-	}
-	return result;
+	return Object.entries( GLYPH_MAP ).reduce(
+		( result, [ glyph, replacement ] ) =>
+			result.split( glyph ).join( replacement ),
+		text
+	);
 }
 
 /**
@@ -90,6 +98,10 @@ const PAREN_BRACKET_RE = /[()[\]]/g;
  */
 const DASH_RE = /[—–]/g;
 
+// The callback below destructures `offset` positionally as the 2nd argument,
+// which is only correct because DASH_RE has no capture groups — with one,
+// `replace()` would insert the captured substring there instead, and `offset`
+// would silently become that string rather than the numeric match offset.
 function replaceDashes( text: string ): string {
 	return text.replace( DASH_RE, ( match, offset: number ) => {
 		const before = text[ offset - 1 ];

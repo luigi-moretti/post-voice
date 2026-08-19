@@ -93,10 +93,17 @@ texto **antes** de qualquer substituição que mude o comprimento da string
 4. **Colapso final**: `/\s{2,}/g` → `' '`, depois `.trim()` — limpa os
    espaços introduzidos pelos passos 1 e 2.
 
-O valor de retorno é usado **só** como argumento de `encodeIds` no call-site
-— nunca reatribuído a `chunkText`/`sentenceText`/`currentChunk` nem
-propagado adiante. O texto original (com toda a pontuação) continua sendo o
-que os testes/logs de "texto entregue a cada chunk" (mencionados na spec de
+O valor de retorno é usado **apenas para decidir o que o tokenizer recebe**
+como argumento de `encodeIds` no call-site — não é reatribuído a
+`chunkText`/`sentenceText`/`currentChunk`. Uma exceção: no caminho de
+fallback por token bruto (`splitTokenIdsIntoChunks`, alcançado a partir de
+`splitSentenceAtNaturalBreaks`), os ids de token já sanitizados são
+decodificados de volta a texto via `decodeIds`, e esse texto decodificado
+(já sanitizado) vira texto de chunk real que segue adiante — inofensivo,
+porque re-sanitizar texto já sanitizado é no-op (mesma propriedade de
+idempotência coberta pelos testes), mas é propagação de fato. Fora esse
+caminho, o texto original (com toda a pontuação) continua sendo o que os
+testes/logs de "texto entregue a cada chunk" (mencionados na spec de
 chunking) enxergam.
 
 Comentário cruzado: o bloco que define `NATURAL_BREAK_RE` em

@@ -535,7 +535,7 @@ function splitSentenceAtNaturalBreaks(sentenceText, maxTokens) {
         // delimiter set (e.g. a run of only commas/brackets), so there is no
         // clause to split on. Fall back to the raw-token cut rather than
         // silently contributing nothing to the audio.
-        return splitTokenIdsIntoChunks(tokenizerProcessor.encodeIds(sanitizeForTokenizer(sentenceText)), maxTokens);
+        return splitTokenIdsIntoChunks(tokenizerProcessor.encodeIds(sanitizeForTokenizer(sentenceText) || sentenceText), maxTokens);
     }
 
     const chunks = [];
@@ -958,7 +958,7 @@ async function runGenerationPipeline(voiceName, chunks, framesAfterEos) {
 
         const chunkText = chunks[chunkIdx];
         let isFirstAudioChunkOfTextChunk = true;
-        const tokenIds = tokenizerProcessor.encodeIds(sanitizeForTokenizer(chunkText));
+        const tokenIds = tokenizerProcessor.encodeIds(sanitizeForTokenizer(chunkText) || chunkText);
         const textInput = createTensor(
             "int64",
             BigInt64Array.from(tokenIds.map((token) => BigInt(token))),
