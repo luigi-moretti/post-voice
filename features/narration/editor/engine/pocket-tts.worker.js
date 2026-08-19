@@ -11,15 +11,21 @@
  * Also modified: the mimi decoder's state now carries forward across a
  * segment's internal chunks (flow-LM state still resets per chunk — carrying
  * it forward was tried and reverted, see below), the gap between chunks is
- * shorter, and an oversized sentence is split at a punctuation pause instead
- * of a raw token boundary. See
+ * shorter, an oversized sentence is split at a punctuation pause instead of a
+ * raw token boundary, and text is run through sanitizeForTokenizer() before
+ * every encodeIds() call — the tokenizer has no vocabulary piece for curly
+ * quotes/guillemets/ellipsis, and falls back to raw bytes that decode to
+ * U+FFFD. See
  * docs/superpowers/specs/2026-08-18-narration-audio-quality-chunking-design.md
+ * and
+ * docs/superpowers/specs/2026-08-18-narration-punctuation-sanitization-design.md
  * for why — the demo's defaults were tuned for short standalone phrases, not
  * whole posts.
  */
 // Pocket TTS ONNX Web Worker
 import { MODEL_BASE_URL } from '../model-source';
 import { installModelCache } from './model-cache';
+import { sanitizeForTokenizer } from './tokenizer-sanitize';
 
 // Must run before any model file is requested: Hugging Face sends no
 // Cache-Control, so without this the ~190MB bundle is re-fetched every session.
@@ -494,6 +500,12 @@ function splitTokenIdsIntoChunks(tokenIds, maxTokens) {
 // quotes as the author types, by default — and when one does survive, it
 // falls through to the splitTokenIdsIntoChunks() fallback below, same as any
 // clause with no usable pause point. No regression either way.
+//
+// This regex reads the RAW text on purpose, curly quote/paren included — it
+// is the other half of the boundary tokenizer-sanitize.ts documents:
+// splitting decisions use the real characters the author typed;
+// sanitizeForTokenizer() only touches what gets handed to encodeIds().
+// Normalizing here instead would erase this exact split signal.
 const NATURAL_BREAK_RE = /[^,:;)\]”»]+[,:;)\]”»]+\s*|[^,:;)\]”»]+$/g;
 
 // Returns clause descriptors — trimmed text plus the [start, end) span it came
@@ -523,7 +535,7 @@ function splitSentenceAtNaturalBreaks(sentenceText, maxTokens) {
         // delimiter set (e.g. a run of only commas/brackets), so there is no
         // clause to split on. Fall back to the raw-token cut rather than
         // silently contributing nothing to the audio.
-        return splitTokenIdsIntoChunks(tokenizerProcessor.encodeIds(sentenceText), maxTokens);
+        return splitTokenIdsIntoChunks(tokenizerProcessor.encodeIds(sanitizeForTokenizer(sentenceText)), maxTokens);
     }
 
     const chunks = [];
@@ -543,7 +555,7 @@ function splitSentenceAtNaturalBreaks(sentenceText, maxTokens) {
     };
 
     for (const clause of clauses) {
-        const clauseTokenIds = tokenizerProcessor.encodeIds(clause.text);
+        const clauseTokenIds = tokenizerProcessor.encodeIds(sanitizeForTokenizer(clause.text));
 
         if (clauseTokenIds.length > maxTokens) {
             flushChunk();
@@ -574,7 +586,7 @@ function splitSentenceAtNaturalBreaks(sentenceText, maxTokens) {
         // cut happens there; internal joins never do.
         const candidateEnd = clause.end;
         const candidateText = sentenceText.slice(chunkStart, candidateEnd).trim();
-        const candidateTokens = tokenizerProcessor.encodeIds(candidateText).length;
+        const candidateTokens = tokenizerProcessor.encodeIds(sanitizeForTokenizer(candidateText)).length;
 
         if (candidateTokens > maxTokens) {
             flushChunk();
@@ -605,7 +617,7 @@ function splitIntoBestSentences(text) {
     let currentChunk = "";
 
     for (const sentenceText of sentences) {
-        const sentenceTokenIds = tokenizerProcessor.encodeIds(sentenceText);
+        const sentenceTokenIds = tokenizerProcessor.encodeIds(sanitizeForTokenizer(sentenceText));
         const sentenceTokens = sentenceTokenIds.length;
 
         if (sentenceTokens > currentMaxTokenPerChunk) {
@@ -628,7 +640,7 @@ function splitIntoBestSentences(text) {
         }
 
         const combined = `${currentChunk} ${sentenceText}`;
-        const combinedTokens = tokenizerProcessor.encodeIds(combined).length;
+        const combinedTokens = tokenizerProcessor.encodeIds(sanitizeForTokenizer(combined)).length;
         if (combinedTokens > currentMaxTokenPerChunk) {
             chunks.push(currentChunk.trim());
             currentChunk = sentenceText;
@@ -946,7 +958,7 @@ async function runGenerationPipeline(voiceName, chunks, framesAfterEos) {
 
         const chunkText = chunks[chunkIdx];
         let isFirstAudioChunkOfTextChunk = true;
-        const tokenIds = tokenizerProcessor.encodeIds(chunkText);
+        const tokenIds = tokenizerProcessor.encodeIds(sanitizeForTokenizer(chunkText));
         const textInput = createTensor(
             "int64",
             BigInt64Array.from(tokenIds.map((token) => BigInt(token))),
