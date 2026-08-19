@@ -70,9 +70,34 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx wp-env start
+      # Without this, `playwright install --with-deps` re-downloads the ~150MB
+      # Chromium + headless-shell binaries from scratch on every run — the
+      # step that stalled past 24 minutes and ate the free-tier Actions
+      # budget (github.com/luigi-moretti/post-voice/actions/runs/32209990340).
+      # Keyed on the resolved @playwright/test version so a dependency bump
+      # naturally misses the cache instead of serving stale binaries.
+      - name: Resolve installed Playwright version
+        id: playwright-version
+        run: |
+          echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
       # The headless shell is named explicitly: the wp-scripts base Playwright
       # config asks for it, and it has not always come along with `chromium`.
-      - run: npx playwright install --with-deps chromium chromium-headless-shell
+      # System libraries (`--with-deps`) are never cached — apt installs them
+      # into the runner's own filesystem, which is discarded with the VM at
+      # the end of every job regardless of cache — so they're always
+      # reinstalled; that apt step alone is fast (~1 min), not the bottleneck
+      # this fixes.
+      - name: Install Playwright browsers (cache miss)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium chromium-headless-shell
+      - name: Install Playwright system dependencies only (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium chromium-headless-shell
       - run: npm run test:e2e
       - if: always()
         uses: actions/upload-artifact@v4

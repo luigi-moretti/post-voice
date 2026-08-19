@@ -73,7 +73,20 @@ an outward-facing action; it is never done unprompted.
   (`npm run i18n:pot`) whenever strings change; `npm run i18n:check` enforces it.
 - **Tests**: pure TypeScript gets Jest; PHP gets PHPUnit with a `@covers`
   annotation per test class; anything involving the Worker, ONNX or a real
-  browser gets an E2E scenario instead of a mock.
+  browser gets an E2E scenario instead of a mock — *unless* the specific
+  behaviour under test is itself a pure function with no such dependency,
+  merely reached through the UI. Extract that function to its own module and
+  give it a Jest suite instead; keep an E2E scenario only for the integration
+  behaviour that still needs the Worker/ONNX/browser (`tokenizer-sanitize.ts`
+  is the precedent — extracted from `pocket-tts.worker.js` specifically
+  because its only Worker coupling was living in the same file as one, not
+  because the logic itself touched `self`/ONNX). Before adding a new E2E
+  scenario, check whether it would in fact only be pinning a pure function's
+  output — `e2e/segment-pipeline-perf.spec.ts` is the counter-example: it
+  looks like it could be a Jest test but deliberately isn't, because jsdom's
+  `DOMParser` is orders of magnitude slower than a real browser's and gave
+  untrustworthy timing numbers (see the file's own header comment) — staying
+  E2E there is a considered choice, not an oversight.
 - **Dependencies**: `npm ci`, never `npm install`, in CI and in scripts — the
   lockfile is the audit surface.
 
