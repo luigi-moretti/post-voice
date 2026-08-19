@@ -5,6 +5,26 @@ on:
   push:
     branches: [ master ]
 
+# A new push to the same PR/branch supersedes the previous one — cancel
+# whatever of it is still running (e2e is almost always what's still going)
+# instead of letting it burn free-tier Actions minutes for a run whose result
+# nobody will read. This is exactly what happened manually
+# (github.com/luigi-moretti/post-voice/actions/runs/32209990340): a push
+# landed while the prior run's `playwright install` step was still stuck, and
+# the old run kept billing until someone noticed and cancelled it by hand.
+# `github.head_ref` is only set on `pull_request` events and is stable across
+# every push to the same PR branch, which is what makes grouping by it useful
+# — a new push cancels the old run in the same group. Falling back to
+# `github.ref` instead of `github.run_id` here would be a real bug: `ref` is
+# the same value (`refs/heads/master`) for every push to master, so two
+# merges landing close together would cancel the first one's still-running
+# "last safety net" full suite before it ever reported. `github.run_id` is
+# unique per run, so the fallback group is unique per push and
+# `cancel-in-progress` never actually cancels a master run.
+concurrency:
+  group: ci-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -61,7 +81,37 @@ jobs:
       - if: always()
         run: npx wp-env stop
 
+  # Decides whether the e2e job's ~20-25 real-audio-generation minutes are
+  # worth spending on this PR at all. Scoped to `pull_request` only — a push
+  # to `master` (post-merge) always runs the full suite regardless, as the
+  # last safety net before anything ships. Listed paths are everything e2e
+  # actually exercises: the three features it covers, shared code they
+  # depend on, the e2e suite itself (including its mu-plugins/fixtures), the
+  # plugin bootstrap, the build/test config that produces what e2e runs
+  # against, and this workflow file itself — so a change to the e2e job
+  # (like this one) always validates itself rather than trusting its own
+  # correctness un-run.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      e2e: ${{ steps.filter.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: filter
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+              | grep -qE '^(features/narration/|features/pronunciation/|features/player-style/|shared/|e2e/|post-voice\.php|package(-lock)?\.json$|composer\.(json|lock)$|webpack\.config\.js$|playwright\.config\.ts$|\.wp-env\.json$|\.github/workflows/)'; then
+            echo "e2e=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "e2e=false" >> "$GITHUB_OUTPUT"
+          fi
+
   e2e:
+    needs: [ changes ]
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.e2e == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
