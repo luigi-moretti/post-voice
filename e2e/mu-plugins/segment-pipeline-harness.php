@@ -10,10 +10,10 @@
  * page, so a real browser's native `DOMParser` can time them without pulling in
  * the block editor or downloading anything.
  *
- * E2E-only, mirroring `coop-coep-headers.php`: mapped into `wp-content/mu-plugins`
- * only by `.wp-env.json`. Nothing in `post-voice.php`'s own require chain loads
- * this file, so a production install of the plugin never enqueues the handle it
- * registers below.
+ * E2E-only: mapped into `wp-content/mu-plugins` only by `.wp-env.json`.
+ * Nothing in `post-voice.php`'s own require chain loads this file, so a
+ * production install of the plugin never enqueues the handle it registers
+ * below.
  *
  * @package Post_Voice
  */
