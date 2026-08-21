@@ -32,6 +32,7 @@ require_once POST_VOICE_PATH . 'features/narration/php/class-post-meta.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-rest-api.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-attachment-cleanup.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-assets.php';
+require_once POST_VOICE_PATH . 'features/narration/php/class-editor-headers.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-frontend-render.php';
 require_once POST_VOICE_PATH . 'shared/php/class-settings-page.php';
 require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-store.php';
@@ -49,6 +50,7 @@ add_action(
 
 Post_Voice_Attachment_Cleanup::register();
 Post_Voice_Assets::register();
+Post_Voice_Editor_Headers::register();
 Post_Voice_Frontend_Render::register();
 Post_Voice_Settings_Page::register();
 Post_Voice_Dictionary_Section::register();
