@@ -458,6 +458,7 @@ available; the plugin also targets Safari/Firefox).
 - Modify: `features/narration/editor/engine/pocket-tts.worker.js`
 - Modify: `features/narration/editor/engine/tts-engine.ts`
 - Modify: `features/narration/editor/index.tsx`
+- Modify: `webpack.config.js`
 - Create: `e2e/narration-worker-error.spec.ts`
 
 **Interfaces:**
@@ -612,10 +613,64 @@ why a second language failing is treated differently.)
 
 - [ ] **Step 3: Construct the Worker from a `blob:` URL, as a classic (non-module) script, and retry once single-threaded if it fails**
 
-In `features/narration/editor/engine/tts-engine.ts`, add this function after
+**This step was revised after a real implementer hit a real, reproducible
+build failure with an earlier version of it** — see
+docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md,
+"Achado 5", for the full evidence (byte counts, the exact error, three
+candidate fixes considered). The short version: `fetch(new URL(...))` does
+NOT make webpack bundle `pocket-tts.worker.js` the way `new Worker(new
+URL(...))` used to — without that exact call shape, webpack emits a raw,
+unbundled copy of the source (`import` statements intact), which a classic
+script can't execute at all. The fix below gives the worker its own real
+entry point instead of relying on any Worker-call-shape magic.
+
+First, in `webpack.config.js`, add a new entry — replace:
+
+```js
+		'segment-pipeline-harness': path.resolve(
+			__dirname,
+			'e2e/fixtures/segment-pipeline-harness.ts'
+		),
+	},
+```
+
+with:
+
+```js
+		'segment-pipeline-harness': path.resolve(
+			__dirname,
+			'e2e/fixtures/segment-pipeline-harness.ts'
+		),
+		// Its own entry, not referenced via `new Worker(new URL(...))`
+		// anywhere — that call shape is what makes webpack 5 bundle a
+		// Worker's script specially, and `tts-engine.ts` deliberately never
+		// uses it (see the docblock on `createNarrationWorker` below for
+		// why). An explicit entry gets the same full bundling (every
+		// sibling import inlined, no lazy chunks) through the ordinary
+		// mechanism instead, with a stable, unhashed output filename.
+		// Nothing in PHP enqueues this handle — same pattern as
+		// `segment-pipeline-harness` above.
+		'pocket-tts-worker': path.resolve(
+			__dirname,
+			'features/narration/editor/engine/pocket-tts.worker.js'
+		),
+	},
+```
+
+Then, in `features/narration/editor/engine/tts-engine.ts`, add this after
 the imports, before the `PocketTtsEngine` class:
 
 ```ts
+// Reads the current chunk's own base path — the same value webpack's own
+// runtime already computes and uses internally to load each entry's
+// assets, documented as the "on-the-fly publicPath" mechanism:
+// https://webpack.js.org/guides/public-path/#on-the-fly
+// Not `import.meta.url`: using it here (even just to compute a string, not
+// inside `new Worker(new URL(...))`) broke evaluation of this entire bundle
+// with no console error — the narration panel's icon stopped appearing at
+// all. Confirmed by reverting only this one line.
+declare const __webpack_public_path__: string;
+
 /**
  * Constructs the narration Worker from a `blob:` URL instead of pointing
  * straight at its own script, and as a classic (non-module) script — both
@@ -646,7 +701,8 @@ the imports, before the `PocketTtsEngine` class:
  * the page's life.
  */
 async function createNarrationWorker(): Promise< Worker > {
-	const scriptUrl = new URL( './pocket-tts.worker.js', import.meta.url );
+	// eslint-disable-next-line camelcase
+	const scriptUrl = __webpack_public_path__ + 'pocket-tts-worker.js';
 	const code = await ( await fetch( scriptUrl ) ).text();
 	const blobUrl = URL.createObjectURL(
 		new Blob( [ code ], { type: 'text/javascript' } )
@@ -1079,24 +1135,33 @@ rm -rf build
 npm run build
 ```
 
-Confirm no build errors. Then confirm the worker's own chunk has no leftover
-lazy-chunk loading (Step 1 should have removed the only one):
+Confirm no build errors (two size-limit *warnings* are expected and harmless
+— `pocket-tts-worker.js` is ~715 KiB, same category already tolerated for
+other large chunks in this project; a build *error* is not expected and is
+not this).
+
+Confirm the worker now has its own stable-named entry output, fully bundled:
 
 ```bash
-grep -rl "Worker Thread Started" build/
+ls -la build/pocket-tts-worker.js
+grep -c "^import \|^export " build/pocket-tts-worker.js
 ```
 
-Note the filename this prints (it changes with content — it was `285.js`
-before this task, `498.js` when this was investigated, it will likely differ
-again now). Then, on that file:
+Expected: the file exists (~715 KB — an unhashed name, unlike the old
+`285.js`/`498.js`/`646.js` chunk names this investigation saw before this
+task existed), and the `grep -c` prints `0` — no raw, unresolved `import`/
+`export` statements. (A raw copy, per Achado 5, is what "Cannot use import
+statement outside a module" came from — this check is what would have
+caught it before Step 6 spent a whole E2E run finding out. If this check
+finds a nonzero count, the entry in `webpack.config.js` isn't taking effect
+— confirm it was added correctly before continuing.) Also confirm no
+leftover lazy-chunk loading (Step 1 should have removed the only one):
 
 ```bash
-grep -o "n\.e([0-9]*)" build/<the-file-from-above>.js
+grep -o "n\.e([0-9]*)" build/pocket-tts-worker.js
 ```
 
-Expected: no output. (If this prints something, Step 1 did not remove every
-dynamic `import()` this worker makes — find and statically import that one
-too before continuing.)
+Expected: no output.
 
 - [ ] **Step 6: Confirm the fix — full end-to-end generation completes under real cross-origin isolation**
 
@@ -1335,11 +1400,12 @@ Step 3's changes before continuing.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add features/narration/editor/engine/pocket-tts.worker.js features/narration/editor/engine/tts-engine.ts features/narration/editor/index.tsx e2e/narration-worker-error.spec.ts TESTING.md docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md
+git add features/narration/editor/engine/pocket-tts.worker.js features/narration/editor/engine/tts-engine.ts features/narration/editor/index.tsx webpack.config.js e2e/narration-worker-error.spec.ts TESTING.md
 git commit -m "fix: construct the narration Worker so it survives cross-origin isolation
 
-Three stacked causes, each confirmed live (see the spec this commits
-alongside): the Worker's own script is a static asset that never gets a
+Four stacked causes, each confirmed live (see
+docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md):
+the Worker's own script is a static asset that never gets a
 COEP header, so new Worker() silently failed once the document became
 crossOriginIsolated (Task 1) - fixed by constructing it from a blob: of
 its own fetched contents. onnxruntime-web's threaded WASM backend calls
@@ -1349,9 +1415,16 @@ its own static imports. Once classic, its one dynamic import() (the
 tokenizer) tried to load a lazy chunk from the wrong URL, because
 webpack's publicPath auto-detection breaks against a blob: origin -
 fixed by making that import static too, removing the lazy chunk
-entirely. The blob URL is revoked immediately after construction -
-confirmed empirically that this does not break anything - so this does
-not leak one Blob reference per load.
+entirely. And: fetch(new URL(...)) does not trigger webpack's Worker
+bundling the way new Worker(new URL(...)) does, so the worker was being
+served as a raw, unbundled copy of its own source - fixed by giving it
+its own webpack entry (stable output filename, no Worker-call-shape
+magic needed) and reading __webpack_public_path__ at runtime to find it
+(not import.meta.url, which broke evaluation of the whole
+narration-editor bundle with no console error - the panel's own icon
+stopped appearing at all). The blob URL is revoked immediately after
+construction - confirmed empirically that this does not break anything
+- so this does not leak one Blob reference per load.
 
 Also: PocketTtsEngine.load()/setLanguage()/generate() never listened for
 the Worker's own 'error' event, so any future construction or runtime

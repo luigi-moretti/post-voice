@@ -215,15 +215,95 @@ autenticado), combinando os três achados (`blob:` + build clássico + import
 estático). Primeira geração de áudio multi-thread bem-sucedida, ponta a ponta,
 desde que a issue #5 foi aberta.
 
+## Achado 5 (descoberto na implementação da Task 3, não na investigação original) — `fetch(new URL(...))` não aciona o bundling completo do webpack
+
+Achado 1 mostrou `blob:` funcionando ao vivo, buscando um arquivo **já**
+compilado como bundle completo (`build/285.js`, gerado enquanto o código-fonte
+ainda tinha a chamada original `new Worker(new URL('./pocket-tts.worker.js',
+import.meta.url), {type:'module'})`). O que a investigação original não
+percebeu: essa chamada **literal** — `new Worker(new URL(especificador,
+import.meta.url))` — é o que o webpack 5 reconhece estaticamente para tratar
+o arquivo referenciado como entry point de verdade (resolvendo e inlinando
+`../model-source`, `./model-cache`, `./tokenizer-sanitize`,
+`./sentencepiece.js` num bundle único). `createNarrationWorker()`
+(`tts-engine.ts`) nunca chama `new Worker(new URL(...))` — chama
+`fetch(new URL(...))`, depois `new Worker(blobUrl)`. Sem o call-shape exato,
+o webpack não bundleia nada: emite uma **cópia crua do código-fonte**, com os
+`import` estáticos intactos e não resolvidos.
+
+**Descoberto e confirmado durante a implementação da Task 3** (não nesta
+investigação original): rodando o build de verdade com o código do
+`createNarrationWorker()` tal como decidido acima, a tela mostra
+`Uncaught SyntaxError: Cannot use import statement outside a module` assim
+que o `blob:` (executado como script clássico) tenta rodar esse código cru —
+`import` não existe fora de módulo, bundleado ou não. Confirmado por
+inspeção direta: 19 KB (cópia crua, com `import` literal no topo) contra
+730 KB (bundle completo, sem nenhum `import`/`export`) alternando as duas
+formas e comparando o `build/` byte a byte.
+
+**Fix**: dar a `pocket-tts.worker.js` seu próprio entry point explícito no
+`webpack.config.js` (`'pocket-tts-worker': path.resolve(...)`, ao lado de
+`narration-editor`, `narration-player` etc.) — isso força o bundling
+completo pelo mecanismo normal de entry, independente de qualquer
+reconhecimento especial de `new Worker(new URL(...))`. Saída:
+`build/pocket-tts-worker.js`, nome estável (sem hash de conteúdo, como
+qualquer entry — diferente dos chunks dinâmicos `285.js`/`498.js`/`646.js`
+vistos antes). Nada em PHP registra esse handle — mesmo padrão já usado por
+`segment-pipeline-harness` (entry que existe só pro build, nunca enfileirado
+pelo WordPress).
+
+Para `createNarrationWorker()` descobrir essa URL em tempo de execução, a
+primeira tentativa óbvia — repetir `new URL('pocket-tts-worker.js',
+import.meta.url)`, sem o `./` — falhou de um jeito totalmente diferente: o
+webpack tentou resolver `'pocket-tts-worker.js'` como **módulo npm**
+(especificador sem `./` = pacote, não caminho relativo), erro de build. Com
+`./` na frente, a segunda tentativa (computar a URL via
+`import.meta.url` puro, sem envolver `new Worker(new URL(...))` em lugar
+nenhum do arquivo) **quebrou a inicialização inteira do bundle
+`narration-editor.js`** — o painel de narração inteiro parou de aparecer no
+editor, sem nenhum erro no console. Causa: `import.meta.url` fora do
+call-shape que o webpack trata especialmente não é só "o path errado", é o
+próprio suporte do webpack a `import.meta.url` num bundle clássico (não-ESM)
+que se mostrou frágil o bastante pra quebrar a avaliação do módulo inteiro
+antes de qualquer código nosso rodar (`registerPlugin` nunca era chamado).
+Confirmado revertendo só essa linha: o painel volta a aparecer.
+
+**Fix real, testado com sucesso**: ler a variável mágica
+`__webpack_public_path__` — o mesmo valor (`n.p`) que o próprio runtime do
+webpack já calcula e usa internamente pra carregar os assets de cada entry,
+documentado pelo próprio webpack
+(https://webpack.js.org/guides/public-path/#on-the-fly), sem precisar de
+`import.meta.url` nem de `new URL()` nenhum:
+
+```ts
+declare const __webpack_public_path__: string;
+
+async function createNarrationWorker(): Promise< Worker > {
+	const scriptUrl = __webpack_public_path__ + 'pocket-tts-worker.js';
+	const code = await ( await fetch( scriptUrl ) ).text();
+	// ... blob, Worker, revoke — inalterado
+}
+```
+
+Testado ao vivo, pela UI real do plugin (não só console) — post autenticado,
+`crossOriginIsolated: true`, clique em "Generate audio" de verdade: painel
+completa geração normalmente, chega em "Save narration"/"Discard"/"Generate
+again". Ícone do painel de narração continua aparecendo no editor (a
+regressão do `import.meta.url` não se repete). Este é o mecanismo que o
+plano usa — os trechos de código do Achado 1 acima (que usavam `new
+URL('./pocket-tts.worker.js', import.meta.url)` dentro do `fetch()`) ficam
+como registro do que foi testado primeiro, não como a receita final.
+
 ## Decisão
 
 | Ponto | Decisão |
 |---|---|
-| Achado 1 (COEP no asset do Worker) | Adotar construção via `blob:` — buscar `pocket-tts.worker.js` compilado com `fetch()`, envolver em `Blob`, `URL.createObjectURL()`, construir o `Worker` a partir disso, e revogar a URL logo em seguida (`URL.revokeObjectURL()`, testado ao vivo que não quebra nada — o navegador já capturou o conteúdo no momento da construção). Sem mudança de servidor, portável em qualquer host (Apache ou nginx), sem overhead de proxy PHP. |
+| Achado 1 (COEP no asset do Worker) | Adotar construção via `blob:` — buscar `pocket-tts.worker.js` compilado com `fetch()`, envolver em `Blob`, `URL.createObjectURL()`, construir o `Worker` a partir disso, e revogar a URL logo em seguida (`URL.revokeObjectURL()`, testado ao vivo que não quebra nada). Sem mudança de servidor, portável em qualquer host (Apache ou nginx), sem overhead de proxy PHP. **Mecanismo de descoberta da URL corrigido pelo achado 5**: entry próprio no webpack (`pocket-tts-worker`) + `__webpack_public_path__` em runtime — não `new URL(..., import.meta.url)`, que quebra a inicialização do bundle fora do call-shape que o webpack reconhece. |
 | Bug irmão (Worker nunca escuta `'error'`) | Corrigir independente do achado 1 — `PocketTtsEngine.load()`, `setLanguage()` **e `generate()`** passam a escutar `worker.addEventListener('error', ...)` e rejeitar a Promise, para qualquer falha futura do Worker (na construção ou em qualquer ponto depois, inclusive durante uma geração já em andamento) virar erro visível na UI, nunca mais hang silencioso. `generate()` não fazia parte da leitura original do bug (só `load()`/`setLanguage()`) — mesma classe, mesmo padrão, mesmo risco de hang silencioso mid-geração; incluído por consistência. |
 | Achado 2 (`importScripts` vs módulo ES) | Adotar build do Worker como chunk clássico (tirar `{ type: 'module' }` de `new Worker(...)`) — spike confirmou que resolve o `importScripts`, sem downgrade de versão do `onnxruntime-web`. |
 | Achado 3 (`publicPath` sob `blob:`) | Trocar o `import()` dinâmico do tokenizer (`pocket-tts.worker.js:760`, `await import("./sentencepiece.js")`) por `import` estático no topo do arquivo. Elimina o chunk `646.js` e, com ele, qualquer carregamento de chunk em tempo de execução dentro do worker — não sobra nada que dependa de `publicPath` resolvido certo. Testado ao vivo, com sucesso, geração completa ponta a ponta. |
 | Achado 4 (resiliência a navegador não testado) | `load()` tenta uma vez; se falhar com o documento `crossOriginIsolated`, descarta o worker e tenta de novo forçando single-thread (`data: { forceSingleThread: true }` na mensagem `load`, `loadOrt()` pula a checagem de `crossOriginIsolated` quando presente). Uma segunda falha propaga normal. Retenta em qualquer causa de falha (rede, parse, threading), não só as que parecem ser de threading — distinguir a causa de forma confiável exigiria casar string de mensagem de erro, frágil entre versões do `onnxruntime-web`; o custo de uma segunda tentativa desnecessária (poucos segundos) é aceitável. Quando a segunda tentativa (single-thread) tem sucesso, a UI mostra um aviso não bloqueante (`createErrorNotice(..., { type: 'snackbar' })`, mesmo padrão já usado pro aviso de "dispositivo lento") — sem isso o autor só percebe que ficou mais lento, sem saber por quê. |
+| Achado 5 (`fetch(new URL(...))` não bundleia) | Entry próprio no `webpack.config.js` pra `pocket-tts.worker.js` (saída estável `build/pocket-tts-worker.js`, nada em PHP registra). `createNarrationWorker()` lê `__webpack_public_path__` (variável mágica do próprio webpack) em vez de computar via `import.meta.url`/`new URL()` — essas duas alternativas foram testadas e descartadas (a primeira falha de build por resolver o especificador como módulo npm; a segunda quebra a inicialização inteira do bundle `narration-editor.js`, sem erro no console). Testado com sucesso ponta a ponta pela UI real do plugin. |
 | Abordagens descartadas | Header via `.htaccess`/`mod_headers` no `build/` — não portável pra host nginx (comum em hosting gerenciado), e o plugin não controla o servidor de produção. Proxy via endpoint PHP — portável, mas overhead por requisição, perde cache estático do Apache, muda o esquema de build do Worker sem necessidade agora que `blob:` resolve sem tocar servidor. Downgrade/mudança de versão do `onnxruntime-web` — descartado pelo spike de versão (achado 2): erro idêntico em 1.20.0/1.22.0/1.27.0, não é bug de versão. `self.__webpack_public_path__` prependado ao código (primeira tentativa do achado 3) — testado ao vivo, não funciona: `output.publicPath: 'auto'` ignora essa variável e sempre roda a auto-detecção. `output.publicPath` fixo em `webpack.config.js` — descartado por depender de um caminho absoluto que só existe em tempo de execução (domínio/subdiretório da instalação, nome real da pasta do plugin), não em tempo de build — e ficou desnecessário assim que o import estático eliminou o chunk que precisava dele. |
 
 ## Achado 4 (decisão de resiliência, sem investigação de causa raiz) — fallback automático multi-thread → single-thread
@@ -283,60 +363,58 @@ desde a primeira carga (`loadOrt()` só roda uma vez por instância de worker).
 
 ## Estado desta investigação
 
-Três achados, três causas raiz confirmadas ao vivo (Chrome real, Chrome 151), e os
-três fixes **verificados juntos, ponta a ponta, com geração de áudio real**:
+Cinco achados, cinco causas raiz confirmadas ao vivo (Chrome real, Chrome 151),
+e a combinação completa **verificada ponta a ponta, pela UI real do plugin,
+com geração de áudio de verdade**:
 
-1. Asset estático do Worker sem cabeçalho COEP → `new Worker()` falha silencioso.
-   Fix: construção via `blob:`.
-2. `importScripts()` incompatível com Worker módulo ES (`onnxruntime-web`, qualquer
-   versão testada). Fix: build do Worker como chunk clássico (tirar
+1. Asset estático do Worker sem cabeçalho COEP → `new Worker()` falha
+   silencioso. Fix: construção via `blob:` (+ revogar a URL depois).
+2. `importScripts()` incompatível com Worker módulo ES (`onnxruntime-web`,
+   qualquer versão testada). Fix: build do Worker como chunk clássico (tirar
    `{ type: 'module' }`).
-3. `publicPath` do webpack mal calculado sob `blob:`. Primeira hipótese
-   (`self.__webpack_public_path__`) testada e descartada. Fix real: `import`
-   estático do tokenizer em vez de `import()` dinâmico, eliminando o chunk que
-   dependia de `publicPath`.
+3. `publicPath` do webpack mal calculado sob `blob:` pro chunk lazy do
+   tokenizer. Fix: `import` estático em vez de `import()` dinâmico,
+   eliminando o chunk.
+4. Resiliência a navegador não testado (Safari/Firefox) — decisão, não bug
+   reproduzido: retry automático pra single-thread se a primeira tentativa
+   falhar com o documento isolado, aviso não bloqueante quando funciona.
+5. **Descoberto só na implementação (Task 3), não nesta investigação
+   original**: `fetch(new URL(...))` não aciona o bundling completo do
+   webpack do jeito que `new Worker(new URL(...))` aciona — a receita dos
+   achados 1-3, como escrita originalmente, gerava uma cópia crua do
+   código-fonte (`import` não resolvido) em vez de um bundle. Fix: entry
+   próprio pro worker no `webpack.config.js` + `__webpack_public_path__`
+   pra descobrir a URL em runtime (não `import.meta.url`, que quebra a
+   inicialização do bundle inteiro fora do call-shape que o webpack
+   reconhece — também descoberto e descartado nesta rodada).
 
-**Teste final, combinando os três**: `blob:` + build clássico + import estático,
-numa aba `wp-admin/post-new.php` autenticada e realmente isolada
-(`crossOriginIsolated: true`), com `postMessage({type:'generate', ...})` de
-verdade — sequência completa `status → generation_started → status →
-stream_ended`, 3 `audio_chunk`, zero erro. Primeira geração de áudio multi-thread
-bem-sucedida, ponta a ponta, desde que a issue #5 foi aberta.
+**Como o achado 5 foi descoberto**: a Task 3 foi despachada pra um
+subagente implementador com a receita dos achados 1-3 tal como escrita
+originalmente nesta spec. O subagente implementou exatamente como
+especificado, rodou o E2E de verdade (não só os spikes desta investigação) e
+reportou `BLOCKED` — `Cannot use import statement outside a module`, com
+investigação própria e evidência (bytes, comparação lado a lado) apontando
+pra causa raiz certa e três direções candidatas de fix, sem escolher
+nenhuma sozinho. Retomado pelo controlador desta sessão: candidato 2 do
+próprio relatório do subagente (entry point dedicado) escolhido e testado
+ao vivo — incluindo duas tentativas de mecanismo pra descobrir a URL que
+falharam antes da que funcionou (`new URL('pocket-tts-worker.js', ...)` sem
+`./` falha o build; `import.meta.url` puro quebra o bundle) — até confirmar
+geração completa pela UI real.
 
-Nenhum código de produção mudou nesta sessão — tudo verificado por spikes
-temporários (edição local + `rm -rf build && npm run build` + teste ao vivo via
-`javascript_tool`), sempre revertidos ao final. `git diff --stat` confirmado limpo
-(só `TESTING.md`, sobra não relacionada de uma sessão anterior desta mesma
-branch) depois de cada rodada; `build/` recompilado de volta ao estado que bate
-com o código committado ao encerrar a investigação.
+**Teste final**: post autenticado, `wp-admin/post.php`, `crossOriginIsolated:
+true`, painel de narração visível, clique real em "Generate audio" →
+"Save narration"/"Discard"/"Generate again" aparecem — geração multi-thread
+completa, pela primeira vez desde que a issue #5 foi aberta, através do
+fluxo real do plugin (não via `postMessage` manual em console).
 
-Achado 4 é uma decisão de resiliência, não uma causa raiz investigada — não há
-bug reproduzido de navegador nenhum além de Chrome (não testado), é defesa em
-profundidade contra um caso a issue não pede explicitamente mas que a spec do
-MVP já compromete (Safari/Firefox).
+Nenhum código foi commitado ainda. Working tree, ao final desta sessão,
+contém as mudanças dos achados 1-5 (Steps 1, 2 e 4 da Task 3 implementados
+pelo subagente; Step 3 corrigido pelo controlador depois do bloqueio) —
+prontas pra retomar a Task 3 a partir daí, não do zero.
 
-Pendente: implementação real dos três achados + o achado 4 juntos no código do
-repositório (hoje só existem como edições temporárias já revertidas) + o bug
-irmão do achado 1 (`load()`/`setLanguage()`/`generate()` escutarem `'error'`
-do Worker, ainda não exercitado no teste final acima porque nada falhou) +
-cobertura de teste (nenhum teste automatizado existe ainda para nada disto).
-
-**Quatro pontos em aberto resolvidos numa revisão posterior desta mesma
-sessão** (a pedido do usuário, depois de perguntar "existem pontos em aberto
-que a spec e o plano não decidiram?"):
-
-1. `generate()` também escuta `'error'`, não só `load()`/`setLanguage()` — a
-   spec original só cobria os dois primeiros, o plano já tinha estendido pra
-   `generate()` mas a spec nunca foi atualizada de volta. Alinhado.
-2. `URL.revokeObjectURL()` depois de construir o Worker — testado ao vivo
-   (revogar imediatamente, antes até da primeira mensagem, não quebra nada).
-3. Aviso não bloqueante (snackbar) quando o retry do achado 4 cai pra
-   single-thread com sucesso — sem isso o fallback era totalmente silencioso.
-4. Risco de CSP de terceiro com `blob:` movido pra "Fora de escopo"
-   explicitamente — a redação original dizia "mesma categoria já coberta
-   pelo QA" da spec irmã, o que era impreciso: aquele QA rodou antes desta
-   spec existir, nunca exercitou `blob:`.
-
-Nenhum dos quatro foi implementado ainda (exceto o revoke, que foi só
-verificado ao vivo do mesmo jeito exploratório dos achados 1-3, sem tocar o
-repositório).
+Pendente: retomar a Task 3 com o Step 3 corrigido (webpack.config.js + a
+correção do `createNarrationWorker()`), completar os Steps 5-10 (rebuild,
+confirmar as quatro E2E que travavam, os dois testes novos de
+`narration-worker-error.spec.ts`, `TESTING.md`, as duas provas de quebra
+deliberada, commit).
