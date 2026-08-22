@@ -38,7 +38,7 @@ either complains.
 | `npm run test:unit -- --coverage` | same, with the coverage gate | ≥80% lines | ~5s |
 | `npm run test:php` | PHPUnit against wp-env | all pass | ~5s |
 | `npm run test:php:coverage` | PHPUnit + line coverage | ≥85% lines | ~30s |
-| `npm run test:e2e` | Playwright, 39 scenarios | all pass | ~20-25min |
+| `npm run test:e2e` | Playwright, 42 scenarios | all pass | ~20-25min |
 | `npm run i18n:check` | committed `.pot` matches the source | no drift | ~20s |
 | `npm run audit:npm` / `:production` | dependency advisories | see below | ~15s |
 | `npm run audit:composer` | same for PHP tooling | 0 critical, 0 high | ~5s |
@@ -110,7 +110,7 @@ Playwright drives a real browser against wp-env, so the build has to be current:
 npm run build && npm run test:e2e
 ```
 
-The 39 scenarios split in five families, plus the performance ceiling
+The 42 scenarios split in six families, plus the performance ceiling
 described further below. Eighteen are Fase 1's: happy path, no
 `crossOriginIsolated`, cancel mid-generation, insufficient storage, regenerate
 without orphans, axe with zero serious/critical violations in editor and
@@ -157,6 +157,15 @@ the two fixes in the 2026-08-21 Worker cross-origin-isolation spec ("Achado
 model download — the corruption fails on parse); the second is a real
 single-threaded generation and costs real time, same as the existing
 single-thread fallback scenario it shares its shape with.
+
+Three more, in `narration-performance.spec.ts`: the post editor gets the
+`crossOriginIsolated`-enabling headers by default, an unrelated admin
+screen does not, and neither does the post editor's own `$pagenow` when
+editing a different post type (a Page, or any third-party CPT — see the
+2026-08-21 performance spec's investigation for why that distinction
+matters: `post.php`/`post-new.php` are shared by every post type). All
+three are page-load-only — no post content, no generation, no model
+download — so they run in well under a second each.
 
 Five more, in `player-style.spec.ts`: an uncustomised site ships no inline
 player CSS at all, a saved accent colour reaches the reader (round-tripped
