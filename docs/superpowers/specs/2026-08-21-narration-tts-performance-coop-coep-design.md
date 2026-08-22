@@ -175,6 +175,27 @@ sessão (exigiria contas reais de terceiros). Registrado como risco residual
 conhecido, não como bloqueio: `credentialless` já foi escolhido justamente
 para minimizar esse cenário.
 
+## Resultado do benchmark manual de RTF
+
+Medido em `13th Gen Intel Core i7-1355U, 12 threads`, `2026-08-22`. Cada número
+é a segunda de duas gerações seguidas no mesmo post (a primeira, descartada,
+apenas aquece o download/calibração do bundle, para não inflar o tempo medido
+com custo de rede):
+
+| Post | Multi-thread (RTF) | Single-thread (RTF) | Ganho |
+|---|---|---|---|
+| Curto (~40 palavras) | `0.987` | `1.126` | `1.14`x |
+| Longo (~1350 palavras) | `0.830` | `0.908` | `1.09`x |
+
+RTF < 1 em ambos os modos: a geração já é mais rápida que a duração do áudio
+gerado, inclusive single-thread. O ganho do multi-thread é real mas modesto
+(9–14%, não algo próximo de 12x apesar de 12 threads disponíveis) — WASM SIMD
+com pool de threads tem overhead de coordenação que não escala linearmente
+com núcleos para esta carga de trabalho, e o gargalo desta arquitetura de
+modelo pode não ser puramente compute-bound. Suficiente para justificar a
+mudança (Achado 1-5 da spec de Worker), mas não deve ser vendido como uma
+melhoria de ordem de grandeza.
+
 ## Mudanças
 
 Arquivos tocados:
