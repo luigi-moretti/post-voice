@@ -4,11 +4,14 @@
 
 **Goal:** Send `Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` headers on the narration editor screen only, so `self.crossOriginIsolated` is `true` there and the Worker's ONNX runtime runs WASM multi-threaded instead of always falling back to single-thread.
 
-**Architecture:** One new PHP class, `Post_Voice_Editor_Headers`, hooks `admin_init` and sends the two headers only when `$pagenow` is `post.php`/`post-new.php` **and** the post type being edited is `post`. The E2E-only mu-plugin that used to stand in for this (on the wrong hook, so it never actually worked on the editor screen) is deleted. New E2E coverage proves the headers land by default and stay scoped.
+**Architecture:** One new PHP class, `Post_Voice_Editor_Headers`, hooks `admin_init` and sends the two headers only when `$pagenow` is `post.php`/`post-new.php` **and** the post type being edited is `post`. The E2E-only mu-plugin that used to stand in for this (on the wrong hook, so it never actually worked on the editor screen) is deleted. Making the document `crossOriginIsolated` was not sufficient on its own: the narration Worker's own script is served by Apache as a static file and never gets a matching header, so `new Worker()` silently failed to even start once the document-level fix landed — Task 3 fixes the Worker's construction (`blob:`, classic-not-module build, a static import in place of a dynamic one) and the silent-hang bug (`load()`/`generate()`/`setLanguage()` never listened for the Worker's own `error` event). New E2E coverage proves the headers land by default, stay scoped, and that a Worker failure now surfaces as a visible error instead of hanging.
 
 **Tech Stack:** PHP 8.2+ (WordPress 6.6+ admin hooks), PHPUnit (`WP_UnitTestCase`), Playwright (`@wordpress/e2e-test-utils-playwright`).
 
 **Spec:** `docs/superpowers/specs/2026-08-21-narration-tts-performance-coop-coep-design.md`
+(document-level COOP/COEP headers) and
+`docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md`
+(the Worker's own delivery under that isolation — Task 3 below implements it).
 
 ## Global Constraints
 
@@ -43,7 +46,7 @@ Investigated and implemented live during this session's spec review (three RED�
 - Already saved, commit alongside: `docs/superpowers/specs/2026-08-21-narration-tts-performance-coop-coep-design.md`, `docs/superpowers/plans/2026-08-21-narration-tts-performance-coop-coep.md` (this file)
 
 **Interfaces:**
-- Produces: `Post_Voice_Editor_Headers::register(): void`, `Post_Voice_Editor_Headers::is_editor_screen( string $pagenow, string $post_type ): bool` (public, pure). Task 2 and Task 3 rely only on the *behavior* (headers present/absent on given URLs), not on calling these directly.
+- Produces: `Post_Voice_Editor_Headers::register(): void`, `Post_Voice_Editor_Headers::is_editor_screen( string $pagenow, string $post_type ): bool` (public, pure). Tasks 2, 3 and 4 rely only on the *behavior* (headers present/absent on given URLs), not on calling these directly.
 
 - [ ] **Step 1: Confirm (or create) the test file**
 
@@ -434,7 +437,947 @@ Refs #5"
 
 ---
 
-## Task 3: E2E coverage proving the headers land, and stay scoped
+## Task 3: Fix Worker construction under cross-origin isolation
+
+Task 1 made the document `crossOriginIsolated`. That was necessary but not
+sufficient: running the full E2E suite afterward (Task 4's own attempt, before
+this task existed — see `.superpowers/sdd/2026-08-21-narration-tts-performance-coop-coep/task-4-report.md`
+for the full RED evidence, four real-generation scenarios hanging at
+"Preparing…" until their timeout) showed every real generation still hangs.
+Investigated in
+`docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md`:
+three stacked causes, each confirmed live in real Chrome, fixed here together
+because they are only meaningful as a set (fixing one alone still hangs) —
+plus a fourth, a deliberate resilience decision rather than a reproduced bug:
+an automatic retry to single-thread if the first attempt fails on a
+`crossOriginIsolated` document, defence in depth for a browser-specific
+threading incompatibility this session could not test for (only Chrome was
+available; the plugin also targets Safari/Firefox).
+
+**Files:**
+- Modify: `features/narration/editor/engine/pocket-tts.worker.js`
+- Modify: `features/narration/editor/engine/tts-engine.ts`
+- Modify: `features/narration/editor/index.tsx`
+- Create: `e2e/narration-worker-error.spec.ts`
+
+**Interfaces:**
+- Consumes: `Post_Voice_Editor_Headers` sending real COOP/COEP on the editor
+  screen (Task 1) — this task's own verification needs a genuinely isolated
+  document to reproduce and then fix the hang.
+- Produces: nothing later tasks call directly. Task 4's Step 5 (full E2E
+  suite) and Task 5 (RTF benchmark) both depend on real generation actually
+  completing, which only exists after this task.
+
+- [ ] **Step 1: Static import instead of dynamic import for the tokenizer**
+
+In `features/narration/editor/engine/pocket-tts.worker.js`, add the import at
+the top (with the other three):
+
+```js
+import { MODEL_BASE_URL } from '../model-source';
+import { installModelCache } from './model-cache';
+import { sanitizeForTokenizer } from './tokenizer-sanitize';
+import * as sentencepieceModule from './sentencepiece.js';
+```
+
+Then replace the dynamic import inside `loadBundle()`:
+
+```js
+    const spModule = await import("./sentencepiece.js");
+    tokenizerProcessor = new spModule.SentencePieceProcessor();
+```
+
+with:
+
+```js
+    tokenizerProcessor = new sentencepieceModule.SentencePieceProcessor();
+```
+
+This import was never conditional — `loadBundle()` calls it every single time,
+unconditionally. Making it static removes the only dynamic `import()` inside
+this worker, which removes the only lazy webpack chunk it needs at runtime
+(today built as a separate numbered file, e.g. `646.js`) — see Step 5 for why
+that chunk is exactly what breaks once the worker is constructed from a
+`blob:` URL (Step 3).
+
+- [ ] **Step 2: Accept a `forceSingleThread` flag in the worker's `load` message**
+
+Still in `pocket-tts.worker.js`. Replace:
+
+```js
+async function loadOrt() {
+    if (ort) {
+        return;
+    }
+
+    postMessage({ type: "status", status: "Loading ONNX Runtime...", state: "loading" });
+    const version = "1.20.0";
+    const cdnBase = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/`;
+    // webpackIgnore keeps this a real runtime import of an absolute URL. ONNX
+    // Runtime Web is loaded from a CDN on purpose (spec: not an npm dependency);
+    // without the comment webpack tries to resolve the URL as a local path at
+    // build time and fails with "Can't resolve 'https://cdn.jsdelivr.net/npm'".
+    const ortModule = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/ort.min.mjs`);
+    ort = ortModule.default || ortModule;
+    ort.env.wasm.wasmPaths = cdnBase;
+    ort.env.wasm.simd = true;
+    ort.env.wasm.numThreads = self.crossOriginIsolated
+        ? Math.min(navigator.hardwareConcurrency || 4, 8)
+        : 1;
+    precomputeFlowBuffers();
+}
+```
+
+with:
+
+```js
+async function loadOrt(forceSingleThread = false) {
+    if (ort) {
+        return;
+    }
+
+    postMessage({ type: "status", status: "Loading ONNX Runtime...", state: "loading" });
+    const version = "1.20.0";
+    const cdnBase = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/`;
+    // webpackIgnore keeps this a real runtime import of an absolute URL. ONNX
+    // Runtime Web is loaded from a CDN on purpose (spec: not an npm dependency);
+    // without the comment webpack tries to resolve the URL as a local path at
+    // build time and fails with "Can't resolve 'https://cdn.jsdelivr.net/npm'".
+    const ortModule = await import(/* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/ort.min.mjs`);
+    ort = ortModule.default || ortModule;
+    ort.env.wasm.wasmPaths = cdnBase;
+    ort.env.wasm.simd = true;
+    // `forceSingleThread` is set by `PocketTtsEngine.load()`'s retry, after a
+    // first multi-thread attempt on this document failed for a reason other
+    // than crossOriginIsolated being off (that case never reaches here with
+    // `numThreads > 1` in the first place) — see
+    // docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md,
+    // "Achado 4". `loadOrt()` only ever runs once per worker instance (the
+    // guard above), so this decision is fixed for the worker's whole
+    // lifetime, same as it always was.
+    ort.env.wasm.numThreads = (self.crossOriginIsolated && !forceSingleThread)
+        ? Math.min(navigator.hardwareConcurrency || 4, 8)
+        : 1;
+    precomputeFlowBuffers();
+}
+```
+
+Then replace:
+
+```js
+async function loadBundle(language, { initialLoad = false } = {}) {
+    if (!LANGUAGE_BUNDLES.includes(language)) {
+        throw new Error(`Unsupported language bundle: ${language}`);
+    }
+
+    await loadOrt();
+```
+
+with:
+
+```js
+async function loadBundle(language, { initialLoad = false, forceSingleThread = false } = {}) {
+    if (!LANGUAGE_BUNDLES.includes(language)) {
+        throw new Error(`Unsupported language bundle: ${language}`);
+    }
+
+    await loadOrt(forceSingleThread);
+```
+
+Then, in the `self.onmessage` handler, replace:
+
+```js
+        if (type === "load") {
+            await loadBundle(DEFAULT_LANGUAGE, { initialLoad: true });
+            return;
+        }
+```
+
+with:
+
+```js
+        if (type === "load") {
+            await loadBundle(DEFAULT_LANGUAGE, {
+                initialLoad: true,
+                forceSingleThread: Boolean(data?.forceSingleThread),
+            });
+            return;
+        }
+```
+
+(`set_language` is deliberately left alone — `loadOrt()`'s guard means the
+thread-count decision is already locked in for this worker instance by the
+time any `set_language` message could arrive; see the spec's "Achado 4" for
+why a second language failing is treated differently.)
+
+- [ ] **Step 3: Construct the Worker from a `blob:` URL, as a classic (non-module) script, and retry once single-threaded if it fails**
+
+In `features/narration/editor/engine/tts-engine.ts`, add this function after
+the imports, before the `PocketTtsEngine` class:
+
+```ts
+/**
+ * Constructs the narration Worker from a `blob:` URL instead of pointing
+ * straight at its own script, and as a classic (non-module) script — both
+ * load-bearing, confirmed empirically, see
+ * docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md:
+ *
+ * - `blob:`: the post editor sends COOP/COEP (`Post_Voice_Editor_Headers`),
+ *   which makes this document `crossOriginIsolated`. A cross-origin-isolated
+ *   document requires a Worker's own script response to also carry a COEP
+ *   header for `new Worker()` to succeed — and this script is served by
+ *   Apache as a plain static file, which never runs through WordPress/PHP
+ *   and therefore never gets one. Fetching the same file ourselves and
+ *   constructing the Worker from a same-origin `blob:` of its contents
+ *   sidesteps that requirement without touching the server at all — it is
+ *   the exact same bytes the browser would have loaded directly.
+ * - Classic, not module: `onnxruntime-web`'s threaded WASM backend calls
+ *   `importScripts()` during initialisation, an API module-type workers do
+ *   not support at all, in any version (confirmed against 1.20.0, the
+ *   version pinned in this worker, and the latest release at investigation
+ *   time). This worker's own code only needed `{ type: 'module' }` for its
+ *   own static `import`s, which webpack bundles into a plain classic script
+ *   just as well when the option is omitted.
+ *
+ * The object URL is revoked immediately after construction — confirmed
+ * empirically that this does not break anything (the browser has already
+ * captured the Blob's contents by the time `new Worker()` returns); without
+ * it, every call (and every retry) leaks one Blob reference for the rest of
+ * the page's life.
+ */
+async function createNarrationWorker(): Promise< Worker > {
+	const scriptUrl = new URL( './pocket-tts.worker.js', import.meta.url );
+	const code = await ( await fetch( scriptUrl ) ).text();
+	const blobUrl = URL.createObjectURL(
+		new Blob( [ code ], { type: 'text/javascript' } )
+	);
+	const worker = new Worker( blobUrl );
+	URL.revokeObjectURL( blobUrl );
+	return worker;
+}
+```
+
+Then add a field the retry (Step below) sets, right after the existing
+`sampleRate` field:
+
+```ts
+	private readonly rtfByLanguage = new Map< string, number >();
+	public sampleRate = 24000;
+```
+
+with:
+
+```ts
+	private readonly rtfByLanguage = new Map< string, number >();
+	public sampleRate = 24000;
+	// Set by `load()`'s retry (see below) when the first, multi-thread
+	// attempt failed and the second, single-threaded one succeeded — so the
+	// caller can tell the author generation is running slower than the
+	// device would otherwise support.
+	public usedSingleThreadFallback = false;
+```
+
+Then replace the entire `load()` method:
+
+```ts
+	async load( language: string ): Promise< void > {
+		this.language = language;
+		this.worker = new Worker(
+			new URL( './pocket-tts.worker.js', import.meta.url ),
+			{ type: 'module' }
+		);
+
+		await new Promise< void >( ( resolve, reject ) => {
+			if ( ! this.worker ) {
+				return reject( new Error( 'Worker not created' ) );
+			}
+			const onMessage = ( e: MessageEvent ) => {
+				const { type, sampleRate, error, defaultVoice } = e.data;
+				if ( type === 'voices_loaded' ) {
+					// The worker picks the bundle's default voice itself; remember it so
+					// callers never have to name one.
+					this.defaultVoice = defaultVoice ?? null;
+				} else if ( type === 'bundle_loaded' ) {
+					// `sampleRate` rides on `bundle_loaded`, never on `loaded` — reading it
+					// off the wrong message leaves the hardcoded default in place forever,
+					// which would silently mis-scale RTF and produce wrong-pitch MP3s if a
+					// bundle ever shipped at something other than 24kHz.
+					if ( sampleRate ) {
+						this.sampleRate = sampleRate;
+					}
+				} else if ( type === 'loaded' ) {
+					this.ready = true;
+					this.worker?.removeEventListener( 'message', onMessage );
+					resolve();
+				} else if ( type === 'error' ) {
+					this.worker?.removeEventListener( 'message', onMessage );
+					reject( new Error( error ) );
+				}
+			};
+			this.worker.addEventListener( 'message', onMessage );
+			this.worker.postMessage( { type: 'load' } );
+		} );
+
+		if ( language !== 'english_2026-04' ) {
+			await this.setLanguage( language );
+		}
+	}
+```
+
+with:
+
+```ts
+	async load( language: string ): Promise< void > {
+		this.language = language;
+		try {
+			await this.loadWorkerAndLanguage( language, false );
+		} catch ( err ) {
+			// A multi-thread attempt can fail for a browser-specific reason
+			// unrelated to whether crossOriginIsolated is on at all — that case
+			// already runs single-thread from the start, inside loadOrt(). An
+			// untested browser's own WASM-threading bug is exactly the case
+			// this retries for. Retrying when isolation was never on would just
+			// repeat the same single-threaded attempt, so it isn't worth doing.
+			// Retries on ANY failure (network, parse, threading), not just ones
+			// that look threading-related — matching on error messages reliably
+			// is not possible across onnxruntime-web versions, and the cost of
+			// one unnecessary retry (a few seconds) is cheap. See
+			// docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md,
+			// "Achado 4" — deliberately scoped to this first load only, not a
+			// later, independent `setLanguage()` call (see that section for why).
+			if ( ! self.crossOriginIsolated ) {
+				throw err;
+			}
+			this.worker?.terminate();
+			this.worker = null;
+			await this.loadWorkerAndLanguage( language, true );
+			this.usedSingleThreadFallback = true;
+		}
+	}
+
+	/**
+	 * Constructs the Worker, waits for the default bundle to finish loading,
+	 * then switches to `language` if it isn't the default — the whole
+	 * first-load sequence `load()`'s retry redoes as one unit.
+	 *
+	 * @param language          Model bundle identifier.
+	 * @param forceSingleThread Skip the worker's own crossOriginIsolated
+	 *                          check and run single-threaded regardless — set
+	 *                          only by `load()`'s retry, on the second attempt.
+	 */
+	private async loadWorkerAndLanguage(
+		language: string,
+		forceSingleThread: boolean
+	): Promise< void > {
+		this.worker = await createNarrationWorker();
+
+		await new Promise< void >( ( resolve, reject ) => {
+			if ( ! this.worker ) {
+				return reject( new Error( 'Worker not created' ) );
+			}
+			const cleanup = () => {
+				this.worker?.removeEventListener( 'message', onMessage );
+				this.worker?.removeEventListener( 'error', onError );
+			};
+			const onMessage = ( e: MessageEvent ) => {
+				const { type, sampleRate, error, defaultVoice } = e.data;
+				if ( type === 'voices_loaded' ) {
+					// The worker picks the bundle's default voice itself; remember it so
+					// callers never have to name one.
+					this.defaultVoice = defaultVoice ?? null;
+				} else if ( type === 'bundle_loaded' ) {
+					// `sampleRate` rides on `bundle_loaded`, never on `loaded` — reading it
+					// off the wrong message leaves the hardcoded default in place forever,
+					// which would silently mis-scale RTF and produce wrong-pitch MP3s if a
+					// bundle ever shipped at something other than 24kHz.
+					if ( sampleRate ) {
+						this.sampleRate = sampleRate;
+					}
+				} else if ( type === 'loaded' ) {
+					this.ready = true;
+					cleanup();
+					resolve();
+				} else if ( type === 'error' ) {
+					cleanup();
+					reject( new Error( error ) );
+				}
+			};
+			// Without this, a Worker that fails after construction (a corrupt
+			// fetch, a future regression reintroducing the classic-vs-module
+			// incompatibility this file works around) never posts any message
+			// at all — this Promise hung forever and "Preparing…" never became
+			// a visible error. See the spec's "Achado 1" for how this was found.
+			const onError = ( event: ErrorEvent ) => {
+				cleanup();
+				reject( new Error( event.message || 'Worker failed to start' ) );
+			};
+			this.worker.addEventListener( 'message', onMessage );
+			this.worker.addEventListener( 'error', onError );
+			this.worker.postMessage( {
+				type: 'load',
+				data: { forceSingleThread },
+			} );
+		} );
+
+		if ( language !== 'english_2026-04' ) {
+			await this.setLanguage( language );
+		}
+	}
+```
+
+Apply the same `cleanup`/`onError` pattern to `setLanguage()` (same file,
+right below `load()`) — replace:
+
+```ts
+	private setLanguage( language: string ): Promise< void > {
+		return new Promise( ( resolve, reject ) => {
+			if ( ! this.worker ) {
+				return reject( new Error( 'Engine not loaded' ) );
+			}
+			const onMessage = ( e: MessageEvent ) => {
+				if ( e.data.type === 'voices_loaded' ) {
+					this.defaultVoice =
+						e.data.defaultVoice ?? this.defaultVoice;
+				} else if ( e.data.type === 'bundle_loaded' ) {
+					if ( e.data.sampleRate ) {
+						this.sampleRate = e.data.sampleRate;
+					}
+					this.worker?.removeEventListener( 'message', onMessage );
+					resolve();
+				} else if ( e.data.type === 'error' ) {
+					this.worker?.removeEventListener( 'message', onMessage );
+					reject( new Error( e.data.error ) );
+				}
+			};
+			this.worker.addEventListener( 'message', onMessage );
+			this.worker.postMessage( {
+				type: 'set_language',
+				data: { language },
+			} );
+		} );
+	}
+```
+
+with:
+
+```ts
+	private setLanguage( language: string ): Promise< void > {
+		return new Promise( ( resolve, reject ) => {
+			if ( ! this.worker ) {
+				return reject( new Error( 'Engine not loaded' ) );
+			}
+			const cleanup = () => {
+				this.worker?.removeEventListener( 'message', onMessage );
+				this.worker?.removeEventListener( 'error', onError );
+			};
+			const onMessage = ( e: MessageEvent ) => {
+				if ( e.data.type === 'voices_loaded' ) {
+					this.defaultVoice =
+						e.data.defaultVoice ?? this.defaultVoice;
+				} else if ( e.data.type === 'bundle_loaded' ) {
+					if ( e.data.sampleRate ) {
+						this.sampleRate = e.data.sampleRate;
+					}
+					cleanup();
+					resolve();
+				} else if ( e.data.type === 'error' ) {
+					cleanup();
+					reject( new Error( e.data.error ) );
+				}
+			};
+			const onError = ( event: ErrorEvent ) => {
+				cleanup();
+				reject( new Error( event.message || 'Worker failed to start' ) );
+			};
+			this.worker.addEventListener( 'message', onMessage );
+			this.worker.addEventListener( 'error', onError );
+			this.worker.postMessage( {
+				type: 'set_language',
+				data: { language },
+			} );
+		} );
+	}
+```
+
+And to `generate()` (same class, same file) — the same defect exists here:
+a Worker that crashes mid-generation currently hangs the "Synthesising
+audio…" progress bar forever with no error, for the same reason. Replace:
+
+```ts
+	generate(
+		text: string,
+		options: GenerateOptions
+	): Promise< Float32Array > {
+		return new Promise( ( resolve, reject ) => {
+			if ( ! this.worker || ! this.ready ) {
+				return reject( new Error( 'Engine not loaded' ) );
+			}
+
+			const chunks: Float32Array[] = [];
+
+			const cleanup = () => {
+				this.worker?.removeEventListener( 'message', onMessage );
+				options.signal?.removeEventListener( 'abort', onAbort );
+			};
+
+			const onAbort = () => {
+				this.worker?.postMessage( { type: 'stop' } );
+				cleanup();
+				reject(
+					new DOMException( 'Generation cancelled', 'AbortError' )
+				);
+			};
+			options.signal?.addEventListener( 'abort', onAbort, {
+				once: true,
+			} );
+
+			const onMessage = ( e: MessageEvent ) => {
+				const { type, data, error } = e.data;
+				if ( type === 'audio_chunk' ) {
+					chunks.push( new Float32Array( data ) );
+				} else if ( type === 'stream_ended' ) {
+					cleanup();
+					resolve( concatFloat32( chunks ) );
+				} else if ( type === 'error' ) {
+					cleanup();
+					reject( new Error( error ) );
+				}
+			};
+
+			this.worker.addEventListener( 'message', onMessage );
+			this.worker.postMessage( {
+				type: 'generate',
+				data: { text, voice: options.voice ?? this.defaultVoice },
+			} );
+		} );
+	}
+```
+
+with:
+
+```ts
+	generate(
+		text: string,
+		options: GenerateOptions
+	): Promise< Float32Array > {
+		return new Promise( ( resolve, reject ) => {
+			if ( ! this.worker || ! this.ready ) {
+				return reject( new Error( 'Engine not loaded' ) );
+			}
+
+			const chunks: Float32Array[] = [];
+
+			const cleanup = () => {
+				this.worker?.removeEventListener( 'message', onMessage );
+				this.worker?.removeEventListener( 'error', onError );
+				options.signal?.removeEventListener( 'abort', onAbort );
+			};
+
+			const onAbort = () => {
+				this.worker?.postMessage( { type: 'stop' } );
+				cleanup();
+				reject(
+					new DOMException( 'Generation cancelled', 'AbortError' )
+				);
+			};
+			options.signal?.addEventListener( 'abort', onAbort, {
+				once: true,
+			} );
+
+			const onMessage = ( e: MessageEvent ) => {
+				const { type, data, error } = e.data;
+				if ( type === 'audio_chunk' ) {
+					chunks.push( new Float32Array( data ) );
+				} else if ( type === 'stream_ended' ) {
+					cleanup();
+					resolve( concatFloat32( chunks ) );
+				} else if ( type === 'error' ) {
+					cleanup();
+					reject( new Error( error ) );
+				}
+			};
+			const onError = ( event: ErrorEvent ) => {
+				cleanup();
+				reject(
+					new Error( event.message || 'Worker crashed during generation' )
+				);
+			};
+
+			this.worker.addEventListener( 'message', onMessage );
+			this.worker.addEventListener( 'error', onError );
+			this.worker.postMessage( {
+				type: 'generate',
+				data: { text, voice: options.voice ?? this.defaultVoice },
+			} );
+		} );
+	}
+```
+
+(This last one extends slightly past what the spec's "Decisão" table names —
+it only lists `load()`/`setLanguage()`. Same defect, same class, same fix,
+trivial risk: apply it. If a reviewer disagrees, that is the moment to drop
+it, not before.)
+
+- [ ] **Step 4: Show a snackbar notice when the retry falls back to single-thread**
+
+In `features/narration/editor/index.tsx`, inside `ensureEngine`, replace:
+
+```ts
+			if ( ! engineRef.current ) {
+				engineRef.current = new PocketTtsEngine();
+				await engineRef.current.load( targetLanguage );
+			} else {
+```
+
+with:
+
+```ts
+			if ( ! engineRef.current ) {
+				engineRef.current = new PocketTtsEngine();
+				await engineRef.current.load( targetLanguage );
+				// The retry inside load() (see tts-engine.ts) is silent by
+				// design at that layer — this is the one place that knows
+				// there is an author to tell. Without it, the only symptom
+				// is generation taking longer than the device should need,
+				// with nothing explaining why.
+				if ( engineRef.current.usedSingleThreadFallback ) {
+					createErrorNotice(
+						__(
+							"This browser couldn't run faster multi-threaded narration — falling back to a slower single-threaded mode.",
+							'post-voice'
+						),
+						{ type: 'snackbar' }
+					);
+				}
+			} else {
+```
+
+Then add `createErrorNotice` to `ensureEngine`'s dependency array — replace:
+
+```ts
+		[ language, wasmSupported ]
+	);
+```
+
+(the one immediately after the `ensureEngine` callback body — check you are editing the right one; `useCallback` appears more than once in this file) with:
+
+```ts
+		[ createErrorNotice, language, wasmSupported ]
+	);
+```
+
+`createErrorNotice` is already destructured from `useDispatch( noticesStore )`
+earlier in this file (`const { createErrorNotice } = useDispatch(
+noticesStore );`) — this reuses it, matching the existing
+`shouldWarnSlowDevice` snackbar a few dozen lines below for the same "this is
+degraded, not broken" category of message.
+
+- [ ] **Step 5: Rebuild and confirm the worker chunk is now self-contained**
+
+```bash
+rm -rf build
+npm run build
+```
+
+Confirm no build errors. Then confirm the worker's own chunk has no leftover
+lazy-chunk loading (Step 1 should have removed the only one):
+
+```bash
+grep -rl "Worker Thread Started" build/
+```
+
+Note the filename this prints (it changes with content — it was `285.js`
+before this task, `498.js` when this was investigated, it will likely differ
+again now). Then, on that file:
+
+```bash
+grep -o "n\.e([0-9]*)" build/<the-file-from-above>.js
+```
+
+Expected: no output. (If this prints something, Step 1 did not remove every
+dynamic `import()` this worker makes — find and statically import that one
+too before continuing.)
+
+- [ ] **Step 6: Confirm the fix — full end-to-end generation completes under real cross-origin isolation**
+
+This is GREEN for the RED already on record (the four hung scenarios in
+`.superpowers/sdd/2026-08-21-narration-tts-performance-coop-coep/task-4-report.md`
+under "Step 5 — full E2E suite"). Re-run the exact scenario that was reproduced there in isolation:
+
+```bash
+npx playwright test e2e/narration.spec.ts -g "author generates, previews, and saves narration end to end"
+```
+
+Expected: **PASS**, well under its 120s timeout (the report's RED evidence
+showed it hitting the full timeout, "Preparing…" never advancing past
+initialisation).
+
+Then run the other three that failed in that report:
+
+```bash
+npx playwright test e2e/narration-audio-quality.spec.ts e2e/narration-fase2.spec.ts -g "generates without error|is left out of the narration|dictionary entry changes"
+```
+
+Expected: all **PASS**.
+
+Then confirm the deliberately-disabled single-thread fallback path still
+works (unaffected by this task, but it is the one scenario that already
+passed before — regression check):
+
+```bash
+npx playwright test e2e/narration-fallbacks.spec.ts
+```
+
+Expected: both scenarios still **PASS**.
+
+- [ ] **Step 7: New E2E tests — a Worker failure surfaces as a visible error, and a first-attempt failure retries single-threaded instead**
+
+`e2e/narration-worker-error.spec.ts`:
+
+```typescript
+import { test, expect } from '@wordpress/e2e-test-utils-playwright';
+import { openNarrationPanel } from './open-narration-panel';
+
+// Short on purpose — the first test proves a fast, visible failure, not a
+// real generation. See e2e/narration-fallbacks.spec.ts for the sibling
+// pattern this borrows (a route intercept that changes what the editor
+// receives).
+const NARRATION_TEXT = 'Hello world, this is a test post.';
+
+test( 'shows an error instead of hanging when the Worker fails to start', async ( {
+	admin,
+	editor,
+	page,
+} ) => {
+	// The Worker's own compiled chunk is served under a content-hashed
+	// filename that changes on every build — matched by content, not name,
+	// so this test survives the next rebuild without editing a filename here.
+	// Every matching request is corrupted, deliberately: with the retry from
+	// Achado 4, the second (single-threaded) attempt fetches this same URL
+	// again and must fail too, so the test still proves the *eventual*
+	// visible-error case, not a lucky recovery.
+	await page.route(
+		'**/wp-content/plugins/post-voice/build/*.js',
+		async ( route ) => {
+			const response = await route.fetch();
+			const body = await response.text();
+			if ( body.includes( 'Worker Thread Started' ) ) {
+				await route.fulfill( {
+					response,
+					body: 'throw new Error("simulated worker crash");',
+				} );
+				return;
+			}
+			await route.fulfill( { response, body } );
+		}
+	);
+
+	await admin.createNewPost( { title: 'Worker crash' } );
+	await editor.insertBlock( {
+		name: 'core/paragraph',
+		attributes: { content: NARRATION_TEXT },
+	} );
+	await editor.saveDraft();
+	await openNarrationPanel( page );
+	await page
+		.getByRole( 'button', { name: 'Generate audio', exact: true } )
+		.click();
+	await expect( page.getByRole( 'alert' ) ).toContainText(
+		'simulated worker crash',
+		{ timeout: 15_000 }
+	);
+} );
+
+test( 'retries single-threaded and still completes when only the first Worker attempt fails', async ( {
+	admin,
+	editor,
+	page,
+} ) => {
+	// Corrupt only the first matching fetch (the multi-thread attempt);
+	// every later one (the retry, Achado 4) gets the real script.
+	let attempts = 0;
+	await page.route(
+		'**/wp-content/plugins/post-voice/build/*.js',
+		async ( route ) => {
+			const response = await route.fetch();
+			const body = await response.text();
+			if ( body.includes( 'Worker Thread Started' ) ) {
+				attempts += 1;
+				if ( attempts === 1 ) {
+					await route.fulfill( {
+						response,
+						body: 'throw new Error("simulated first-attempt crash");',
+					} );
+					return;
+				}
+			}
+			await route.fulfill( { response, body } );
+		}
+	);
+
+	await admin.createNewPost( { title: 'Worker retry' } );
+	await editor.insertBlock( {
+		name: 'core/paragraph',
+		attributes: { content: NARRATION_TEXT },
+	} );
+	await editor.saveDraft();
+	await openNarrationPanel( page );
+	await page
+		.getByRole( 'button', { name: 'Generate audio', exact: true } )
+		.click();
+	// A real generation, on the retry's single thread — the fallback e2e
+	// scenario's single-threaded run takes ~46s; budget for that plus the
+	// failed first attempt and the download this post's Worker instance
+	// hasn't cached yet.
+	await expect(
+		page.getByRole( 'button', { name: 'Save narration', exact: true } )
+	).toBeVisible( { timeout: 180_000 } );
+} );
+```
+
+Run both once and confirm they pass:
+
+```bash
+npx playwright test e2e/narration-worker-error.spec.ts
+```
+
+Expected: **PASS**. The first test resolves in well under its 15s timeout
+(the corruption fails immediately on parse — not waiting out a real
+generation). The second takes up to a few minutes (a real single-threaded
+generation, after one failed attempt) — that's expected, not a problem.
+
+- [ ] **Step 8: Update `TESTING.md`'s scenario count for this new file**
+
+Change the summary table row:
+
+```
+| `npm run test:e2e` | Playwright, 37 scenarios | all pass | ~20-25min |
+```
+
+to:
+
+```
+| `npm run test:e2e` | Playwright, 39 scenarios | all pass | ~20-25min |
+```
+
+Change:
+
+```
+The 37 scenarios split in four families, plus the performance ceiling
+described further below.
+```
+
+to:
+
+```
+The 39 scenarios split in five families, plus the performance ceiling
+described further below.
+```
+
+After the paragraph that begins "Two more, in `narration-audio-quality.spec.ts`..."
+and before the one that begins "Five more, in `player-style.spec.ts`...", insert:
+
+```markdown
+Two more, in `narration-worker-error.spec.ts`: the Worker's own script is
+intercepted and corrupted, proving a Worker construction/runtime failure now
+surfaces as a visible error in the panel instead of hanging forever, and that
+a failure on the first (multi-thread) attempt retries once single-threaded
+and still completes rather than failing outright — the regression tests for
+the two fixes in the 2026-08-21 Worker cross-origin-isolation spec ("Achado
+1" and "Achado 4"). The first is page-load-fast (no real generation, no
+model download — the corruption fails on parse); the second is a real
+single-threaded generation and costs real time, same as the existing
+single-thread fallback scenario it shares its shape with.
+```
+
+(Task 4, next, adds three more scenarios and its own family on top of this —
+its numbers there already account for this file existing first.)
+
+- [ ] **Step 9: Prove both tests can actually fail**
+
+**9a — the visible-error test**: in `features/narration/editor/engine/tts-engine.ts`,
+temporarily revert `loadWorkerAndLanguage()`'s `onError`/`cleanup` back to the
+pre-Step-3 shape (delete the `onError` function and the
+`this.worker.addEventListener( 'error', onError )` line; put
+`this.worker?.removeEventListener( 'message', onMessage )` directly back in
+the two branches that called `cleanup()`).
+
+Run:
+
+```bash
+npm run build
+npx playwright test e2e/narration-worker-error.spec.ts -g "shows an error instead of hanging"
+```
+
+Expected: **FAIL** (times out waiting for the alert — the exact hang Step 3
+exists to fix). Revert the temporary change back.
+
+**9b — the retry test**: in the same file, temporarily revert `load()` to its
+pre-Step-3 shape (no `try`/`catch`, no `loadWorkerAndLanguage()` — just the
+single un-retried attempt).
+
+Run:
+
+```bash
+npm run build
+npx playwright test e2e/narration-worker-error.spec.ts -g "retries single-threaded"
+```
+
+Expected: **FAIL** (times out waiting for "Save narration" — with no retry,
+the first attempt's corruption is the only attempt, and it now surfaces as a
+visible error rather than completing). Revert the temporary change back.
+
+Rebuild and re-run both tests once more to confirm both pass again. Leave
+`tts-engine.ts` exactly as Step 3 left it —
+`git diff features/narration/editor/engine/tts-engine.ts` must show only
+Step 3's changes before continuing.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add features/narration/editor/engine/pocket-tts.worker.js features/narration/editor/engine/tts-engine.ts features/narration/editor/index.tsx e2e/narration-worker-error.spec.ts TESTING.md docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md
+git commit -m "fix: construct the narration Worker so it survives cross-origin isolation
+
+Three stacked causes, each confirmed live (see the spec this commits
+alongside): the Worker's own script is a static asset that never gets a
+COEP header, so new Worker() silently failed once the document became
+crossOriginIsolated (Task 1) - fixed by constructing it from a blob: of
+its own fetched contents. onnxruntime-web's threaded WASM backend calls
+importScripts(), unsupported in module-type workers in any version -
+fixed by dropping { type: 'module' }, which this worker only needed for
+its own static imports. Once classic, its one dynamic import() (the
+tokenizer) tried to load a lazy chunk from the wrong URL, because
+webpack's publicPath auto-detection breaks against a blob: origin -
+fixed by making that import static too, removing the lazy chunk
+entirely. The blob URL is revoked immediately after construction -
+confirmed empirically that this does not break anything - so this does
+not leak one Blob reference per load.
+
+Also: PocketTtsEngine.load()/setLanguage()/generate() never listened for
+the Worker's own 'error' event, so any future construction or runtime
+failure - not just this one - would hang forever instead of surfacing.
+Fixed alongside, with a dedicated regression test.
+
+Also: load() now retries once, forcing single-thread, if the first
+(multi-thread) attempt fails while the document is crossOriginIsolated -
+defence in depth for a browser-specific WASM-threading incompatibility
+we have not hit and have not tested for (only Chrome was available this
+session; the plugin also targets Safari/Firefox, per the Fase 1 spec).
+Retries on any failure, not just threading-looking ones - matching error
+messages reliably across onnxruntime-web versions is not possible, and a
+spare retry is cheap. Scoped to the first load only, not a later,
+independent setLanguage() call - see the spec's 'Achado 4' for why. When
+the retry succeeds, the panel shows a non-blocking snackbar so the
+author knows generation is running in the slower mode, instead of the
+fallback being entirely silent. Covered by a second regression test
+alongside the first.
+
+Refs #5"
+```
+
+---
+
+## Task 4: E2E coverage proving the headers land, and stay scoped
 
 **Files:**
 - Create: `e2e/narration-performance.spec.ts`
@@ -553,33 +1496,37 @@ Leave the file exactly as Task 1 committed it when done — `git diff features/n
 
 - [ ] **Step 4: Update `TESTING.md`'s scenario count and family list**
 
-Change the summary table row:
+Change the summary table row (Task 3 already moved this from 37 to 39 for
+`narration-worker-error.spec.ts`'s two scenarios — this step adds three more
+on top):
 
 ```
-| `npm run test:e2e` | Playwright, 37 scenarios | all pass | ~20-25min |
+| `npm run test:e2e` | Playwright, 39 scenarios | all pass | ~20-25min |
 ```
 
 to:
 
 ```
-| `npm run test:e2e` | Playwright, 40 scenarios | all pass | ~20-25min |
+| `npm run test:e2e` | Playwright, 42 scenarios | all pass | ~20-25min |
 ```
 
 Change:
 
 ```
-The 37 scenarios split in four families, plus the performance ceiling
+The 39 scenarios split in five families, plus the performance ceiling
 described further below.
 ```
 
 to:
 
 ```
-The 40 scenarios split in five families, plus the performance ceiling
+The 42 scenarios split in six families, plus the performance ceiling
 described further below.
 ```
 
-After the existing paragraph that begins "Two more, in `narration-audio-quality.spec.ts`..." and before the one that begins "Five more, in `player-style.spec.ts`...", insert:
+After the paragraph Task 3 inserted (begins "Two more, in
+`narration-worker-error.spec.ts`...") and before the one that begins "Five
+more, in `player-style.spec.ts`...", insert:
 
 ```markdown
 Three more, in `narration-performance.spec.ts`: the post editor gets the
@@ -598,7 +1545,7 @@ download — so they run in well under a second each.
 npm run build && npm run test:e2e
 ```
 
-Expected: all scenarios pass (40 + the performance ceiling).
+Expected: all scenarios pass (42 + the performance ceiling).
 
 - [ ] **Step 6: Commit**
 
@@ -617,7 +1564,7 @@ Refs #5"
 
 ---
 
-## Task 4: Manual RTF benchmark
+## Task 5: Manual RTF benchmark
 
 Not a CI gate (see spec's "Decisão" table — RTF is machine-dependent, a hard-gate would be flaky). This task produces the numbers the issue's checklist and `CLAUDE.md`'s PR process ask for, and records them in the spec.
 
@@ -630,7 +1577,7 @@ Via the block editor (`npm run build` first if not already built this session), 
 - "RTF bench — short": one paragraph, ~40 words.
 - "RTF bench — long": several paragraphs, ~800+ words (long enough to span many of the worker's internal ~50-token chunks — see the audio-quality spec for why that matters to this model specifically).
 
-- [ ] **Step 2: Measure multi-thread (today's default — Task 1's headers are live)**
+- [ ] **Step 2: Measure multi-thread (today's default — Task 1's headers are live, Task 3's Worker fix makes it actually run)**
 
 For each post: open the Narration panel, open the browser's DevTools console, click Generate, and immediately run `console.time('gen')` then, when the "Save narration" button appears, `console.timeEnd('gen')` — or simpler, note wall-clock start/end with a stopwatch. Once generation finishes, note the resulting `<audio>` element's duration (visible in the mini-player, or `document.querySelector('audio').duration` in the console).
 
@@ -669,7 +1616,7 @@ Refs #5"
 
 ---
 
-## Task 5: Full local CI gate
+## Task 6: Full local CI gate
 
 Per `CLAUDE.md`, no PR opens before this is green, in this order (cheap to expensive):
 
