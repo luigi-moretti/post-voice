@@ -64,6 +64,7 @@ class Post_Voice_Assets {
 				'dictionary'       => Post_Voice_Dictionary_Store::get_global(),
 				'siteLanguage'     => get_locale(),
 				'canManageOptions' => current_user_can( 'manage_options' ),
+				'workerUrl'        => self::narration_worker_url(),
 			)
 		);
 
@@ -119,5 +120,30 @@ class Post_Voice_Assets {
 		if ( '' !== $inline ) {
 			wp_add_inline_style( 'post-voice-player', $inline );
 		}
+	}
+
+	/**
+	 * URL of the narration Worker's own script, cache-busted like every other
+	 * enqueued asset.
+	 *
+	 * Not enqueued via `wp_enqueue_script()`: `tts-engine.ts` fetches this URL
+	 * itself and constructs a `blob:` Worker from the response body, so the
+	 * COEP header a same-origin `<script>` tag would need never applies (see
+	 * the 2026-08-21 Worker cross-origin-isolation spec, Achado 1). Left
+	 * unversioned, this filename is stable across builds (Achado 5's webpack
+	 * entry, not a content-hashed chunk), so the browser's own heuristic
+	 * freshness could serve a stale 730KB worker after an update — the same
+	 * class of bug `enqueue_frontend_assets()` above already guards against
+	 * for the player. The version comes from the same `.asset.php` webpack
+	 * emits for every other entry.
+	 */
+	private static function narration_worker_url(): string {
+		$asset_file = POST_VOICE_PATH . 'build/pocket-tts-worker.asset.php';
+		if ( ! file_exists( $asset_file ) ) {
+			return '';
+		}
+		$asset = require $asset_file;
+
+		return add_query_arg( 'ver', $asset['version'], POST_VOICE_URL . 'build/pocket-tts-worker.js' );
 	}
 }

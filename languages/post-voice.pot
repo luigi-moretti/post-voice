@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-22T02:14:42+00:00\n"
+"POT-Creation-Date: 2026-08-22T09:11:15+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -206,6 +206,36 @@ msgstr ""
 #: shared/php/class-settings-page.php:72
 #: build/narration-editor.js:19
 msgid "Narration"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Worker script URL not available"
+msgstr ""
+
+#. translators: 1: HTTP status code, 2: HTTP status text.
+#: build/narration-editor.js:19
+#, js-format
+msgid "Failed to fetch worker script: %1$d %2$s"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Worker not created"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Worker failed to start"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Engine not loaded"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "Worker crashed during generation"
+msgstr ""
+
+#: build/narration-editor.js:19
+msgid "No segments to narrate"
 msgstr ""
 
 #: build/narration-editor.js:19

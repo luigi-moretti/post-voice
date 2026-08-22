@@ -68,6 +68,25 @@ class Post_Voice_Editor_Headers {
 			return;
 		}
 
+		/**
+		 * Whether to send the isolation headers at all.
+		 *
+		 * `credentialless` was chosen specifically to minimize breakage (see
+		 * the design spec's risk section), but two classes of site-specific
+		 * conflict cannot be verified from this codebase: a cross-origin
+		 * embed block (YouTube, Twitter) rendering blank because its own
+		 * iframe sends no COEP, and an OAuth "connect your account" popup
+		 * (Jetpack, for example) losing `window.opener` under
+		 * `COOP: same-origin`. A site that hits either can disable the
+		 * headers here — narration falls back to single-threaded, exactly as
+		 * it did before this feature existed — rather than needing a patch.
+		 *
+		 * @param bool $send Whether to send the headers. Default true.
+		 */
+		if ( ! apply_filters( 'post_voice_send_isolation_headers', true ) ) {
+			return;
+		}
+
 		header( 'Cross-Origin-Opener-Policy: same-origin' );
 		header( 'Cross-Origin-Embedder-Policy: credentialless' );
 	}

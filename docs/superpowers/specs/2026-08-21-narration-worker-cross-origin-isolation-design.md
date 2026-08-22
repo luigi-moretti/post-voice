@@ -334,6 +334,22 @@ segunda tentativa funciona, um aviso não bloqueante (snackbar) informa o
 autor que caiu pra modo mais lento — sem isso a única pista seria a geração
 demorar mais que o normal, sem explicação nenhuma.
 
+**Custo da retentativa, restatado na revisão final**: "poucos segundos" (ver
+tabela acima) só é verdade quando o bundle já está na Cache API. Se a
+primeira tentativa falha *durante* o download do bundle (~190MB), a
+retentativa baixa tudo de novo do zero — a Cache API só guarda respostas
+completas. Continua sendo o comportamento correto (single-thread com um
+download é melhor que nenhuma narração), só não é o "poucos segundos" que a
+frase original sugere nesse caso específico.
+
+**Cobertura por navegador, restatada na revisão final**: Safari e versões
+mais antigas do Firefox não implementam `COEP: credentialless` (só
+`require-corp`, historicamente). Nesses navegadores, `self.crossOriginIsolated`
+nunca fica `true` — a branch inteira vira um no-op silencioso e correto:
+sem isolamento, sem aviso, single-thread como já era antes. Correto, mas
+significa que o ganho de RTF desta spec (ver a spec de performance) alcança
+uma fatia menor de navegadores do que o texto dela sozinho sugere.
+
 **Escopo exato, pra não confundir**: a retentativa cobre o `load()` inteiro
 como uma unidade — inclusive a chamada a `setLanguage()` que `load()` já faz
 internamente quando o primeiro idioma do post não é o inglês padrão (essa
@@ -359,7 +375,16 @@ desde a primeira carga (`loadOrt()` só roda uma vez por instância de worker).
   e não coberto, registrado aqui explicitamente para não virar suposição
   silenciosa — não "mesma categoria já resolvida", é uma checagem nova ainda
   pendente. Se aparecer relato de generation quebrada com algum plugin de
-  segurança específico, começar por aqui.
+  segurança específico, começar por aqui. **Impacto real, restatado na
+  revisão final do branch** (ver a spec de performance,
+  "Achado de investigação — revisão final: CSP sem `blob:` é perda total, não
+  degradação"): como o retry do Achado 4 constrói o mesmo tipo de Worker
+  via `blob:`, um CSP que bloqueie `blob:` derruba as duas tentativas —
+  narração para de funcionar por completo, não "fica mais lenta". Mitigação:
+  o filtro `post_voice_send_isolation_headers`
+  (`features/narration/php/class-editor-headers.php`) permite desligar os
+  headers de isolamento no site inteiro, voltando ao comportamento
+  single-thread anterior a esta branch.
 
 ## Estado desta investigação
 

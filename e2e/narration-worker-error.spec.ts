@@ -12,15 +12,17 @@ test( 'shows an error instead of hanging when the Worker fails to start', async 
 	editor,
 	page,
 } ) => {
-	// The Worker's own compiled chunk is served under a content-hashed
-	// filename that changes on every build — matched by content, not name,
-	// so this test survives the next rebuild without editing a filename here.
-	// Every matching request is corrupted, deliberately: with the retry from
+	// The Worker's own script is fetched from a stable filename
+	// (`pocket-tts-worker.js`, a webpack entry — see Achado 5) with a
+	// cache-busting `?ver=` query string PHP appends, so the glob below
+	// matches on the extension, not an exact name, and stays correct across
+	// version bumps; matched by content rather than name for the same
+	// reason. Every matching request is corrupted, deliberately: with the retry from
 	// Achado 4, the second (single-threaded) attempt fetches this same URL
 	// again and must fail too, so the test still proves the *eventual*
 	// visible-error case, not a lucky recovery.
 	await page.route(
-		'**/wp-content/plugins/post-voice/build/*.js',
+		'**/wp-content/plugins/post-voice/build/*.js*',
 		async ( route ) => {
 			const response = await route.fetch();
 			const body = await response.text();
@@ -60,7 +62,7 @@ test( 'retries single-threaded and still completes when only the first Worker at
 	// every later one (the retry, Achado 4) gets the real script.
 	let attempts = 0;
 	await page.route(
-		'**/wp-content/plugins/post-voice/build/*.js',
+		'**/wp-content/plugins/post-voice/build/*.js*',
 		async ( route ) => {
 			const response = await route.fetch();
 			const body = await response.text();

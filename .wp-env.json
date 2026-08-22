@@ -2,7 +2,8 @@
 	"core": "WordPress/WordPress#6.6",
 	"plugins": [ "." ],
 	"mappings": {
-		"wp-content/mu-plugins/segment-pipeline-harness.php": "./e2e/mu-plugins/segment-pipeline-harness.php"
+		"wp-content/mu-plugins/segment-pipeline-harness.php": "./e2e/mu-plugins/segment-pipeline-harness.php",
+		"wp-content/mu-plugins/isolation-headers-filter-harness.php": "./e2e/mu-plugins/isolation-headers-filter-harness.php"
 	},
 	"config": {
 		"WP_DEBUG": true

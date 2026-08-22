@@ -29,6 +29,15 @@ module.exports = {
 			__dirname,
 			'e2e/fixtures/segment-pipeline-harness.ts'
 		),
+		// Real webpack entry, not a Worker-detection side channel: `blob:`
+		// construction needs an actual bundle to fetch (see tts-engine.ts's
+		// `createNarrationWorker()` docblock and the 2026-08-21 Worker
+		// cross-origin-isolation spec's Achado 5). The static tokenizer
+		// import (Achado 3 in that same spec) is load-bearing here too — the
+		// worker's `publicPath` under `blob:` resolves to the site root, so
+		// any *dynamic* `import()` this file's dependency graph reintroduces
+		// would 404 with no explanation. `sentencepiece.js` used to be one;
+		// keep it static.
 		'pocket-tts-worker': path.resolve(
 			__dirname,
 			'features/narration/editor/engine/pocket-tts.worker.js'

@@ -1,3 +1,5 @@
+import { __, sprintf } from '@wordpress/i18n';
+
 import { computeRtf } from '../rtf-calibration';
 import { sampleTextFor } from '../voice-catalog';
 import { groupByLanguage, reassemble } from '../group-segments';
@@ -60,19 +62,46 @@ export interface CalibrationResult {
  *   own static `import`s, which webpack bundles into a plain classic script
  *   just as well when the option is omitted.
  *
+ * The URL comes from `postVoiceData.workerUrl` (PHP, `Post_Voice_Assets`),
+ * not from webpack's own `__webpack_public_path__` runtime global. That was
+ * tried first and worked, but two problems surfaced on review: the entry's
+ * filename is stable across builds (Achado 5 made it a webpack *entry*, not
+ * a content-hashed chunk), so fetching it with no query string meant a
+ * browser could keep serving a stale worker after a plugin update under
+ * heuristic freshness — the exact bug `enqueue_frontend_assets()` already
+ * guards against for the player, just not paid for here; and
+ * `__webpack_public_path__`'s auto-detection reads `document.currentScript`,
+ * which is `null` (silently resolving to the wrong base URL) if any
+ * admin-side optimisation plugin concatenates or inlines script tags. PHP
+ * already knows the build's real version (the same `.asset.php` webpack
+ * emits for every other entry), so it hands down a URL that is both
+ * cache-busted and independent of how the browser loaded the calling script.
+ *
  * The object URL is revoked immediately after construction — confirmed
  * empirically that this does not break anything (the browser has already
  * captured the Blob's contents by the time `new Worker()` returns); without
  * it, every call (and every retry) leaks one Blob reference for the rest of
  * the page's life.
  */
-// eslint-disable-next-line camelcase, no-undef
-declare const __webpack_public_path__: string;
-
 async function createNarrationWorker(): Promise< Worker > {
-	// eslint-disable-next-line camelcase
-	const scriptUrl = __webpack_public_path__ + 'pocket-tts-worker.js';
-	const code = await ( await fetch( scriptUrl ) ).text();
+	const scriptUrl = window.postVoiceData?.workerUrl;
+	if ( ! scriptUrl ) {
+		throw new Error(
+			__( 'Worker script URL not available', 'post-voice' )
+		);
+	}
+	const response = await fetch( scriptUrl );
+	if ( ! response.ok ) {
+		throw new Error(
+			sprintf(
+				/* translators: 1: HTTP status code, 2: HTTP status text. */
+				__( 'Failed to fetch worker script: %1$d %2$s', 'post-voice' ),
+				response.status,
+				response.statusText
+			)
+		);
+	}
+	const code = await response.text();
 	const blobUrl = URL.createObjectURL(
 		new Blob( [ code ], { type: 'text/javascript' } )
 	);
@@ -131,7 +160,22 @@ export class PocketTtsEngine {
 			}
 			this.worker?.terminate();
 			this.worker = null;
-			await this.loadWorkerAndLanguage( language, true );
+			try {
+				await this.loadWorkerAndLanguage( language, true );
+			} catch ( retryErr ) {
+				// The retry's own worker must not outlive the retry that
+				// failed it — left running, it would hold a
+				// partially-initialised ONNX runtime for the rest of the
+				// page's life with nothing left referencing it. Read into a
+				// local first: `this.worker` was narrowed to `null` above,
+				// and TS does not widen a `this`-property back to its
+				// declared type across an intervening `await` the way it
+				// does for a local variable.
+				const failedRetryWorker = this.worker as Worker | null;
+				this.worker = null;
+				failedRetryWorker?.terminate();
+				throw retryErr;
+			}
 			this.usedSingleThreadFallback = true;
 		}
 	}
@@ -154,7 +198,9 @@ export class PocketTtsEngine {
 
 		await new Promise< void >( ( resolve, reject ) => {
 			if ( ! this.worker ) {
-				return reject( new Error( 'Worker not created' ) );
+				return reject(
+					new Error( __( 'Worker not created', 'post-voice' ) )
+				);
 			}
 			const cleanup = () => {
 				this.worker?.removeEventListener( 'message', onMessage );
@@ -191,7 +237,10 @@ export class PocketTtsEngine {
 			const onError = ( event: ErrorEvent ) => {
 				cleanup();
 				reject(
-					new Error( event.message || 'Worker failed to start' )
+					new Error(
+						event.message ||
+							__( 'Worker failed to start', 'post-voice' )
+					)
 				);
 			};
 			this.worker.addEventListener( 'message', onMessage );
@@ -229,7 +278,9 @@ export class PocketTtsEngine {
 	private setLanguage( language: string ): Promise< void > {
 		return new Promise( ( resolve, reject ) => {
 			if ( ! this.worker ) {
-				return reject( new Error( 'Engine not loaded' ) );
+				return reject(
+					new Error( __( 'Engine not loaded', 'post-voice' ) )
+				);
 			}
 			const cleanup = () => {
 				this.worker?.removeEventListener( 'message', onMessage );
@@ -253,7 +304,10 @@ export class PocketTtsEngine {
 			const onError = ( event: ErrorEvent ) => {
 				cleanup();
 				reject(
-					new Error( event.message || 'Worker failed to start' )
+					new Error(
+						event.message ||
+							__( 'Worker failed to start', 'post-voice' )
+					)
 				);
 			};
 			this.worker.addEventListener( 'message', onMessage );
@@ -311,7 +365,9 @@ export class PocketTtsEngine {
 	): Promise< Float32Array > {
 		return new Promise( ( resolve, reject ) => {
 			if ( ! this.worker || ! this.ready ) {
-				return reject( new Error( 'Engine not loaded' ) );
+				return reject(
+					new Error( __( 'Engine not loaded', 'post-voice' ) )
+				);
 			}
 
 			const chunks: Float32Array[] = [];
@@ -349,7 +405,11 @@ export class PocketTtsEngine {
 				cleanup();
 				reject(
 					new Error(
-						event.message || 'Worker crashed during generation'
+						event.message ||
+							__(
+								'Worker crashed during generation',
+								'post-voice'
+							)
 					)
 				);
 			};
@@ -378,7 +438,7 @@ export class PocketTtsEngine {
 		options: GenerateSegmentsOptions
 	): Promise< Float32Array > {
 		if ( segments.length === 0 ) {
-			throw new Error( 'No segments to narrate' );
+			throw new Error( __( 'No segments to narrate', 'post-voice' ) );
 		}
 
 		const groups = groupByLanguage( segments );
@@ -457,7 +517,7 @@ export class PocketTtsEngine {
  * @param voice    Voice it was measured with, if the caller named one.
  */
 function rtfKey( language: string, voice?: string ): string {
-	return `${ language } ${ voice ?? '' }`;
+	return `${ language } ${ voice ?? '' }`;
 }
 
 function concatFloat32( chunks: Float32Array[] ): Float32Array {

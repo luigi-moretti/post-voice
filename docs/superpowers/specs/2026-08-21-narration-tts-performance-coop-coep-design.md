@@ -175,6 +175,53 @@ sessão (exigiria contas reais de terceiros). Registrado como risco residual
 conhecido, não como bloqueio: `credentialless` já foi escolhido justamente
 para minimizar esse cenário.
 
+## Achado de investigação — revisão final: iframe de embed e popup OAuth, mais o escape hatch
+
+Encontrado pelo reviewer final (não pela QA manual acima, que nunca inseriu
+um embed nem abriu um popup de conexão de conta), dois riscos residuais que a
+análise de blast radius anterior não cobria — `credentialless` relaxa a
+exigência de CORP só para *subresources* carregados via `fetch`/`<img>`/etc.
+(no-cors), não para documentos aninhados:
+
+- **Preview de embed em bloco** (YouTube, Twitter/X): o Gutenberg renderiza
+  em um iframe que herda o container de política do documento pai. O
+  provedor do embed não manda `Cross-Origin-Embedder-Policy` nenhum, então
+  esse iframe específico pode ficar em branco sob `COEP: credentialless` no
+  editor. Não verificado nesta sessão (não seria caro: inserir um bloco de
+  embed e olhar); registrado como risco não confirmado, não como bug
+  confirmado.
+- **Popup de OAuth ("conectar conta")**: `COOP: same-origin` corta
+  `window.opener` para qualquer popup cross-origin aberto a partir do
+  editor. Um fluxo de "conectar ao Jetpack/WordPress.com" que dependa de
+  `postMessage` de volta pro `opener` pode quebrar. A QA manual da seção
+  anterior testou os três plugins **desconectados** exatamente pelo custo de
+  configurar contas reais — o que significa que essa classe de quebra é
+  estruturalmente invisível a esse teste, não que ele a descartou.
+
+Nenhum dos dois é motivo pra reverter a decisão (`credentialless` continua
+sendo a escolha que minimiza a classe geral de bloqueio, e nenhum dos dois
+foi *confirmado* quebrado — só não são *verificáveis* sem uma conta real ou
+um embed de verdade). Mitigação adotada: um filtro,
+`post_voice_send_isolation_headers` (default `true`,
+`class-editor-headers.php`), deixa qualquer site desligar os headers sem
+patch, caindo de volta pro comportamento single-thread anterior a esta
+branch — a mesma saída que já existia antes desta feature existir, só que
+opcional em vez de definitiva.
+
+## Achado de investigação — revisão final: CSP sem `blob:` é perda total, não degradação
+
+A spec do Worker (`2026-08-21-narration-worker-cross-origin-isolation-design.md`)
+já registrava como risco não verificado um CSP de terceiro sem `blob:` em
+`worker-src`. A revisão final apontou que o impacto estava descrito de forma
+otimista: como as duas tentativas de `load()` (multi-thread e o retry
+single-thread do Achado 4) constroem o **mesmo** tipo de Worker via `blob:`,
+um CSP que bloqueia `blob:` faz as duas falharem — narração para de
+funcionar por completo nesse site, onde antes desta branch funcionava
+(single-thread). Não é "mais lento", é "não funciona". Continua sem
+verificação nesta sessão (exigiria um site real com CSP restritivo); o
+filtro `post_voice_send_isolation_headers` acima é a mesma saída para esse
+caso.
+
 ## Resultado do benchmark manual de RTF
 
 Medido em `13th Gen Intel Core i7-1355U, 12 threads`, `2026-08-22`. Cada número
