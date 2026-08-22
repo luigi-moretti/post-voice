@@ -29,6 +29,10 @@ module.exports = {
 			__dirname,
 			'e2e/fixtures/segment-pipeline-harness.ts'
 		),
+		'pocket-tts-worker': path.resolve(
+			__dirname,
+			'features/narration/editor/engine/pocket-tts.worker.js'
+		),
 	},
 	output: {
 		...defaultConfig.output,

@@ -37,6 +37,50 @@ export interface CalibrationResult {
 	audio: Float32Array;
 }
 
+/**
+ * Constructs the narration Worker from a `blob:` URL instead of pointing
+ * straight at its own script, and as a classic (non-module) script — both
+ * load-bearing, confirmed empirically, see
+ * docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md:
+ *
+ * - `blob:`: the post editor sends COOP/COEP (`Post_Voice_Editor_Headers`),
+ *   which makes this document `crossOriginIsolated`. A cross-origin-isolated
+ *   document requires a Worker's own script response to also carry a COEP
+ *   header for `new Worker()` to succeed — and this script is served by
+ *   Apache as a plain static file, which never runs through WordPress/PHP
+ *   and therefore never gets one. Fetching the same file ourselves and
+ *   constructing the Worker from a same-origin `blob:` of its contents
+ *   sidesteps that requirement without touching the server at all — it is
+ *   the exact same bytes the browser would have loaded directly.
+ * - Classic, not module: `onnxruntime-web`'s threaded WASM backend calls
+ *   `importScripts()` during initialisation, an API module-type workers do
+ *   not support at all, in any version (confirmed against 1.20.0, the
+ *   version pinned in this worker, and the latest release at investigation
+ *   time). This worker's own code only needed `{ type: 'module' }` for its
+ *   own static `import`s, which webpack bundles into a plain classic script
+ *   just as well when the option is omitted.
+ *
+ * The object URL is revoked immediately after construction — confirmed
+ * empirically that this does not break anything (the browser has already
+ * captured the Blob's contents by the time `new Worker()` returns); without
+ * it, every call (and every retry) leaks one Blob reference for the rest of
+ * the page's life.
+ */
+// eslint-disable-next-line camelcase, no-undef
+declare const __webpack_public_path__: string;
+
+async function createNarrationWorker(): Promise< Worker > {
+	// eslint-disable-next-line camelcase
+	const scriptUrl = __webpack_public_path__ + 'pocket-tts-worker.js';
+	const code = await ( await fetch( scriptUrl ) ).text();
+	const blobUrl = URL.createObjectURL(
+		new Blob( [ code ], { type: 'text/javascript' } )
+	);
+	const worker = new Worker( blobUrl );
+	URL.revokeObjectURL( blobUrl );
+	return worker;
+}
+
 export class PocketTtsEngine {
 	private worker: Worker | null = null;
 	private ready = false;
@@ -58,18 +102,64 @@ export class PocketTtsEngine {
 	// honestly reusable for the pair it was taken from.
 	private readonly rtfByLanguage = new Map< string, number >();
 	public sampleRate = 24000;
+	// Set by `load()`'s retry (see below) when the first, multi-thread
+	// attempt failed and the second, single-threaded one succeeded — so the
+	// caller can tell the author generation is running slower than the
+	// device would otherwise support.
+	public usedSingleThreadFallback = false;
 
 	async load( language: string ): Promise< void > {
 		this.language = language;
-		this.worker = new Worker(
-			new URL( './pocket-tts.worker.js', import.meta.url ),
-			{ type: 'module' }
-		);
+		try {
+			await this.loadWorkerAndLanguage( language, false );
+		} catch ( err ) {
+			// A multi-thread attempt can fail for a browser-specific reason
+			// unrelated to whether crossOriginIsolated is on at all — that case
+			// already runs single-thread from the start, inside loadOrt(). An
+			// untested browser's own WASM-threading bug is exactly the case
+			// this retries for. Retrying when isolation was never on would just
+			// repeat the same single-threaded attempt, so it isn't worth doing.
+			// Retries on ANY failure (network, parse, threading), not just ones
+			// that look threading-related — matching on error messages reliably
+			// is not possible across onnxruntime-web versions, and the cost of
+			// one unnecessary retry (a few seconds) is cheap. See
+			// docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md,
+			// "Achado 4" — deliberately scoped to this first load only, not a
+			// later, independent `setLanguage()` call (see that section for why).
+			if ( ! self.crossOriginIsolated ) {
+				throw err;
+			}
+			this.worker?.terminate();
+			this.worker = null;
+			await this.loadWorkerAndLanguage( language, true );
+			this.usedSingleThreadFallback = true;
+		}
+	}
+
+	/**
+	 * Constructs the Worker, waits for the default bundle to finish loading,
+	 * then switches to `language` if it isn't the default — the whole
+	 * first-load sequence `load()`'s retry redoes as one unit.
+	 *
+	 * @param language          Model bundle identifier.
+	 * @param forceSingleThread Skip the worker's own crossOriginIsolated
+	 *                          check and run single-threaded regardless — set
+	 *                          only by `load()`'s retry, on the second attempt.
+	 */
+	private async loadWorkerAndLanguage(
+		language: string,
+		forceSingleThread: boolean
+	): Promise< void > {
+		this.worker = await createNarrationWorker();
 
 		await new Promise< void >( ( resolve, reject ) => {
 			if ( ! this.worker ) {
 				return reject( new Error( 'Worker not created' ) );
 			}
+			const cleanup = () => {
+				this.worker?.removeEventListener( 'message', onMessage );
+				this.worker?.removeEventListener( 'error', onError );
+			};
 			const onMessage = ( e: MessageEvent ) => {
 				const { type, sampleRate, error, defaultVoice } = e.data;
 				if ( type === 'voices_loaded' ) {
@@ -86,15 +176,30 @@ export class PocketTtsEngine {
 					}
 				} else if ( type === 'loaded' ) {
 					this.ready = true;
-					this.worker?.removeEventListener( 'message', onMessage );
+					cleanup();
 					resolve();
 				} else if ( type === 'error' ) {
-					this.worker?.removeEventListener( 'message', onMessage );
+					cleanup();
 					reject( new Error( error ) );
 				}
 			};
+			// Without this, a Worker that fails after construction (a corrupt
+			// fetch, a future regression reintroducing the classic-vs-module
+			// incompatibility this file works around) never posts any message
+			// at all — this Promise hung forever and "Preparing…" never became
+			// a visible error. See the spec's "Achado 1" for how this was found.
+			const onError = ( event: ErrorEvent ) => {
+				cleanup();
+				reject(
+					new Error( event.message || 'Worker failed to start' )
+				);
+			};
 			this.worker.addEventListener( 'message', onMessage );
-			this.worker.postMessage( { type: 'load' } );
+			this.worker.addEventListener( 'error', onError );
+			this.worker.postMessage( {
+				type: 'load',
+				data: { forceSingleThread },
+			} );
 		} );
 
 		if ( language !== 'english_2026-04' ) {
@@ -126,6 +231,10 @@ export class PocketTtsEngine {
 			if ( ! this.worker ) {
 				return reject( new Error( 'Engine not loaded' ) );
 			}
+			const cleanup = () => {
+				this.worker?.removeEventListener( 'message', onMessage );
+				this.worker?.removeEventListener( 'error', onError );
+			};
 			const onMessage = ( e: MessageEvent ) => {
 				if ( e.data.type === 'voices_loaded' ) {
 					this.defaultVoice =
@@ -134,14 +243,21 @@ export class PocketTtsEngine {
 					if ( e.data.sampleRate ) {
 						this.sampleRate = e.data.sampleRate;
 					}
-					this.worker?.removeEventListener( 'message', onMessage );
+					cleanup();
 					resolve();
 				} else if ( e.data.type === 'error' ) {
-					this.worker?.removeEventListener( 'message', onMessage );
+					cleanup();
 					reject( new Error( e.data.error ) );
 				}
 			};
+			const onError = ( event: ErrorEvent ) => {
+				cleanup();
+				reject(
+					new Error( event.message || 'Worker failed to start' )
+				);
+			};
 			this.worker.addEventListener( 'message', onMessage );
+			this.worker.addEventListener( 'error', onError );
 			this.worker.postMessage( {
 				type: 'set_language',
 				data: { language },
@@ -202,6 +318,7 @@ export class PocketTtsEngine {
 
 			const cleanup = () => {
 				this.worker?.removeEventListener( 'message', onMessage );
+				this.worker?.removeEventListener( 'error', onError );
 				options.signal?.removeEventListener( 'abort', onAbort );
 			};
 
@@ -228,8 +345,17 @@ export class PocketTtsEngine {
 					reject( new Error( error ) );
 				}
 			};
+			const onError = ( event: ErrorEvent ) => {
+				cleanup();
+				reject(
+					new Error(
+						event.message || 'Worker crashed during generation'
+					)
+				);
+			};
 
 			this.worker.addEventListener( 'message', onMessage );
+			this.worker.addEventListener( 'error', onError );
 			this.worker.postMessage( {
 				type: 'generate',
 				data: { text, voice: options.voice ?? this.defaultVoice },

@@ -26,6 +26,7 @@
 import { MODEL_BASE_URL } from '../model-source';
 import { installModelCache } from './model-cache';
 import { sanitizeForTokenizer } from './tokenizer-sanitize';
+import * as sentencepieceModule from './sentencepiece.js';
 
 // Must run before any model file is requested: Hugging Face sends no
 // Cache-Control, so without this the ~190MB bundle is re-fetched every session.
@@ -669,7 +670,7 @@ function precomputeFlowBuffers() {
     }
 }
 
-async function loadOrt() {
+async function loadOrt(forceSingleThread = false) {
     if (ort) {
         return;
     }
@@ -685,7 +686,15 @@ async function loadOrt() {
     ort = ortModule.default || ortModule;
     ort.env.wasm.wasmPaths = cdnBase;
     ort.env.wasm.simd = true;
-    ort.env.wasm.numThreads = self.crossOriginIsolated
+    // `forceSingleThread` is set by `PocketTtsEngine.load()`'s retry, after a
+    // first multi-thread attempt on this document failed for a reason other
+    // than crossOriginIsolated being off (that case never reaches here with
+    // `numThreads > 1` in the first place) — see
+    // docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md,
+    // "Achado 4". `loadOrt()` only ever runs once per worker instance (the
+    // guard above), so this decision is fixed for the worker's whole
+    // lifetime, same as it always was.
+    ort.env.wasm.numThreads = (self.crossOriginIsolated && !forceSingleThread)
         ? Math.min(navigator.hardwareConcurrency || 4, 8)
         : 1;
     precomputeFlowBuffers();
@@ -700,12 +709,12 @@ async function releaseSession(session) {
     }
 }
 
-async function loadBundle(language, { initialLoad = false } = {}) {
+async function loadBundle(language, { initialLoad = false, forceSingleThread = false } = {}) {
     if (!LANGUAGE_BUNDLES.includes(language)) {
         throw new Error(`Unsupported language bundle: ${language}`);
     }
 
-    await loadOrt();
+    await loadOrt(forceSingleThread);
 
     postMessage({ type: "status", status: `Loading ${language} bundle...`, state: "loading" });
     currentLanguage = language;
@@ -757,8 +766,7 @@ async function loadBundle(language, { initialLoad = false } = {}) {
     }
     const tokenizerBuffer = await tokenizerResponse.arrayBuffer();
     tokenizerModelB64 = btoa(String.fromCharCode(...new Uint8Array(tokenizerBuffer)));
-    const spModule = await import("./sentencepiece.js");
-    tokenizerProcessor = new spModule.SentencePieceProcessor();
+    tokenizerProcessor = new sentencepieceModule.SentencePieceProcessor();
     await tokenizerProcessor.loadFromB64StringModel(tokenizerModelB64);
 
     bosBeforeVoice = null;
@@ -819,7 +827,10 @@ self.onmessage = async (e) => {
 
     try {
         if (type === "load") {
-            await loadBundle(DEFAULT_LANGUAGE, { initialLoad: true });
+            await loadBundle(DEFAULT_LANGUAGE, {
+                initialLoad: true,
+                forceSingleThread: Boolean(data?.forceSingleThread),
+            });
             return;
         }
 
