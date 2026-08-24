@@ -22,6 +22,7 @@ sem passo manual.
 | Distribuição | Só GitHub Release + zip | Sem deploy SVN para wordpress.org nesta spec — plugin ainda privado/não distribuído lá; deploy SVN fica para spec própria quando/se o plugin ganhar slug aprovado |
 | Arquitetura | 2 workflows desacoplados | Motor de versão (`release.yml`) e build do asset (`release-assets.yml`) não se conhecem — trocar de ferramenta de versionamento no futuro (ex. migrar para release-please) toca só o primeiro |
 | Gate de qualidade | `release.yml` só roda após `ci.yml` fechar verde em `master` | Push a `master` já dispara o `ci.yml` existente (lint/unit/php/i18n/e2e/audit); taggear antes disso arriscaria publicar código que o próprio CI reprova minutos depois |
+| Token do Workflow A | PAT fine-grained (só este repo, `Contents: Read and write`), em secret `SEMANTIC_RELEASE_TOKEN` | `GITHUB_TOKEN` padrão não dispara outros workflows (trava de segurança do GitHub Actions contra loop) — se semantic-release criasse a release com ele, o evento `release: published` nunca chegaria em `release-assets.yml`, falha silenciosa. Workflow B não precisa de PAT: nada depende do que ele dispara depois |
 
 ### Alternativa descartada: release-please
 
@@ -56,10 +57,15 @@ merge → master
                                 └─ gh release upload
 ```
 
-`release.yml` dispara via `workflow_run` na conclusão do workflow `CI`
-(nome do job em `ci.yml`) filtrado a `branches: [master]` e
-`conclusion == 'success'` — nunca em resposta direta a `push`, para não
-correr em paralelo com o próprio CI que ainda pode reprovar o commit.
+`release.yml` dispara via `workflow_run: { workflows: ["CI"], types:
+[completed], branches: [master] }` — `"CI"` é o **nome do workflow**
+(campo `name:` no topo de `ci.yml`), não nome de job; o filtro
+`branches: [master]` é necessário porque `ci.yml` também roda em
+`pull_request` de qualquer branch, e só a execução pós-merge em `master`
+deve poder gerar release. O job então checa
+`github.event.workflow_run.conclusion == 'success'` antes de prosseguir —
+nunca em resposta direta a `push`, para não correr em paralelo com o
+próprio CI que ainda pode reprovar o commit.
 
 `release-assets.yml` dispara em `release: types: [published]`, mais
 `workflow_dispatch` (input `tag`) como reforço manual caso o build do zip
@@ -71,11 +77,17 @@ tempo, sem cancelar um no meio.
 
 ## Workflow A — `release.yml`
 
-Job com `permissions: contents: write` (suficiente: branch protection está
-desligada no plano atual do repo, não precisa de PAT à parte). Steps:
-checkout, `actions/setup-node@v4`, `npm ci`, `npx semantic-release`.
+Job com `permissions: contents: write`. Steps: checkout, `actions/setup-node@v4`,
+`npm ci`, `npx semantic-release` com `env: GH_TOKEN:
+${{ secrets.SEMANTIC_RELEASE_TOKEN }}` (o PAT fine-grained — ver tabela de
+decisões; `GITHUB_TOKEN` padrão aqui faria o Workflow B nunca disparar).
 
-Config em `.releaserc.json`, preset `conventionalcommits`, plugins em ordem:
+Config em `.releaserc.json` com `plugins` **declarado explicitamente** (não
+usa o set default do semantic-release, que inclui `@semantic-release/npm`
+mesmo sem pedir — esse plugin, com `private:true`, não publica mas ainda
+escreve `version` em `package.json` no seu `prepare`, duplicando/colidindo
+com o `exec` do passo 3 abaixo tocando o mesmo arquivo). Preset
+`conventionalcommits`, plugins em ordem:
 
 1. **`@semantic-release/commit-analyzer`** — bump pelos commits desde a
    última tag: `fix:` → patch, `feat:` → minor, `BREAKING CHANGE:`/`!` →
@@ -92,6 +104,11 @@ Config em `.releaserc.json`, preset `conventionalcommits`, plugins em ordem:
    - `post-voice.php` (header `Version:` e a constante
      `POST_VOICE_VERSION`)
    - `readme.txt` (`Stable tag:`)
+
+   Guardrail obrigatório: regex mira exatamente essas 3 linhas — nunca
+   `Requires at least:`/`Requires PHP` em `post-voice.php`/`readme.txt`.
+   Esses são pins de contrato que o CLAUDE.md proíbe mudar como efeito
+   colateral de trabalho não relacionado.
 4. **`@semantic-release/git`** — commita os 3 arquivos alterados direto em
    `master`: `chore(release): ${nextRelease.version} [skip ci]`. O
    `[skip ci]` impede esse próprio push de re-disparar `ci.yml` — e por
@@ -158,6 +175,11 @@ compiladas (`features/*/editor`, `features/*/frontend`,
 - **Loop de push**: coberto pelo `[skip ci]` no commit de bump (item 4 do
   Workflow A) — sem esse marcador, o próprio commit de versionamento
   re-disparia `ci.yml` e, na conclusão, o `workflow_run` de `release.yml`.
+- **PAT fine-grained expira**: tem validade máxima (renovação manual).
+  Quando expirar, `release.yml` falha no passo de push/criação de release
+  com erro de autenticação claro (não silencioso) — renovar o secret
+  `SEMANTIC_RELEASE_TOKEN` resolve. Fora de escopo automatizar a
+  renovação.
 
 ## Testing / verificação
 
@@ -170,6 +192,14 @@ compiladas (`features/*/editor`, `features/*/frontend`,
 - Merge de teste com um `fix:` trivial nesta própria branch, depois de
   mergeada, para validar o fluxo 0.1.0 → 0.1.1 fim-a-fim (tag, release,
   zip anexado, conteúdo do zip batendo com `.distignore`).
+
+`scripts/bump-plugin-version.mjs` não ganha suite Jest: precedente já
+estabelecido por `scripts/audit-check.mjs` e `scripts/audit-check-composer.mjs`
+(scripts de tooling não cobertos por teste, fora do allowlist
+`collectCoverageFrom` de `jest.config.js`, que lista arquivos de feature
+individualmente). Verificação do script fica pelo dry-run e pelo merge de
+teste acima — não é um ponto em aberto, é decisão consistente com o que já
+existe no repo.
 
 ## Custo de trocar de ferramenta depois
 
