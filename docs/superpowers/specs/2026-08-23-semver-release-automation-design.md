@@ -125,6 +125,18 @@ passam pelos gates de audit existentes): `semantic-release`,
 `@semantic-release/exec`, `@semantic-release/git`, `@semantic-release/github`,
 `conventional-changelog-conventionalcommits`.
 
+Medido nesta implementação: essas ~410 dependências dev novas levaram o gate
+de high de 1→5 (no teto de 5, `scripts/audit-check.mjs`). As 3 instâncias
+responsáveis (`brace-expansion`, `ip-address`, `undici`) vivem dentro de
+`node_modules/npm`, empacotado como `bundleDependencies` por
+`@semantic-release/npm` (dependência do `semantic-release` core, instalada
+mesmo sem estar na nossa lista de plugins ativa) — `npm overrides`
+documentadamente não alcança `bundleDependencies`, testado e confirmado.
+Gate passa hoje (5/5), sem margem: a próxima advisory nova em qualquer
+dependência dev existente falha CI até alguém investir em downgrade do
+`semantic-release` ou esperar o `@semantic-release/npm` avançar seu peer
+de `npm`.
+
 ### Detalhes de execução do Workflow A (não óbvios, travados aqui para não virarem decisão de implementação)
 
 - **`actions/checkout` recebe `token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}`**,

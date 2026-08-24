@@ -293,7 +293,7 @@ PR merges to `master`, once `ci.yml` is green. Full design:
 To check what the next version *would* be without publishing anything:
 
 ```bash
-GH_TOKEN="$(gh auth token)" npx semantic-release --dry-run
+GH_TOKEN="$(gh auth token)" npx semantic-release --dry-run --branches "$(git branch --show-current)"
 ```
 
 To rebuild and re-attach a release's zip without re-running

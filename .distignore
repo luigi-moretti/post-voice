@@ -20,6 +20,7 @@ docs/
 .git/
 scripts/
 types/
+pocket-tts-onnx-mirror-src/
 
 test/
 tests/
@@ -42,6 +43,7 @@ playwright.config.ts
 .prettierrc.js
 .prettierignore
 .wp-env.json
+.wp-env.override.json
 .phpunit.result.cache
 .releaserc.json
 CLAUDE.md
@@ -49,4 +51,6 @@ TESTING.md
 .distignore
 .gitignore
 *.log
+*.ts
+segment-pipeline-harness.*
 .DS_Store
