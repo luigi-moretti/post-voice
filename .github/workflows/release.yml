@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [master]
+
+concurrency:
+  group: release-master
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # token: here (not just GH_TOKEN as env on the semantic-release step
+      # below) matters: this is what configures git's credential helper
+      # for the whole job. @semantic-release/git's `git push` rides on
+      # that helper, not on the env var — checkout with the default token
+      # would silently push the release commit authenticated as
+      # GITHUB_TOKEN, reintroducing the exact "doesn't trigger downstream
+      # workflows" bug the PAT exists to avoid.
+      #
+      # ref: head_sha (not `master`) pins this run to the exact commit
+      # workflow_run says passed CI. Master can move between CI finishing
+      # and this job starting; if it has, the push below fails
+      # (non-fast-forward) instead of releasing an unvalidated commit.
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+
+      # composer install matters here for a reason that has nothing to
+      # do with PHP tests: @semantic-release/git commits the 3 bumped
+      # files through a real `git commit`, which fires
+      # .husky/pre-commit -> lint-staged -> `./vendor/bin/phpcs` on
+      # post-voice.php. Without vendor/ present that hook fails and the
+      # whole release aborts — this step is what lets the commit
+      # succeed without bypassing the hook (CLAUDE.md: never skip
+      # hooks).
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.2', tools: composer }
+      - run: composer install
+
+      - name: Configure git identity for the release commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - run: npx semantic-release
+        env:
+          GH_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
