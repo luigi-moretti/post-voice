@@ -1,0 +1,56 @@
+# Packaging exclude list, read by scripts/build-plugin-zip.sh. rsync
+# --exclude-from syntax: a bare name (no leading slash) matches a
+# directory of that name anywhere in the tree; trailing slash means
+# "directory only". Philosophy: ship only what WordPress needs to run
+# the installed plugin — php source, compiled build/ output, readme,
+# license. Everything dev/build/test-tooling stays out.
+
+node_modules/
+vendor/
+coverage/
+artifacts/
+test-results/
+playwright-report/
+e2e/
+docs/
+.github/
+.claude/
+.superpowers/
+.husky/
+.git/
+scripts/
+types/
+pocket-tts-onnx-mirror-src/
+
+test/
+tests/
+editor/
+frontend/
+admin/
+
+package.json
+package-lock.json
+composer.json
+composer.lock
+webpack.config.js
+tsconfig.json
+phpstan.neon
+phpcs.xml.dist
+phpunit.xml.dist
+jest.config.js
+playwright.config.ts
+.eslintrc.js
+.prettierrc.js
+.prettierignore
+.wp-env.json
+.wp-env.override.json
+.phpunit.result.cache
+.releaserc.json
+CLAUDE.md
+TESTING.md
+.distignore
+.gitignore
+*.log
+*.ts
+segment-pipeline-harness.*
+.DS_Store
