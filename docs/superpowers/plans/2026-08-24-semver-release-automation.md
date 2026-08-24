@@ -28,6 +28,7 @@
 |---|---|
 | `scripts/build-plugin-zip.sh` (new) | Packages the working tree into `post-voice-<version>.zip`, respecting `.distignore`. Runnable locally and from Workflow B. |
 | `.distignore` (new) | rsync exclude list: everything not needed to run the installed plugin. |
+| `.gitignore` (modify) | Ignore `post-voice-*.zip` so a failed local smoke-test cleanup can't land a build artifact in a commit. |
 | `scripts/bump-plugin-version.mjs` (new) | CLI: given a semver string, rewrites the version in the 3 hardcoded locations. Called by semantic-release's `exec` plugin. |
 | `.releaserc.json` (new) | semantic-release config: explicit plugin pipeline, tag format, branch. |
 | `.github/workflows/release.yml` (new) | Workflow A — computes version, bumps files, tags, publishes GitHub Release. |
@@ -93,6 +94,7 @@ Expected: JSON with `"ref": "refs/tags/v0.1.0"` and an `object.sha` matching Ste
 **Files:**
 - Create: `.distignore`
 - Create: `scripts/build-plugin-zip.sh`
+- Modify: `.gitignore`
 
 **Interfaces:**
 - Produces: `scripts/build-plugin-zip.sh <version>` — writes `post-voice-<version>.zip` to the repo root, exit 0 on success, exit 1 with a usage message if `<version>` is missing.
@@ -219,10 +221,18 @@ Expected: listing includes `post-voice/post-voice.php`, `post-voice/readme.txt`,
 rm post-voice-9.9.9-smoketest.zip
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Ignore packaged zips so a failed cleanup never lands one in a commit**
+
+Add to `.gitignore` (anywhere in the file; the existing "Build output" section fits):
+
+```
+post-voice-*.zip
+```
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add .distignore scripts/build-plugin-zip.sh
+git add .distignore .gitignore scripts/build-plugin-zip.sh
 git commit -m "feat: add plugin zip packaging script"
 ```
 
@@ -395,7 +405,7 @@ npm install --save-dev semantic-release \
 			"@semantic-release/git",
 			{
 				"assets": ["package.json", "post-voice.php", "readme.txt"],
-				"message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+				"message": "chore(release): ${nextRelease.version} [skip ci]"
 			}
 		],
 		"@semantic-release/github"
@@ -418,10 +428,12 @@ No `@semantic-release/npm` in that list — that's the point of declaring `plugi
 
 - [ ] **Step 4: Dry-run against the real repo (safe — dry-run skips the `prepare`/`publish` steps that would mutate files or tag anything)**
 
-Requires Task 1's `v0.1.0` tag to already be pushed, and a GitHub token with at least read access to the repo (the local `gh` CLI login is enough for this check — it does not need the `SEMANTIC_RELEASE_TOKEN` secret, which only matters inside Workflow A):
+Requires Task 1's `v0.1.0` tag to already be pushed, and a GitHub token with at least read access to the repo (the local `gh` CLI login is enough for this check — it does not need the `SEMANTIC_RELEASE_TOKEN` secret, which only matters inside Workflow A).
+
+This runs from `feat/semver-release-automation`, not `master` — `.releaserc.json` restricts releases to `branches: ["master"]`, and without an override semantic-release just logs that this branch isn't a release branch and exits without analyzing anything. `--branches` overrides that check for this one invocation only (it doesn't touch the file):
 
 ```bash
-GH_TOKEN="$(gh auth token)" npx semantic-release --dry-run
+GH_TOKEN="$(gh auth token)" npx semantic-release --dry-run --branches "$(git branch --show-current)"
 ```
 
 Expected: log lines ending in something like `The next release version is 0.1.1` (or `0.2.0`, depending on whether any `feat:` commits landed since `v0.1.0` — check with `git log v0.1.0..HEAD --oneline`). No error about missing tags, no attempt to push or create a release.
@@ -466,9 +478,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      # token: here (not just GH_TOKEN as env on the semantic-release step
+      # below) matters: this is what configures git's credential helper
+      # for the whole job. @semantic-release/git's `git push` rides on
+      # that helper, not on the env var — checkout with the default token
+      # would silently push the release commit authenticated as
+      # GITHUB_TOKEN, reintroducing the exact "doesn't trigger downstream
+      # workflows" bug the PAT exists to avoid.
+      #
+      # ref: head_sha (not `master`) pins this run to the exact commit
+      # workflow_run says passed CI. Master can move between CI finishing
+      # and this job starting; if it has, the push below fails
+      # (non-fast-forward) instead of releasing an unvalidated commit.
       - uses: actions/checkout@v4
         with:
-          ref: master
+          token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -639,9 +664,9 @@ tail -20 TESTING.md
 
 - [ ] **Step 2: Add a "Release pipeline" section**
 
-Insert before `## What CI runs` (or at the file's end if that heading has moved), matching the file's existing heading style:
+Insert before `## What CI runs` (or at the file's end if that heading has moved), matching the file's existing heading style. Heading and prose:
 
-```markdown
+```
 ## Release pipeline
 
 Not a gate you run before opening a PR — this runs automatically after a
@@ -649,11 +674,17 @@ PR merges to `master`, once `ci.yml` is green. Full design:
 `docs/superpowers/specs/2026-08-23-semver-release-automation-design.md`.
 
 To check what the next version *would* be without publishing anything:
+```
+
+Then this command, in its own fenced block:
 
 ```bash
 GH_TOKEN="$(gh auth token)" npx semantic-release --dry-run
 ```
 
+Then this closing prose:
+
+```
 To rebuild and re-attach a release's zip without re-running
 semantic-release (e.g. Workflow B failed after Workflow A already
 tagged): Actions tab → "Release Assets" → "Run workflow" → paste the
