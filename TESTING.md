@@ -284,6 +284,27 @@ did not load. The real player is `position: fixed`; only the admin stylesheet
 puts it back in the flow, and it is enqueued through the same guard as the
 screen's script.
 
+## Release pipeline
+
+Not a gate you run before opening a PR — this runs automatically after a
+PR merges to `master`, once `ci.yml` is green. Full design:
+`docs/superpowers/specs/2026-08-23-semver-release-automation-design.md`.
+
+To check what the next version *would* be without publishing anything:
+
+```bash
+GH_TOKEN="$(gh auth token)" npx semantic-release --dry-run
+```
+
+To rebuild and re-attach a release's zip without re-running
+semantic-release (e.g. Workflow B failed after Workflow A already
+tagged): Actions tab → "Release Assets" → "Run workflow" → paste the
+tag (e.g. `v1.2.3`).
+
+If `release.yml` fails with an authentication error, `SEMANTIC_RELEASE_TOKEN`
+(a fine-grained PAT, Settings → Secrets and variables → Actions) has
+likely expired — regenerate it and update the secret.
+
 ## What CI runs
 
 `.github/workflows/ci.yml`, one job each: `lint` (ESLint, PHPCS, PHPStan),
