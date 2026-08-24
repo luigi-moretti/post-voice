@@ -23,6 +23,7 @@ sem passo manual.
 | Arquitetura | 2 workflows desacoplados | Motor de versão (`release.yml`) e build do asset (`release-assets.yml`) não se conhecem — trocar de ferramenta de versionamento no futuro (ex. migrar para release-please) toca só o primeiro |
 | Gate de qualidade | `release.yml` só roda após `ci.yml` fechar verde em `master` | Push a `master` já dispara o `ci.yml` existente (lint/unit/php/i18n/e2e/audit); taggear antes disso arriscaria publicar código que o próprio CI reprova minutos depois |
 | Token do Workflow A | PAT fine-grained (só este repo, `Contents: Read and write`), em secret `SEMANTIC_RELEASE_TOKEN` | `GITHUB_TOKEN` padrão não dispara outros workflows (trava de segurança do GitHub Actions contra loop) — se semantic-release criasse a release com ele, o evento `release: published` nunca chegaria em `release-assets.yml`, falha silenciosa. Workflow B não precisa de PAT: nada depende do que ele dispara depois |
+| Tag inicial | Criar `v0.1.0` manualmente em `master` antes do primeiro run do Workflow A | semantic-release sem nenhuma tag prévia trata o repo como primeiro release e computa a partir de `1.0.0` do zero — ignoraria o `0.1.0` já hardcoded nos 3 arquivos e divergiria silenciosamente do que já existe |
 
 ### Alternativa descartada: release-please
 
