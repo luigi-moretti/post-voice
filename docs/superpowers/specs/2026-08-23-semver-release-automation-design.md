@@ -125,6 +125,36 @@ passam pelos gates de audit existentes): `semantic-release`,
 `@semantic-release/exec`, `@semantic-release/git`, `@semantic-release/github`,
 `conventional-changelog-conventionalcommits`.
 
+### Detalhes de execução do Workflow A (não óbvios, travados aqui para não virarem decisão de implementação)
+
+- **`actions/checkout` recebe `token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}`**,
+  não só o job inteiro rodando com esse token via env. O `git push` que
+  `@semantic-release/git` dispara anda em cima do credential helper que o
+  `checkout` configurou — se `checkout` usar o `GITHUB_TOKEN` default
+  (comportamento padrão sem essa opção), o push fica autenticado como o
+  token errado mesmo com `GH_TOKEN` correto no `env:` do step seguinte, e
+  o bug que o PAT existe pra evitar (push não dispara `release-assets.yml`)
+  volta a acontecer, em silêncio.
+- **`ref: ${{ github.event.workflow_run.head_sha }}`**, não `ref: master`.
+  Entre o CI fechar verde e este job rodar, outro merge pode ter entrado —
+  `head_sha` fixa exatamente o commit que passou no CI que disparou este
+  run; se um push concorrente já moveu `master`, o push subsequente do
+  `@semantic-release/git` falha (não fast-forward) em vez de publicar por
+  cima de um commit não validado.
+- **`fetch-depth: 0`** no checkout — `commit-analyzer` precisa do histórico
+  completo desde a última tag; um clone raso (`depth: 1`, comportamento
+  padrão do `actions/checkout`) faria ele não enxergar nenhum commit.
+- **`composer install` antes de `npx semantic-release`** — não é sobre
+  rodar testes PHP aqui. `@semantic-release/git` commita via `git commit`
+  de verdade, o que dispara `.husky/pre-commit` → `lint-staged` →
+  `./vendor/bin/phpcs` em `post-voice.php` (está no lint-staged do
+  `package.json`). Sem `vendor/` instalado esse hook falha e o release
+  inteiro aborta — instalar o composer é o que permite o commit passar
+  sem pular o hook (`CLAUDE.md`: nunca pular hooks).
+- **`git config user.name`/`user.email` antes do commit** — runners do
+  Actions não têm identidade git configurada por padrão;
+  `@semantic-release/git` falharia com "unknown identity" sem isso.
+
 ## Workflow B — `release-assets.yml`
 
 Steps: checkout com `ref: ${{ github.event.release.tag_name }}`, setup
