@@ -92,9 +92,18 @@ com o `exec` do passo 3 abaixo tocando o mesmo arquivo). Preset
 
 1. **`@semantic-release/commit-analyzer`** — bump pelos commits desde a
    última tag: `fix:` → patch, `feat:` → minor, `BREAKING CHANGE:`/`!` →
-   minor (não major — enquanto `major` for `0`, semver trata breaking como
-   minor por padrão do semantic-release; virar major bump de verdade só
-   depois que o projeto subir para `1.0.0` manualmente). Tipos
+   **major, imediatamente — mesmo em `0.x`.** Sem `releaseRules`
+   customizado no `.releaserc.json`, a regra default do commit-analyzer
+   (`{ breaking: true, release: "major" }`) é consultada primeiro e
+   sempre casa; o downgrade "breaking vira minor enquanto major=0" que o
+   preset `conventionalcommits` oferece (`preMajor`) nunca é alcançado,
+   porque ele só entra em jogo quando nenhuma release rule já decidiu —
+   e uma sempre decide aqui. Verificado no código instalado
+   (`@semantic-release/commit-analyzer/lib/default-release-rules.js`,
+   `lib/analyze-commit.js`, `semantic-release/lib/get-next-version.js`).
+   Decisão: aceitar esse comportamento — um `feat!:`/`BREAKING CHANGE:`
+   bem cedo no projeto pula direto pra `1.0.0`, sem rede de segurança.
+   Quem mergear um commit desses precisa saber disso antes. Tipos
    `docs:`/`ci:`/`test:`/`chore:`/`refactor:`/`style:` sozinhos não geram
    release.
 2. **`@semantic-release/release-notes-generator`** — monta as notas da
@@ -253,6 +262,60 @@ adiante: troca só o Workflow A. `.releaserc.json` sai,
 (`vX.Y.Z`) não muda, nenhuma tag antiga quebra. Workflow B, `.distignore` e
 o script de bump não mudam — desacoplamento é o ponto central desta
 arquitetura.
+
+## Ajustes pós-revisão (2026-08-24)
+
+Achados do code-review obrigatório antes do PR (`superpowers:requesting-code-review`,
+verificados contra o código instalado, não só lidos). Cada um corrigido no
+código e registrado aqui — spec e implementação não podem discordar.
+
+- **Breaking change vira major imediato, não minor.** A seção "Workflow A"
+  acima já foi corrigida in-line: sem `releaseRules` customizado, a regra
+  default do commit-analyzer (`{ breaking: true, release: "major" }`)
+  sempre casa primeiro, e o downgrade "breaking vira minor enquanto
+  major=0" do preset `conventionalcommits` nunca é alcançado. Decisão
+  (não implementação): aceitar — `feat!:`/`BREAKING CHANGE:` pula pra
+  `1.0.0` direto, mesmo bem cedo no projeto. Sem rede de segurança;
+  quem mergear um commit desses precisa saber disso.
+- **`.releaserc.json`'s `@semantic-release/github` entry ganhou config**
+  (`successCommentCondition: false, failCommentCondition: false`) — sem
+  isso, o passo `success` do plugin chama APIs do GitHub
+  (`associatedPullRequests`, lookup de commits do PR) que exigem
+  `Pull requests: Read`, permissão que o PAT (Contents-only, decisão
+  já fechada acima) deliberadamente não tem. Sem essa config, cada
+  release publica certo mas o run do Actions reporta falha depois —
+  erodindo a confiança no pipeline. As duas condições fazem `success.js`/
+  `fail.js` saírem antes de qualquer chamada de API; verificado no
+  pacote instalado.
+- **`.distignore` ganhou 4 entradas** não previstas na lista original:
+  `test/` (dir real, distinto de `tests/`, só `jest.setup.js`), `*.ts`
+  (fonte solta fora de `editor/`/`frontend/`/`admin/`, ex.
+  `features/narration/format-time.ts`), `segment-pipeline-harness.*`
+  (bundle webpack só de e2e, nunca enfileirado pelo PHP do plugin),
+  `pocket-tts-onnx-mirror-src/` e `.wp-env.override.json` (paths
+  locais já no `.gitignore`, faltando no `.distignore`).
+- **`release-assets.yml` ganhou `--clobber`** no `gh release upload` —
+  sem isso, reprocessar um zip via `workflow_dispatch` falha com "asset
+  already exists", quebrando o próprio fluxo de recuperação que a seção
+  "Erros e casos de borda" descreve.
+- **Higiene de shell no `release-assets.yml`**: a tag (`$TAG`) e a
+  versão derivada (`$VERSION`) são vinculadas a `env:` em vez de
+  interpoladas direto em blocos `run:` — nomes de tag git permitem
+  `` ` ``/`;`/`$()`, então interpolação direta seria injeção de shell
+  (exige acesso de escrita ao repo pra explorar, mas o fix é de graça).
+- **Caso de borda que faltava**: se `master` avançar *antes* do checkout
+  do Workflow A (não durante, que já é o caso coberto), semantic-release
+  loga "branch local está atrás do remoto" e sai com **código 0** — um
+  run verde que não publicou nada. Os commits não se perdem (a próxima
+  release os pega todos a partir da última tag), mas é diferente do
+  "push falha, non-fast-forward" que a seção acima descreve como único
+  cenário — esse só acontece se `master` mover *durante* o run.
+- **PAT em `persist-credentials`**: o token fica no `.git/config` pelo
+  resto do job (comportamento padrão do `actions/checkout`), exposto a
+  qualquer `postinstall` malicioso nas ~410 dependências dev novas deste
+  branch. Mitigado pelo escopo já mínimo do PAT (Contents-only,
+  1 repo só, expira) — não é mudança nova, é o motivo adicional (além de
+  disparar `release-assets.yml`) pelo qual esse escopo mínimo importa.
 
 ## Fora de escopo
 

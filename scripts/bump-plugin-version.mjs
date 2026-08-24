@@ -37,8 +37,8 @@ function replaceOrThrow( path, pattern, replacement ) {
 
 replaceOrThrow(
 	'package.json',
-	/"version":\s*"\d+\.\d+\.\d+"/,
-	`"version": "${ version }"`
+	/^\t"version": "\d+\.\d+\.\d+",$/m,
+	`\t"version": "${ version }",`
 );
 
 replaceOrThrow(
