@@ -35,8 +35,15 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
+      # node-version pinned to 22 here, not the '20' the rest of this
+      # repo's CI uses (ci.yml) — semantic-release@25 requires Node
+      # ^22.14.0 || >=24.10.0 and refuses to start otherwise ("node
+      # version ... is required. Found v20.20.2", observed on this
+      # workflow's first live run). Scoped to this job only:
+      # release-assets.yml never runs semantic-release, so its own '20'
+      # stays put.
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+        with: { node-version: '22', cache: 'npm' }
       - run: npm ci
 
       # composer install matters here for a reason that has nothing to
