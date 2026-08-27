@@ -93,7 +93,7 @@ Todo o resto do plano depende destes três tipos. Estão aqui uma vez; as tarefa
  * @property {string}   status         'proposta' | 'aceita' | 'aceita-com-desvio'
  *                                     | 'superada-por-NNNN' | 'revogada'
  * @property {string}   data           'YYYY-MM-DD'
- * @property {string}   origem
+ * @property {string}   origem         caminho relativo a docs/, ex. superpowers/specs/x.md
  * @property {string[]} enforcedBy     ids de regra, ou 'review-manual', ou 'doctor'
  * @property {string}   revisarQuando  '' quando ausente
  * @property {string[]} desvios        chaves de Finding congeladas
@@ -146,7 +146,7 @@ id: NNNN
 titulo: Uma frase nominal, não uma frase completa
 status: proposta
 data: AAAA-MM-DD
-origem: specs/AAAA-MM-DD-nome-do-spec.md#secao
+origem: superpowers/specs/AAAA-MM-DD-nome-do-spec.md#secao
 enforced_by: [ id-da-regra ]
 revisar_quando: uma condição observável, nunca uma data
 desvios: []
@@ -187,7 +187,7 @@ id: 0001
 titulo: Registrar decisões de arquitetura como ADR
 status: aceita
 data: 2026-08-27
-origem: specs/2026-08-25-adr-e-governanca-de-arquitetura-design.md
+origem: superpowers/specs/2026-08-25-adr-e-governanca-de-arquitetura-design.md
 enforced_by: [ doctor ]
 revisar_quando: o índice passar de 40 ADRs, ou uma ADR levar mais de meia hora para ser escrita
 desvios: []
@@ -365,7 +365,7 @@ id: 0005
 titulo: Topologia de dependência entre features
 status: aceita-com-desvio
 data: 2026-08-27
-origem: specs/2026-08-08-wp-narration-plugin-mvp-design.md#arquitetura
+origem: superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md#arquitetura
 enforced_by: [ feature-deps ]    # lista, sempre
 revisar_quando: uma quarta feature entrar
 desvios:
@@ -1103,7 +1103,7 @@ id: 0002
 titulo: O TTS roda inteiro no navegador; o servidor só orquestra
 status: aceita
 data: 2026-08-27
-origem: specs/2026-08-08-wp-narration-plugin-mvp-design.md
+origem: superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md
 enforced_by: [ no-server-side-tts ]
 revisar_quando: um requisito exigir gerar narração sem um autor presente (agendamento, importação em lote)
 desvios: []
@@ -1145,7 +1145,7 @@ id: 0004
 titulo: Layout por feature; shared/ só a partir do segundo consumidor
 status: aceita-com-desvio
 data: 2026-08-27
-origem: specs/2026-08-08-wp-narration-plugin-mvp-design.md#arquitetura
+origem: superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md#arquitetura
 enforced_by: [ feature-layout, shared-two-consumers ]
 revisar_quando: uma quarta feature entrar, ou shared/ passar de três módulos
 desvios:
@@ -1302,7 +1302,7 @@ id: 0011
 titulo: O editor é TypeScript
 status: aceita-com-desvio
 data: 2026-08-27
-origem: specs/2026-08-08-wp-narration-plugin-mvp-design.md
+origem: superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md
 enforced_by: [ no-untyped-editor-code ]
 revisar_quando: o worker vendorizado receber tipos upstream, ou for reescrito como código próprio
 desvios:
@@ -1507,7 +1507,7 @@ id: 0005
 titulo: Topologia de dependência entre features
 status: aceita-com-desvio
 data: 2026-08-27
-origem: specs/2026-08-25-adr-e-governanca-de-arquitetura-design.md#estado-atual-medido
+origem: superpowers/specs/2026-08-25-adr-e-governanca-de-arquitetura-design.md#estado-atual-medido
 enforced_by: [ feature-deps ]
 revisar_quando: uma quarta feature entrar, ou uma extensão passar narration em número de classes, ou a lista de desvios abaixo chegar a zero
 desvios:
@@ -3920,15 +3920,15 @@ describe( 'checkIndex', () => {
 describe( 'checkAdrHygiene', () => {
 	it( 'acusa ADR acima de 120 linhas', () => {
 		const a = checkAdrHygiene(
-			[ { id: '0001', file: 'docs/adr/0001-a.md', linhas: 140, origem: 'specs/x.md' } ],
-			[ 'docs/specs/x.md' ]
+			[ { id: '0001', file: 'docs/adr/0001-a.md', linhas: 140, origem: 'superpowers/specs/x.md' } ],
+			[ 'docs/superpowers/specs/x.md' ]
 		);
 		expect( a.some( ( p ) => /120/.test( p.message ) ) ).toBe( true );
 	} );
 
 	it( 'acusa origem que não existe', () => {
 		const a = checkAdrHygiene(
-			[ { id: '0001', file: 'docs/adr/0001-a.md', linhas: 50, origem: 'specs/sumiu.md#x' } ],
+			[ { id: '0001', file: 'docs/adr/0001-a.md', linhas: 50, origem: 'superpowers/specs/sumiu.md#x' } ],
 			[ 'docs/superpowers/specs/outro.md' ]
 		);
 		expect( a.some( ( p ) => /origem/.test( p.message ) ) ).toBe( true );
@@ -4117,9 +4117,11 @@ function checkAdrHygiene( adrs, files ) {
 				message: `ADR-${ adr.id } tem ${ adr.linhas } linhas, acima do teto de 120. Virou spec disfarçada?`,
 			} );
 		}
+		// `origem` é um caminho relativo a docs/, então a checagem é de existência
+		// exata. Casar por sufixo aceitaria qualquer `.../specs/x.md` — frouxo
+		// demais para a única verificação que a ADR-0001 declara sobre si mesma.
 		const alvo = 'docs/' + adr.origem.split( '#' )[ 0 ];
-		const existe = files.some( ( f ) => f.endsWith( alvo.replace( /^docs\//, '' ) ) );
-		if ( ! existe ) {
+		if ( ! files.includes( alvo ) ) {
 			problemas.push( {
 				message: `ADR-${ adr.id }: origem "${ adr.origem }" não aponta para nenhum arquivo existente.`,
 			} );
