@@ -42,9 +42,29 @@ const DOMINIO_LITERAL = `'${ DOMINIO }'`;
 //
 // Os lookbehinds de `new` e `function` são de comprimento variável (V8 aceita)
 // porque `new  Translate(` com dois espaços e `function\ntranslate(` com quebra
-// de linha são igualmente legais. O `(?<!\w)` aninhado dentro de cada um é a
+// de linha são igualmente legais. O `(?<![\w$])` aninhado dentro de cada um é a
 // diferença entre "a palavra new" e "qualquer coisa terminada em new": sem ele,
 // `renew translate(` — que é uma chamada de verdade — seria absolvida.
+//
+// Entre a palavra-chave e o nome ainda cabem duas coisas que a primeira versão
+// da guarda não previu, ambas PHP legal (`php -l` 8.2) e ambas acusadas como se
+// fossem chamada — falso positivo, que reprova CI em código correto:
+//
+//     new \Translate( $a );          → nome qualificado a partir da raiz
+//     new Foo\Bar\Translate( $a );   → nome qualificado por namespace
+//     function &translate( $t ) {}   → retorno por referência
+//
+// Daí `\\?(?:[A-Za-z_][A-Za-z0-9_]*\\)*` depois de `new\s+` (o qualificador
+// inteiro, que pode ser vazio) e a alternativa `\s*&\s*` depois de `function`
+// (`function&translate(` sem espaço nenhum também é legal).
+//
+// O `$` dentro de `(?<![\w$])` é o que impede a alternativa do `&` de virar
+// falso negativo: `$function & translate( 'x', 'outro' )` é um E bit a bit
+// sobre o retorno de uma chamada DE VERDADE — PHP legal, confirmado com
+// `php -l` — e sem excluir o `$` a guarda de `function` absolveria a chamada.
+// Falso negativo é a direção pior, e cada lookbehind novo é uma chance a mais
+// dele; por isso os dois lados vão para os testes, e não só o que motivou a
+// mudança.
 //
 // As alternativas de nome mais longo vêm primeiro: o motor tenta a alternação
 // na ordem dada, e mesmo sem isso o `\s*\(` que segue forçaria o backtracking a
@@ -57,7 +77,7 @@ const DOMINIO_LITERAL = `'${ DOMINIO }'`;
 // afetado por ela: `->`, `::` e `$` não têm letra, e `new`/`function` são
 // palavras-chave que o PHP também aceita em qualquer caixa.
 const CALL_RE =
-	/(?<!\w)(?<!->)(?<!::)(?<!(?<!\w)new\s+)(?<!(?<!\w)function\s+)(?<!\$)(translate_with_gettext_context|esc_attr__|esc_attr_e|esc_attr_x|esc_html__|esc_html_e|esc_html_x|translate|_nx_noop|_n_noop|_nx|_ex|__|_e|_n|_x)\s*\(/gi;
+	/(?<!\w)(?<!->)(?<!::)(?<!(?<![\w$])new\s+\\?(?:[A-Za-z_][A-Za-z0-9_]*\\)*)(?<!(?<![\w$])function(?:\s+|\s*&\s*))(?<!\$)(translate_with_gettext_context|esc_attr__|esc_attr_e|esc_attr_x|esc_html__|esc_html_e|esc_html_x|translate|_nx_noop|_n_noop|_nx|_ex|__|_e|_n|_x)\s*\(/gi;
 
 // Aridade mínima de cada função — o domínio é sempre o ÚLTIMO argumento.
 // Usado para separar "domínio ausente" (menos argumentos do que a função

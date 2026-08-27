@@ -232,6 +232,30 @@ describe( 'i18n-text-domain', () => {
 			[ 'function com quebra de linha', 'function\ntranslate( $t ) {}' ],
 			[ 'static method', 'private static function translate( $t ) {}' ],
 			[ 'chamada por variável', "$translate( 'a', 'b' );" ],
+			// Entre a palavra-chave e o nome cabe mais coisa do que a
+			// primeira versão da guarda previu. Cada uma destas é PHP legal
+			// (`php -l` 8.2) que a regra acusava — falso positivo, CI
+			// reprovado em código correto.
+			[ 'new qualificado da raiz', 'new \\Translate( $a );' ],
+			[ 'new qualificado por namespace', 'new Foo\\Translate( $a );' ],
+			[
+				'new qualificado com vários segmentos',
+				'new \\Foo\\Bar\\Translate( $a );',
+			],
+			[ 'new qualificado, um dos dezesseis nomes', 'new \\_x( $a );' ],
+			[ 'retorno por referência', 'function &translate( $t ) {}' ],
+			[
+				'retorno por referência com espaços',
+				'function & translate( $t ) {}',
+			],
+			[
+				'retorno por referência sem espaço',
+				'function&translate( $t ) {}',
+			],
+			[
+				'método com retorno por referência',
+				'public static function &translate( $t ) {}',
+			],
 		] )( 'não acusa %s', ( _rotulo, linha ) => {
 			expect( regra.check( ctxCom( `<?php\n${ linha }\n` ) ) ).toEqual(
 				[]
@@ -252,9 +276,25 @@ describe( 'i18n-text-domain', () => {
 				"translate( 'x', 'outro' );",
 				"$a = translate( 'x', 'outro' );",
 				"return translate( 'x', 'outro' );",
-				// "renew" termina em "new", mas não É `new` — o `(?<!\w)`
+				// "renew" termina em "new", mas não É `new` — o `(?<![\w$])`
 				// aninhado dentro do lookbehind é o que separa os dois.
 				"renew translate( 'x', 'outro' );",
+				// A forma qualificada da função global: chamada de verdade,
+				// e o `\` NÃO pode fazê-la passar pela guarda de `new`.
+				"\\translate( 'x', 'outro' );",
+				"renew \\translate( 'x', 'outro' );",
+				// O `$` de `(?<![\w$])` é o que segura estas duas: um E bit a
+				// bit sobre o retorno de uma chamada de verdade é PHP legal
+				// (`php -l` 8.2), e sem excluir o `$` a alternativa `\s*&\s*`
+				// da guarda de `function` absolveria a chamada — trocaria o
+				// falso positivo do retorno por referência por um falso
+				// negativo, que é a direção pior.
+				"$function & translate( 'x', 'outro' );",
+				"$function&translate( 'x', 'outro' );",
+				// Instanciação e chamada na mesma linha: a guarda de `new`
+				// absolve o nome da classe, não o argumento.
+				"$a = new Foo( translate( 'x', 'outro' ) );",
+				"$a = new \\Foo( \\translate( 'x', 'outro' ) );",
 			] ) {
 				const a = regra.check( ctxCom( `<?php\n${ linha }\n` ) );
 				expect( { linha, achados: a.length } ).toEqual( {
