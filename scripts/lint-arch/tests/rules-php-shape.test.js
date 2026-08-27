@@ -174,6 +174,32 @@ describe( 'php-class-naming', () => {
 			expect( new Set( a.map( ( f ) => f.key ) ).size ).toBe( 2 );
 		} );
 
+		it( 'não confunde um literal de string cujo conteúdo parece um require_once', () => {
+			// Regressão: antes do fix, o texto dentro da string era lido como um
+			// require_once de verdade e virava um require-once-orfao fabricado.
+			expect(
+				naming.check(
+					ctxArquivos( {
+						'post-voice.php':
+							'<?php\n$doc = "Exemplo: require_once POST_VOICE_PATH . \'features/x/php/class-fake.php\';";\n',
+					} )
+				)
+			).toEqual( [] );
+		} );
+
+		it( 'ainda acusa require_once órfão de verdade quando há string parecida por perto', () => {
+			const a = naming.check(
+				ctxArquivos( {
+					'post-voice.php':
+						"<?php\n$doc = \"Exemplo: require_once POST_VOICE_PATH . 'features/x/php/class-fake.php';\";\nrequire_once POST_VOICE_PATH . 'features/x/php/class-ghost.php';\n",
+				} )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe(
+				'post-voice.php → require-once-orfao:features/x/php/class-ghost.php'
+			);
+		} );
+
 		it( 'não acusa nada quando classe e require_once correspondem', () => {
 			expect(
 				naming.check(

@@ -50,18 +50,28 @@ function declaradas( ctx, file ) {
 /**
  * Lê os `require_once POST_VOICE_PATH . '<caminho>'` de post-voice.php.
  *
- * stripPhpComments, e não stripPhpNoise: o caminho é o corpo do literal de
- * string, que stripPhpNoise apagaria.
+ * `REQUIRE_RE` roda sobre `source` (comentários fora, strings dentro) porque
+ * precisa do corpo do literal do caminho — stripPhpNoise apagaria. Mas um
+ * `require_once ...` dentro de uma string de verdade (uma mensagem de log, um
+ * comentário de exemplo) casaria do mesmo jeito ali; o filtro é o mesmo que
+ * `constantes()` usa para `const`: conferir, no mesmo offset, que `codigo`
+ * (stripPhpNoise) também começa com "require_once" naquele ponto. Dentro de
+ * uma string de verdade, `codigo` teria espaços em branco ali, não a palavra.
  *
  * @param {Object} ctx
  * @return {{ path: string, line: number }[]} um item por `require_once`
  */
 function requireOnceEntries( ctx ) {
-	const source = stripPhpComments( ctx.read( ENTRY_FILE ) );
+	const raw = ctx.read( ENTRY_FILE );
+	const source = stripPhpComments( raw );
+	const codigo = stripPhpNoise( raw );
 	REQUIRE_RE.lastIndex = 0;
 	const out = [];
 	let m;
 	while ( ( m = REQUIRE_RE.exec( source ) ) !== null ) {
+		if ( codigo.slice( m.index, m.index + 12 ) !== 'require_once' ) {
+			continue;
+		}
 		out.push( {
 			path: m[ 1 ],
 			line: source.slice( 0, m.index ).split( '\n' ).length,
