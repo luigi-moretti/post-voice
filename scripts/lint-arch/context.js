@@ -35,6 +35,14 @@ function blank( text ) {
  * Substitui em vez de remover para que linha e coluna de um match continuem
  * apontando para o lugar certo no arquivo original.
  *
+ * Um arquivo PHP alterna entre dois modos: fora de `<?php ... ?>` o texto é
+ * saída literal (HTML, em geral), e dentro é código. `strip` só entende
+ * comentário/string/atributo enquanto está dentro — fora, copia tudo ao pé da
+ * letra, porque uma aspa ou um `//` no HTML não abre nada em PHP. Sem essa
+ * distinção, uma tag `<?php ... ?>` embutida num atributo `class="<?php ...
+ * ?>"` cai dentro do rastreamento de string aberto pela aspa do atributo e é
+ * apagada como se fosse corpo de string.
+ *
  * @param {string}  source
  * @param {boolean} strings também apaga o corpo dos literais de string
  * @return {string} o mesmo comprimento, com o ruído em branco
@@ -42,18 +50,58 @@ function blank( text ) {
 function strip( source, strings ) {
 	let out = '';
 	let i = 0;
+	// O arquivo começa fora do PHP. Isso não muda o resultado para os arquivos
+	// que já começam com `<?php` — a fatia "fora" antes dele é vazia.
+	let dentro = false;
 	while ( i < source.length ) {
+		if ( ! dentro ) {
+			const abrePhp = source.startsWith( '<?php', i );
+			const abreEcho = ! abrePhp && source.startsWith( '<?=', i );
+			if ( abrePhp || abreEcho ) {
+				const tag = abrePhp ? '<?php' : '<?=';
+				out += tag;
+				i += tag.length;
+				dentro = true;
+				continue;
+			}
+			// Texto literal (HTML): copiado sem interpretar aspas ou `//`.
+			out += source[ i ];
+			i += 1;
+			continue;
+		}
+
 		const dois = source.slice( i, i + 2 );
+		if ( dois === '?>' ) {
+			out += dois;
+			i += 2;
+			dentro = false;
+			continue;
+		}
 		// `#[` abre um atributo do PHP 8, não um comentário.
 		const hashComment = source[ i ] === '#' && source[ i + 1 ] !== '[';
 		if ( dois === '//' || hashComment ) {
-			const fim = source.indexOf( '\n', i );
-			const stop = fim === -1 ? source.length : fim;
+			// Diferente de `/* */` e de string, um `?>` FECHA um comentário de
+			// linha — é a própria linguagem que trata a tag de fechamento como
+			// o fim da linha ali. Para no que vier primeiro: a quebra de linha
+			// ou a tag.
+			const fimLinha = source.indexOf( '\n', i );
+			const fimTag = source.indexOf( '?>', i );
+			const paraNaTag =
+				fimTag !== -1 && ( fimLinha === -1 || fimTag < fimLinha );
+			const fimSemTag = fimLinha === -1 ? source.length : fimLinha;
+			const stop = paraNaTag ? fimTag : fimSemTag;
 			out += blank( source.slice( i, stop ) );
 			i = stop;
+			if ( paraNaTag ) {
+				out += '?>';
+				i += 2;
+				dentro = false;
+			}
 			continue;
 		}
 		if ( dois === '/*' ) {
+			// Um `?>` dentro do comentário não fecha a tag — faz parte do
+			// comentário, então a busca é só por `*/`.
 			const fim = source.indexOf( '*/', i + 2 );
 			const stop = fim === -1 ? source.length : fim + 2;
 			out += blank( source.slice( i, stop ) );
@@ -63,6 +111,8 @@ function strip( source, strings ) {
 		if ( source[ i ] === "'" || source[ i ] === '"' ) {
 			const aspas = source[ i ];
 			let j = i + 1;
+			// Um `?>` dentro da string não fecha a tag — faz parte do corpo,
+			// então a busca é só pela aspa de fechamento.
 			while ( j < source.length && source[ j ] !== aspas ) {
 				j += source[ j ] === '\\' ? 2 : 1;
 			}
