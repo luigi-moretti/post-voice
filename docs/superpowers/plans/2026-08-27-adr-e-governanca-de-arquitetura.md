@@ -1208,7 +1208,7 @@ desvios:
 
 Corpo:
 
-- **Contexto:** um plugin WordPress cresce por camada técnica (`includes/`, `assets/`, `admin/`) e a camada não diz nada sobre o que o código faz. O layout por feature foi escolhido antes da primeira linha de código, e a medição de 2026-08-25 confirma que a divisão continua legível: `narration` tem 5 das 10 classes PHP e ~25 dos ~35 módulos TypeScript, `pronunciation` e `player-style` modificam o comportamento dela.
+- **Contexto:** um plugin WordPress cresce por camada técnica (`includes/`, `assets/`, `admin/`) e a camada não diz nada sobre o que o código faz. O layout por feature foi escolhido antes da primeira linha de código, e a medição de 2026-08-25 confirma que a divisão continua legível: `narration` tem 5 das 10 classes PHP e 24 dos 33 módulos TypeScript, `pronunciation` e `player-style` modificam o comportamento dela.
 - **Decisão:** todo arquivo de produção mora em `features/<feature>/{php,editor,frontend,admin,tests}/`. Código só migra para `shared/` quando um **segundo** consumidor real aparece — abstrair antes é adivinhar a fronteira errada.
 - **Consequências:** fica mais fácil ler uma feature inteira num diretório e apagá-la sem caçar restos. Fica mais difícil compartilhar: o segundo consumidor paga a migração, de propósito.
 - **Como verificar:** `feature-layout` e `shared-two-consumers`. O desvio listado é `features/narration/format-time.ts`, que está na raiz da feature em vez de dentro de `editor/` — seu único consumidor de produção é `editor/mini-player.tsx`. Corrigir é mover o arquivo, o que é mudança em código de produção e está fora do escopo do trabalho que criou esta ADR.
@@ -1582,7 +1582,7 @@ Corpo:
 
 - **Contexto.** O `CLAUDE.md` dizia *"shared code moves to `shared/` only when a second feature actually needs it"*, mas nunca disse o que fazer quando a feature A precisa da **feature B inteira**. Sem regra, cada caso resolveu com uma referência direta, e a medição de 2026-08-25 encontrou onze arestas formando os ciclos `narration ↔ pronunciation` e `narration ↔ player-style`, nas duas linguagens. A causa raiz é a regra que faltava, não descuido: `shared/` responde "dois consumidores do mesmo utilitário", e nenhuma dessas onze arestas é isso.
 
-  A forma real do sistema também importa. `features/` sugere pares independentes; a realidade é **um núcleo com duas extensões**. `narration` tem 5 das 10 classes PHP e ~25 dos ~35 módulos TypeScript; `pronunciation` e `player-style` modificam o comportamento dela e nenhuma faz sentido sozinha. A decisão que nunca foi tomada é: `narration` pode nomear suas extensões, ou elas se plugam nela?
+  A forma real do sistema também importa. `features/` sugere pares independentes; a realidade é **um núcleo com duas extensões**. `narration` tem 5 das 10 classes PHP e 24 dos 33 módulos TypeScript; `pronunciation` e `player-style` modificam o comportamento dela e nenhuma faz sentido sozinha. A decisão que nunca foi tomada é: `narration` pode nomear suas extensões, ou elas se plugam nela?
 
 - **Decisão.** Uma feature não referencia outra feature. O que atravessa a fronteira vai para `shared/` (quando é utilitário com dois consumidores, ADR-0004) ou passa por um ponto de extensão que o núcleo publica. **As onze arestas existentes ficam congeladas na lista de `desvios:` acima**: valem enquanto estiverem listadas, e aresta nova reprova o CI.
 
