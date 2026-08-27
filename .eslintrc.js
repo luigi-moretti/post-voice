@@ -8,8 +8,18 @@ module.exports = {
 			// Tooling that runs in Node, not in a browser or a bundle. Without an
 			// explicit env, the shared config leaves modern globals like
 			// `globalThis` undeclared and `no-undef` fires on correct code.
-			files: [ 'test/**/*.js', 'scripts/**/*.mjs', '*.config.js' ],
+			files: [
+				'test/**/*.js',
+				'scripts/**/*.js',
+				'scripts/**/*.mjs',
+				'*.config.js',
+			],
 			env: { node: true, es2022: true },
+		},
+		{
+			// Test files need Jest globals (describe, it, expect, etc).
+			files: [ 'test/**/*.js', 'scripts/**/tests/**/*.js' ],
+			env: { jest: true },
 		},
 	],
 	ignorePatterns: [

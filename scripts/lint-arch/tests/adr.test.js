@@ -1,0 +1,128 @@
+const { parseAdr, STATUSES } = require( '../adr' );
+
+const VALIDO = `---
+id: 0005
+titulo: Topologia de dependência entre features
+status: aceita-com-desvio
+data: 2026-08-27
+origem: superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md#arquitetura
+enforced_by: [ feature-deps ]    # lista, sempre
+revisar_quando: uma quarta feature entrar
+desvios:
+  - features/narration/php/class-assets.php → Post_Voice_Dictionary_Store
+  - features/narration/editor/index.tsx → pronunciation/editor/dictionary-entry
+---
+
+## Contexto
+
+Texto.
+`;
+
+describe( 'parseAdr', () => {
+	it( 'lê os campos escalares', () => {
+		const adr = parseAdr( VALIDO, 'docs/adr/0005-x.md' );
+		expect( adr.id ).toBe( '0005' );
+		expect( adr.titulo ).toBe( 'Topologia de dependência entre features' );
+		expect( adr.status ).toBe( 'aceita-com-desvio' );
+		expect( adr.data ).toBe( '2026-08-27' );
+		expect( adr.origem ).toBe(
+			'superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md#arquitetura'
+		);
+		expect( adr.revisarQuando ).toBe( 'uma quarta feature entrar' );
+		expect( adr.file ).toBe( 'docs/adr/0005-x.md' );
+	} );
+
+	it( 'lê enforced_by como lista, descartando o comentário à direita', () => {
+		expect( parseAdr( VALIDO, 'f.md' ).enforcedBy ).toEqual( [
+			'feature-deps',
+		] );
+	} );
+
+	it( 'preserva o "#" de uma âncora em origem', () => {
+		expect( parseAdr( VALIDO, 'f.md' ).origem ).toContain( '#arquitetura' );
+	} );
+
+	it( 'lê desvios como lista em bloco', () => {
+		expect( parseAdr( VALIDO, 'f.md' ).desvios ).toEqual( [
+			'features/narration/php/class-assets.php → Post_Voice_Dictionary_Store',
+			'features/narration/editor/index.tsx → pronunciation/editor/dictionary-entry',
+		] );
+	} );
+
+	it( 'conta as linhas do arquivo', () => {
+		expect( parseAdr( VALIDO, 'f.md' ).linhas ).toBe(
+			VALIDO.split( '\n' ).length
+		);
+	} );
+
+	it( 'aceita desvios: [] e enforced_by com vários itens', () => {
+		const adr = parseAdr(
+			VALIDO.replace(
+				'[ feature-deps ]',
+				'[ feature-layout, shared-two-consumers ]'
+			)
+				.replace( 'aceita-com-desvio', 'aceita' )
+				.replace( /desvios:\n( +- .*\n)+/, 'desvios: []\n' ),
+			'f.md'
+		);
+		expect( adr.enforcedBy ).toEqual( [
+			'feature-layout',
+			'shared-two-consumers',
+		] );
+		expect( adr.desvios ).toEqual( [] );
+	} );
+
+	it( 'aceita superada-por-NNNN como status', () => {
+		const adr = parseAdr(
+			VALIDO.replace( 'aceita-com-desvio', 'superada-por-0042' ),
+			'f.md'
+		);
+		expect( adr.status ).toBe( 'superada-por-0042' );
+	} );
+
+	it( 'recusa arquivo sem front-matter', () => {
+		expect( () => parseAdr( '# Só um título\n', 'f.md' ) ).toThrow(
+			/front-matter/
+		);
+	} );
+
+	it( 'recusa campo obrigatório ausente', () => {
+		expect( () =>
+			parseAdr( VALIDO.replace( /^origem: .*$/m, '' ), 'f.md' )
+		).toThrow( /origem/ );
+	} );
+
+	it( 'recusa status desconhecido', () => {
+		expect( () =>
+			parseAdr( VALIDO.replace( 'aceita-com-desvio', 'talvez' ), 'f.md' )
+		).toThrow( /status/ );
+	} );
+
+	it( 'recusa enforced_by escalar — tem de ser lista', () => {
+		expect( () =>
+			parseAdr(
+				VALIDO.replace( '[ feature-deps ]', 'feature-deps' ),
+				'f.md'
+			)
+		).toThrow( /enforced_by/ );
+	} );
+
+	it( 'recusa aceita-com-desvio sem desvios listados', () => {
+		expect( () =>
+			parseAdr(
+				VALIDO.replace( /desvios:\n( +- .*\n)+/, 'desvios: []\n' ),
+				'f.md'
+			)
+		).toThrow( /aceita-com-desvio/ );
+	} );
+
+	it( 'recusa status aceita com desvios listados', () => {
+		expect( () =>
+			parseAdr( VALIDO.replace( 'aceita-com-desvio', 'aceita' ), 'f.md' )
+		).toThrow( /aceita/ );
+	} );
+
+	it( 'expõe o vocabulário de status', () => {
+		expect( STATUSES ).toContain( 'aceita-com-desvio' );
+	} );
+} );
