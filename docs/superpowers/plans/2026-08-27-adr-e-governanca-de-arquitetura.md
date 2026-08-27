@@ -1089,11 +1089,19 @@ Confira que estão lá e siga.
 
 - [ ] **Step 7: Verificar que o comando roda**
 
-Run: `npm run lint:arch`
-Esperado: exit 0 e `lint:arch — nenhuma violação e nenhuma dívida quitada pendente.` A ADR-0001 declara `enforced_by: [ doctor ]`, que é literal, e o registro de regras está vazio.
-
 Run: `npm run lint:js && npx tsc --noEmit`
 Esperado: ambos passam.
+
+Run: `npm run lint:arch`
+Esperado: **falha** com `Cannot find module './context'`. `scripts/lint-arch/context.js`
+só nasce na Tarefa 9, e `index.js` o exige no topo. Registre a saída no relatório como
+estado pendente conhecido; **não** crie um stub — a Tarefa 9 traz o módulo de verdade, e
+um stub teria de ser removido depois. A suíte Jest não é afetada: ela importa
+`{ run, format }` e injeta um `ctx` falso, sem tocar no `createContext`.
+
+A partir da Tarefa 9, o esperado passa a ser exit 0 com `lint:arch — nenhuma violação e
+nenhuma dívida quitada pendente.` — a ADR-0001 declara `enforced_by: [ doctor ]`, que é
+literal, e o registro de regras está vazio.
 
 - [ ] **Step 8: Commit**
 
