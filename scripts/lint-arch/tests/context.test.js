@@ -8,8 +8,18 @@ const {
 	isTestPath,
 	phpSources,
 } = require( '../context' );
+// Duas regras entram aqui de propósito, e só no describe de heredoc: as duas
+// "bocas" que o suporte a heredoc fecha eram defeitos observáveis no ACHADO de
+// uma regra (um falso negativo e um falso positivo), não só na saída do
+// stripper. Uma asserção sobre a saída passaria a descrever a implementação;
+// a asserção sobre o achado descreve o defeito que existia.
+const tts = require( '../rules/no-server-side-tts' );
+const i18n = require( '../rules/i18n-text-domain' );
 
 const REPO_ROOT = path.join( __dirname, '..', '..', '..' );
+const ARQUIVO_PROD = 'features/narration/php/class-x.php';
+const ctxCom = ( src ) =>
+	createContext( { files: [ ARQUIVO_PROD ], read: () => src } );
 
 describe( 'stripPhpComments', () => {
 	// Todo fragmento aqui é prefixado com `<?php\n`: um arquivo PHP de verdade
@@ -75,8 +85,13 @@ describe( 'stripPhpNoise', () => {
 	} );
 
 	it( 'não muda o comprimento total', () => {
-		const src = "// c\n$a = 'x';\n";
+		// Com o `<?php`, como as oito irmãs: sem ele o fragmento inteiro é
+		// texto literal copiado ao pé da letra, e a asserção de comprimento
+		// passaria até para uma implementação `x => x` — não exercitaria nem
+		// o apagamento do comentário nem o do corpo da string.
+		const src = "<?php\n// c\n$a = 'x';\n";
 		expect( stripPhpNoise( src ) ).toHaveLength( src.length );
+		expect( stripPhpNoise( src ) ).not.toMatch( /c/ );
 	} );
 } );
 
@@ -159,6 +174,23 @@ describe( 'tags PHP (fora vs. dentro do código)', () => {
 		expect( maiusculo ).toMatch( /^exec\(\);$/m );
 	} );
 
+	it( '`<?php` exige espaço em branco (ou EOF) depois — `<?phpecho` não abre', () => {
+		// O lexer do PHP só reconhece a tag seguida de espaço, tab ou quebra
+		// de linha; `<?phpecho 1;` é texto literal de saída. Reconhecê-la ali
+		// punha o stripper em modo código onde o PHP não está, e ele apagaria
+		// como comentário/string algo que é saída literal.
+		const src = "<?phpecho 'x'; // isto é HTML\n";
+		for ( const fn of [ stripPhpComments, stripPhpNoise ] ) {
+			expect( fn( src ) ).toBe( src );
+		}
+		// E a forma válida continua abrindo, inclusive com tab.
+		expect( stripPhpNoise( "<?php\t$a = 'exec';\n" ) ).not.toMatch(
+			/'exec'/
+		);
+		// `<?php` no fim do arquivo, sem nada depois, também é válido.
+		expect( stripPhpComments( '<?php' ) ).toBe( '<?php' );
+	} );
+
 	it( 'preserva comprimento e quebras de linha com HTML fora do PHP', () => {
 		const src =
 			'<div class="<?php echo esc_attr( $c ); // c\n?>">\n' +
@@ -205,6 +237,141 @@ describe( 'tags PHP (fora vs. dentro do código)', () => {
 		const out = stripPhpNoise( src );
 		const chamadas = out.match( /(?:esc_attr_e|esc_html_e|__)\s*\(/g );
 		expect( chamadas ).toHaveLength( 7 );
+	} );
+} );
+
+// Um heredoc/nowdoc é um literal de string cujo corpo é opaco: aspas, `//`,
+// `#`, `/* */` e `?>` lá dentro são bytes do corpo, não sintaxe. Antes de
+// `lerHeredoc`, `strip()` não conhecia a construção e lia o corpo como código
+// — daí as duas "bocas" no fim deste bloco. O contrato é o mesmo dos literais
+// comuns: `stripPhpComments` (strings=false) preserva o corpo, `stripPhpNoise`
+// (strings=true) o apaga, e a sintaxe — cabeçalho, indentação e rótulo de
+// fechamento — fica sempre visível nas duas.
+describe( 'heredoc / nowdoc', () => {
+	it( 'apaga o corpo de um `<<<EOT` e mantém cabeçalho e rótulo', () => {
+		const src = '<?php\n$a = <<<EOT\nexec( 1 );\nEOT;\nb();\n';
+		const comentarios = stripPhpComments( src );
+		const ruido = stripPhpNoise( src );
+		// strings=false: o corpo é preservado, como o de qualquer literal.
+		expect( comentarios ).toBe( src );
+		// strings=true: o corpo some, a sintaxe fica.
+		expect( ruido ).not.toMatch( /exec/ );
+		expect( ruido ).toMatch( /^\$a = <<<EOT$/m );
+		expect( ruido ).toMatch( /^EOT;$/m );
+		expect( ruido ).toMatch( /^b\(\);$/m );
+	} );
+
+	it( "reconhece o nowdoc `<<<'EOT'`", () => {
+		const src = "<?php\n$a = <<<'EOT'\nexec( 1 );\nEOT;\nb();\n";
+		const ruido = stripPhpNoise( src );
+		expect( stripPhpComments( src ) ).toBe( src );
+		expect( ruido ).not.toMatch( /exec/ );
+		expect( ruido ).toMatch( /^\$a = <<<'EOT'$/m );
+		expect( ruido ).toMatch( /^b\(\);$/m );
+	} );
+
+	it( 'reconhece o heredoc com rótulo entre aspas duplas `<<<"EOT"`', () => {
+		const src = '<?php\n$a = <<<"EOT"\nexec( 1 );\nEOT;\nb();\n';
+		const ruido = stripPhpNoise( src );
+		expect( stripPhpComments( src ) ).toBe( src );
+		expect( ruido ).not.toMatch( /exec/ );
+		expect( ruido ).toMatch( /^\$a = <<<"EOT"$/m );
+		expect( ruido ).toMatch( /^b\(\);$/m );
+	} );
+
+	it( 'aceita rótulo de fechamento indentado (PHP 7.3+)', () => {
+		const src = '<?php\n$a = <<<EOT\n    exec( 1 );\n    EOT;\nb();\n';
+		const ruido = stripPhpNoise( src );
+		expect( ruido ).not.toMatch( /exec/ );
+		// A indentação é sintaxe do fechamento: fica visível.
+		expect( ruido ).toMatch( /^ {4}EOT;$/m );
+		expect( ruido ).toMatch( /^b\(\);$/m );
+	} );
+
+	it( 'o rótulo no meio de uma linha do corpo não termina o heredoc', () => {
+		const src = '<?php\n$a = <<<EOT\nnão EOT ainda\nEOT;\nexec();\n';
+		const ruido = stripPhpNoise( src );
+		// Se "EOT" no meio da linha 3 tivesse fechado, "ainda" seria lido como
+		// código e sobreviveria.
+		expect( ruido ).not.toMatch( /ainda/ );
+		expect( ruido ).toMatch( /^EOT;$/m );
+		expect( ruido ).toMatch( /^exec\(\);$/m );
+	} );
+
+	it( 'o rótulo como prefixo de um identificador maior não termina', () => {
+		const src = '<?php\n$a = <<<EOT\nEOTX\nEOT;\nexec();\n';
+		const ruido = stripPhpNoise( src );
+		expect( ruido ).not.toMatch( /EOTX/ );
+		expect( ruido ).toMatch( /^EOT;$/m );
+		expect( ruido ).toMatch( /^exec\(\);$/m );
+	} );
+
+	it( 'heredoc sem terminador consome até o fim do arquivo', () => {
+		const src = '<?php\n$a = <<<EOT\nexec( 1 );\n';
+		for ( const fn of [ stripPhpComments, stripPhpNoise ] ) {
+			const out = fn( src );
+			expect( out ).toHaveLength( src.length );
+			expect( out.split( '\n' ) ).toHaveLength(
+				src.split( '\n' ).length
+			);
+		}
+		// Igual a uma string ou a um `/* */` sem fechamento: tudo até EOF é
+		// corpo, e com strings=true tudo isso some.
+		expect( stripPhpNoise( src ) ).not.toMatch( /exec/ );
+		expect( stripPhpComments( src ) ).toBe( src );
+	} );
+
+	it( '`1 <<< 2` não é heredoc — nada é consumido', () => {
+		// `<<<` só abre heredoc quando o que vem depois é um rótulo e mais
+		// nada até a quebra de linha. Sem essa exigência, um `<<<` qualquer
+		// engoliria o resto do arquivo.
+		const src = '<?php\n$a = 1 <<< 2;\nexec();\n';
+		for ( const fn of [ stripPhpComments, stripPhpNoise ] ) {
+			expect( fn( src ) ).toBe( src );
+		}
+		// E também não abre com sobra na linha do cabeçalho.
+		const comSobra = '<?php\n$a = <<<EOT sobra\nexec();\n';
+		expect( stripPhpNoise( comSobra ) ).toMatch( /^exec\(\);$/m );
+	} );
+
+	it( 'preserva comprimento e quebras de linha em todas as formas', () => {
+		const src =
+			'<?php\n' +
+			"$a = <<<'EOT'\ncorpo 1\nEOT;\n" +
+			'$b = <<<"EOT"\ncorpo 2\n  EOT;\n' +
+			'$c = <<<EOT\ncorpo 3\nEOT;\n';
+		for ( const fn of [ stripPhpComments, stripPhpNoise ] ) {
+			const out = fn( src );
+			expect( out ).toHaveLength( src.length );
+			expect( out.split( '\n' ) ).toHaveLength(
+				src.split( '\n' ).length
+			);
+		}
+	} );
+
+	// As duas bocas, escritas como o defeito que elas eram.
+
+	it( 'apóstrofo no corpo não engole a chamada seguinte (era falso negativo)', () => {
+		// Sem conhecer heredoc, `strip()` via o apóstrofo de "d'água" como
+		// abertura de string e apagava tudo até a próxima aspa simples — que
+		// é a do argumento seguinte. A chamada `__( ... )` sumia de `codigo`,
+		// `CALL_RE` não a encontrava, e a violação passava despercebida.
+		const src = "<?php\n$a = <<<EOT\nd'água\nEOT;\n__( 'Olá', 'outro' );\n";
+		const achados = i18n.check( ctxCom( src ) );
+		expect( achados ).toHaveLength( 1 );
+		expect( achados[ 0 ].line ).toBe( 5 );
+		expect( achados[ 0 ].key ).toBe(
+			`${ ARQUIVO_PROD } → __-dominio-errado`
+		);
+	} );
+
+	it( '`?>` no corpo não joga o comentário seguinte para fora do PHP (era falso positivo)', () => {
+		// Sem conhecer heredoc, o `?>` dentro do corpo fechava a tag; a linha
+		// seguinte virava texto literal (HTML), o comentário `//` não era
+		// apagado, e a regra acusava um `shell_exec` que só existe comentado.
+		const src =
+			'<?php\n$a = <<<EOT\ntag ?> no corpo\nEOT;\n// shell_exec( $cmd );\n';
+		expect( tts.check( ctxCom( src ) ) ).toEqual( [] );
 	} );
 } );
 

@@ -29,6 +29,61 @@ function blank( text ) {
 	return text.replace( /[^\n]/g, ' ' );
 }
 
+// `<<<` seguido de espaço opcional e então um identificador — cru, ou entre
+// aspas simples (nowdoc) ou duplas (heredoc); PHP não distingue os dois para
+// fins de onde o corpo começa e termina, só para se ele interpola variável, o
+// que não importa aqui. O resto da linha de abertura só pode ter espaço em
+// branco até a quebra de linha — é aí que o corpo começa.
+const HEREDOC_CABECALHO_RE =
+	/^<<<[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[ \t]*\r?\n/;
+
+/**
+ * Reconhece um heredoc/nowdoc que começa em `source[i]` (que já é `<<<`).
+ *
+ * O corpo é opaco: um `?>`, uma aspa, um `//`, um `#` ou um bloco `/* ... *\/` lá
+ * dentro não abre nem fecha nada, do mesmo jeito que já valia para o corpo
+ * de uma string comum antes desta função existir — é por isso que `strip`
+ * não faz uma segunda passada sobre o corpo, só decide apagá-lo ou não.
+ *
+ * O rótulo de fechamento pode vir indentado (PHP 7.3+) — por isso a busca é
+ * por uma linha cujo primeiro token, depois de espaço em branco, é o próprio
+ * rótulo não seguido de mais um caractere de palavra: um corpo que
+ * simplesmente *contém* o rótulo no meio de uma linha, ou como prefixo de um
+ * identificador maior, não é o terminador.
+ *
+ * @param {string} source
+ * @param {number} i      posição de `<<<` em `source`
+ * @return {{inicioCorpo:number,fimCorpo:number,fimRotulo:number,temTerminador:boolean}|null}
+ *   null quando `<<<` ali não é um heredoc válido (não é reconhecido; `strip`
+ *   trata os caracteres normalmente, um de cada vez)
+ */
+function lerHeredoc( source, i ) {
+	const cabecalho = HEREDOC_CABECALHO_RE.exec( source.slice( i ) );
+	if ( cabecalho === null ) {
+		return null;
+	}
+	const rotulo = cabecalho[ 2 ];
+	const inicioCorpo = i + cabecalho[ 0 ].length;
+	// `(^|\n)` casa tanto um corpo vazio (rótulo de fechamento já na
+	// primeira linha) quanto o início de qualquer linha seguinte.
+	const termRe = new RegExp( '(^|\n)([ \t]*)' + rotulo + '(?![A-Za-z0-9_])' );
+	const resto = source.slice( inicioCorpo );
+	const achado = termRe.exec( resto );
+	if ( achado === null ) {
+		// Sem terminador: consome até o fim do arquivo, como um comentário
+		// de bloco ou uma string sem fechamento.
+		return {
+			inicioCorpo,
+			fimCorpo: source.length,
+			fimRotulo: source.length,
+			temTerminador: false,
+		};
+	}
+	const fimCorpo = inicioCorpo + achado.index + achado[ 1 ].length;
+	const fimRotulo = fimCorpo + achado[ 2 ].length + rotulo.length;
+	return { inicioCorpo, fimCorpo, fimRotulo, temTerminador: true };
+}
+
 /**
  * Substitui comentários PHP por espaços, e opcionalmente o corpo das strings.
  *
@@ -58,7 +113,17 @@ function strip( source, strings ) {
 			// `<?PHP` e `<?PhP` são PHP válido — a tag não diferencia
 			// maiúsculas de minúsculas. `<?=` não tem letra nenhuma, então
 			// não precisa da mesma checagem.
-			const abrePhp = /^<\?php/i.test( source.slice( i, i + 5 ) );
+			//
+			// A tag só abre quando o que vem depois dela é espaço em branco
+			// (espaço, tab ou quebra de linha — é a regra do próprio lexer do
+			// PHP) ou o fim do arquivo. `<?phpecho 1;` não abre nada: é texto
+			// literal. Sem essa segunda metade, o stripper entrava em modo
+			// código onde o PHP não entra, e apagava como comentário/string
+			// algo que na verdade é saída literal.
+			const abrePhp =
+				/^<\?php/i.test( source.slice( i, i + 5 ) ) &&
+				( i + 5 === source.length ||
+					/[ \t\r\n]/.test( source[ i + 5 ] ) );
 			const abreEcho = ! abrePhp && source.startsWith( '<?=', i );
 			if ( abrePhp || abreEcho ) {
 				// `slice`, não um literal fixo: preserva a caixa original da
@@ -112,6 +177,37 @@ function strip( source, strings ) {
 			out += blank( source.slice( i, stop ) );
 			i = stop;
 			continue;
+		}
+		if ( source.startsWith( '<<<', i ) ) {
+			const heredoc = lerHeredoc( source, i );
+			if ( heredoc !== null ) {
+				// Cabeçalho (`<<<EOT\n`, `<<<'EOT'\n`, com o espaço opcional
+				// que o PHP aceita): sintaxe de verdade, sempre visível.
+				out += source.slice( i, heredoc.inicioCorpo );
+				// Corpo: tratado como o corpo de uma string comum — apagado só
+				// quando `strings` é true. `?>`, aspas, `//`, `#` e `/* */`
+				// dentro dele não abrem nem fecham nada; são só bytes do corpo,
+				// do mesmo jeito que um `?>` dentro de uma string comum já era
+				// inerte antes desta função existir.
+				const corpo = source.slice(
+					heredoc.inicioCorpo,
+					heredoc.fimCorpo
+				);
+				out += strings ? blank( corpo ) : corpo;
+				if ( heredoc.temTerminador ) {
+					// A indentação e o rótulo de fechamento também são
+					// sintaxe — ficam visíveis, como a aspa de fechamento de
+					// uma string comum.
+					out += source.slice( heredoc.fimCorpo, heredoc.fimRotulo );
+					i = heredoc.fimRotulo;
+				} else {
+					// Sem terminador: o heredoc consome até o fim do
+					// arquivo, igual a uma string ou comentário de bloco sem
+					// fechamento.
+					i = heredoc.fimCorpo;
+				}
+				continue;
+			}
 		}
 		if ( source[ i ] === "'" || source[ i ] === '"' ) {
 			const aspas = source[ i ];
