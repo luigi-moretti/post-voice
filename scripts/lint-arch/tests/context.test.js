@@ -143,6 +143,22 @@ describe( 'tags PHP (fora vs. dentro do código)', () => {
 		expect( out ).toMatch( /^exec\(\);$/m );
 	} );
 
+	it( '<?PHP entra em código igual a <?php — a tag não diferencia caixa', () => {
+		// `<?PHP` e `<?PhP` são PHP válido; o `strip()` original só
+		// reconhecia a forma minúscula, então um arquivo assim ficava
+		// inteiro do lado de "fora" e string/comentário nunca eram apagados
+		// — um falso positivo (a regra vê texto de menos apagado, não de
+		// mais) em vez do falso negativo do Task 12.
+		const minusculo = stripPhpNoise( "<?php\n$a = 'exec';\nexec();\n" );
+		const maiusculo = stripPhpNoise( "<?PHP\n$a = 'exec';\nexec();\n" );
+		// A tag em si preserva a caixa original — só o que vem depois dela
+		// se comporta do mesmo jeito.
+		expect( maiusculo ).toMatch( /^<\?PHP/ );
+		expect( maiusculo.slice( 5 ) ).toBe( minusculo.slice( 5 ) );
+		expect( maiusculo ).not.toMatch( /'exec'/ );
+		expect( maiusculo ).toMatch( /^exec\(\);$/m );
+	} );
+
 	it( 'preserva comprimento e quebras de linha com HTML fora do PHP', () => {
 		const src =
 			'<div class="<?php echo esc_attr( $c ); // c\n?>">\n' +

@@ -55,12 +55,17 @@ function strip( source, strings ) {
 	let dentro = false;
 	while ( i < source.length ) {
 		if ( ! dentro ) {
-			const abrePhp = source.startsWith( '<?php', i );
+			// `<?PHP` e `<?PhP` são PHP válido — a tag não diferencia
+			// maiúsculas de minúsculas. `<?=` não tem letra nenhuma, então
+			// não precisa da mesma checagem.
+			const abrePhp = /^<\?php/i.test( source.slice( i, i + 5 ) );
 			const abreEcho = ! abrePhp && source.startsWith( '<?=', i );
 			if ( abrePhp || abreEcho ) {
-				const tag = abrePhp ? '<?php' : '<?=';
-				out += tag;
-				i += tag.length;
+				// `slice`, não um literal fixo: preserva a caixa original da
+				// tag em vez de normalizar para `<?php` minúsculo.
+				const comprimento = abrePhp ? 5 : 3;
+				out += source.slice( i, i + comprimento );
+				i += comprimento;
 				dentro = true;
 				continue;
 			}

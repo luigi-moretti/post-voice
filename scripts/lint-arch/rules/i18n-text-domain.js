@@ -1,5 +1,5 @@
 'use strict';
-const { phpSources, stripPhpComments } = require( '../context' );
+const { phpSources, stripPhpComments, stripPhpNoise } = require( '../context' );
 
 const DOMINIO = "'post-voice'";
 
@@ -33,48 +33,51 @@ const ARIDADE = {
 /**
  * Todas as chamadas gettext do arquivo, com os argumentos crus.
  *
- * Não usa `stripPhpNoise`: esta regra precisa **ler** o literal
- * `'post-voice'` dentro da chamada, então não dá para apagar o corpo das
- * strings como `rest-namespace.js` e `php-class-naming.js` fazem para achar
- * a CHAMADA. Isso não é uma omissão do padrão de duas fontes daquelas
- * regras — foi tentado e descartado deliberadamente: o `strip()` de
- * `context.js` não entende a transição `?> ... <?php` do PHP misturado com
- * HTML, então um atributo HTML como `aria-label="<?php esc_attr_e( 'x',
- * 'post-voice' ); ?>"` faz o rastreador de aspas achar que as aspas duplas
- * do atributo abrem uma string PHP que só fecha na aspa dupla do lado de
- * fora do `?>` — e `stripPhpNoise` apagaria a chamada inteira que está
- * "dentro" dela. Rodar o reconhecimento da chamada sobre esse texto
- * apagado faz `features/narration/php/class-frontend-render.php` perder 7
- * das suas 7 chamadas (todas vivem em atributo HTML desse jeito): o total
- * do repo cai de 48 para 38, um falso negativo silencioso, exatamente o
- * tipo de bug que essa regra existe para pegar. O risco que o padrão de
- * duas fontes evita — uma STRING cujo conteúdo parece uma chamada — foi
- * conferido contra as 48 chamadas reais e não ocorre aqui; caso um dia
- * ocorra, é um falso positivo isolado (uma linha a mais em `desvios:`),
- * não a maioria das chamadas do plugin desaparecendo da varredura.
+ * Padrão de duas fontes, o mesmo formato de `rest-namespace.js` e
+ * `php-class-naming.js`: `codigo` (aqui, `stripPhpNoise` aplicado sobre o
+ * `source` recebido — apaga o corpo das strings que ainda restava) é onde a
+ * CHAMADA é reconhecida, porque uma string cujo *conteúdo* parece uma
+ * chamada (`"chame __( 'x', 'outro' )"`) não pode casar como se fosse
+ * código de verdade. `source` — o parâmetro recebido, com os literais de
+ * string intactos — é de onde vem o argumento de verdade, já que é ali que
+ * o literal `'post-voice'` sobrevive. Os dois têm o mesmo comprimento em
+ * bytes (a chamada em `context.js` já normaliza isso), então um offset em
+ * um vale no outro. Rodar `stripPhpNoise` sobre um texto que já passou por
+ * `stripPhpComments` é seguro — os comentários já viraram espaços, não há
+ * mais `//` nem `/*` para achar de novo — e dá o mesmo resultado que rodar
+ * `stripPhpNoise` direto sobre o arquivo original.
  *
- * Percorre os parênteses contando profundidade em vez de casar com
- * expressão regular: `__( sprintf( '%s (x)', $a ), 'post-voice' )` derruba
- * qualquer regex de `\(([^)]*)\)`. Um parêntese dentro do CORPO de uma
- * string do argumento (`'%s (x)'`) ainda é contado aqui — mas como todo
- * parêntese de string bem formada é balanceado, a profundidade volta a
- * zero no lugar certo de qualquer forma.
+ * Uma versão anterior desta função tentou o mesmo padrão contra um
+ * `strip()` que ainda não distinguia `<?php ... ?>` de HTML puro: um
+ * atributo como `aria-label="<?php esc_attr_e( 'x', 'post-voice' ); ?>"`
+ * fazia a aspa dupla do HTML abrir um rastreamento de string que só fechava
+ * do lado de fora do `?>`, e `stripPhpNoise` apagava a chamada inteira
+ * junto — derrubando o total real do repo de 48 para 38, um falso negativo
+ * silencioso. Isso foi corrigido em `context.js` (`strip` agora rastreia
+ * dentro/fora de `<?php ... ?>`), então o padrão de duas fontes volta a
+ * valer aqui como nas outras regras.
+ *
+ * Percorre os parênteses contando profundidade em `codigo`, não em regex,
+ * porque `__( sprintf( '%s (x)', $a ), 'post-voice' )` derruba qualquer
+ * padrão `\(([^)]*)\)` — e por já estar em `codigo`, o parêntese dentro do
+ * literal `'%s (x)'` já está em branco, então nem chega a contar.
  *
  * @param {string} source arquivo já sem comentários (stripPhpComments)
  * @return {Object[]} um item por chamada: { fn, args, index }
  */
 function gettextCalls( source ) {
+	const codigo = stripPhpNoise( source );
 	const out = [];
 	CALL_RE.lastIndex = 0;
 	let m;
-	while ( ( m = CALL_RE.exec( source ) ) !== null ) {
+	while ( ( m = CALL_RE.exec( codigo ) ) !== null ) {
 		const abre = m.index + m[ 0 ].length - 1;
 		let profundidade = 0;
 		let fecha = abre;
-		for ( let j = abre; j < source.length; j += 1 ) {
-			if ( source[ j ] === '(' ) {
+		for ( let j = abre; j < codigo.length; j += 1 ) {
+			if ( codigo[ j ] === '(' ) {
 				profundidade += 1;
-			} else if ( source[ j ] === ')' ) {
+			} else if ( codigo[ j ] === ')' ) {
 				profundidade -= 1;
 				if ( profundidade === 0 ) {
 					fecha = j;

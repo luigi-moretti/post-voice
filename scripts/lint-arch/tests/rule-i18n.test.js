@@ -88,6 +88,18 @@ describe( 'i18n-text-domain', () => {
 		);
 	} );
 
+	it( 'não confunde uma string cujo conteúdo parece uma chamada com domínio errado', () => {
+		// Padrão de duas fontes: a chamada é reconhecida em `codigo`
+		// (`stripPhpNoise`, com o corpo das strings apagado), então o texto
+		// dentro deste literal PHP de verdade — que não é código nenhum —
+		// não casa. Uma versão de uma fonte só (reconhecendo a chamada
+		// direto sobre `source`, com o corpo das strings intacto) acusaria
+		// isto como `__-dominio-errado`, porque o texto "__( 'x',
+		// 'wrong-domain' )" está ali dentro, caractere por caractere.
+		const src = "<?php\n$msg = \"chame __( 'x', 'wrong-domain' )\";\n";
+		expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+	} );
+
 	it( 'gettextCalls devolve fn, args e index', () => {
 		const source = "<?php\n__( 'Olá', 'post-voice' );\n";
 		const chamadas = regra.gettextCalls( source );
