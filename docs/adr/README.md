@@ -17,3 +17,8 @@ O que está decidido, por quê, e o que impede de ser desfeito por acidente.
 | [0002](0002-tts-roda-no-navegador.md) | O TTS roda inteiro no navegador; o servidor só orquestra | aceita | `no-server-side-tts` |
 | [0003](0003-engine-pocket-tts.md) | Pocket TTS como engine, não Piper | aceita | `review-manual` |
 | [0004](0004-layout-por-feature.md) | Layout por feature; `shared/` só a partir do segundo consumidor | aceita-com-desvio | `feature-layout`, `shared-two-consumers` |
+| [0006](0006-nomenclatura-de-classe-php.md) | Nomenclatura e carregamento de classe PHP sem autoloader | aceita | `php-class-naming` |
+| [0007](0007-rest-namespace-e-validacao-no-servidor.md) | Namespace REST fixo e validação sempre no servidor | aceita | `rest-namespace`, `review-manual` |
+| [0008](0008-source-hash-e-calculado-no-cliente.md) | O `source_hash` é calculado no cliente; o PHP só guarda e compara | aceita | `no-narration-logic-in-php` |
+| [0009](0009-audio-comprimido-no-cliente.md) | O áudio é comprimido no cliente; o servidor nunca transcodifica | aceita | `no-server-side-audio-processing` |
+| [0010](0010-i18n-desde-o-primeiro-commit.md) | i18n desde o primeiro commit, com o domínio `post-voice` | aceita | `i18n-text-domain` |
