@@ -116,19 +116,31 @@ function textoDoLiteral( arg ) {
 /**
  * Todas as chamadas gettext do arquivo, com os argumentos crus.
  *
- * Padrão de duas fontes, o mesmo formato de `rest-namespace.js` e
- * `php-class-naming.js`: `codigo` (aqui, `stripPhpNoise` aplicado sobre o
- * `source` recebido — apaga o corpo das strings que ainda restava) é onde a
- * CHAMADA é reconhecida, porque uma string cujo *conteúdo* parece uma
- * chamada (`"chame __( 'x', 'outro' )"`) não pode casar como se fosse
- * código de verdade. `source` — o parâmetro recebido, com os literais de
- * string intactos — é de onde vem o argumento de verdade, já que é ali que
- * o literal `'post-voice'` sobrevive. Os dois têm o mesmo comprimento em
- * bytes (a chamada em `context.js` já normaliza isso), então um offset em
- * um vale no outro. Rodar `stripPhpNoise` sobre um texto que já passou por
- * `stripPhpComments` é seguro — os comentários já viraram espaços, não há
- * mais `//` nem `/*` para achar de novo — e dá o mesmo resultado que rodar
- * `stripPhpNoise` direto sobre o arquivo original.
+ * Padrão de duas fontes, idêntico ao de `rest-namespace.js` e
+ * `php-class-naming.js`: DUAS passadas INDEPENDENTES sobre o arquivo CRU.
+ * `codigo` (`stripPhpNoise`) é onde a CHAMADA é reconhecida, porque uma
+ * string cujo *conteúdo* parece uma chamada (`"chame __( 'x', 'outro' )"`)
+ * não pode casar como se fosse código de verdade. `source`
+ * (`stripPhpComments`, com os literais de string intactos) é de onde vem o
+ * argumento de verdade, já que é ali que o literal `'post-voice'`
+ * sobrevive. Os dois strippers apagam PARA ESPAÇO, então preservam
+ * comprimento em bytes e número de linhas: um offset em um vale no outro.
+ *
+ * As duas passadas são independentes DE PROPÓSITO. Esta função já
+ * compôs — `stripPhpNoise( stripPhpComments( x ) )` — sob a alegação de
+ * que compor "é seguro, os comentários já viraram espaços". A alegação é
+ * FALSA, e foi falsificada duas vezes: `stripPhpComments` apaga comentário
+ * PARA ESPAÇO, e o cabeçalho de heredoc aceita espaço entre `<<<` e o
+ * rótulo (`<<< EOT` é PHP legal), então a primeira passada SINTETIZA um
+ * cabeçalho que não existia no original — `$a = <<</*x*\/EOT\n` vira
+ * `$a = <<<     EOT\n` — e o corpo sintético engole o resto do arquivo.
+ * Toda chamada gettext depois dele desaparece: falso negativo silencioso.
+ * Apertar `HEREDOC_CABECALHO_RE` não resolve, porque na segunda passada o
+ * espaço legítimo de `<<< EOT` e o comentário apagado são textualmente o
+ * mesmo texto — trocaria este falso negativo por um falso positivo em
+ * heredoc legal. Rodar as duas passadas sobre o cru mata a classe inteira:
+ * nenhum stripper vê a saída do outro, então nenhum pode sintetizar
+ * sintaxe para o outro. Não volte a compor.
  *
  * Uma versão anterior desta função tentou o mesmo padrão contra um
  * `strip()` que ainda não distinguia `<?php ... ?>` de HTML puro: um
@@ -145,11 +157,12 @@ function textoDoLiteral( arg ) {
  * padrão `\(([^)]*)\)` — e por já estar em `codigo`, o parêntese dentro do
  * literal `'%s (x)'` já está em branco, então nem chega a contar.
  *
- * @param {string} source arquivo já sem comentários (stripPhpComments)
+ * @param {string} raw o conteúdo CRU do arquivo, sem nenhum stripper aplicado
  * @return {Object[]} um item por chamada: { fn, args, index }
  */
-function gettextCalls( source ) {
-	const codigo = stripPhpNoise( source );
+function gettextCalls( raw ) {
+	const codigo = stripPhpNoise( raw );
+	const source = stripPhpComments( raw );
 	const out = [];
 	CALL_RE.lastIndex = 0;
 	let m;
@@ -274,8 +287,12 @@ function avaliarDominio( fn, args ) {
 function check( ctx ) {
 	const achados = [];
 	for ( const file of phpSources( ctx ) ) {
-		const source = stripPhpComments( ctx.read( file ) );
-		for ( const { fn, args, index } of gettextCalls( source ) ) {
+		// O CRU: `gettextCalls` faz as duas passadas por conta própria, e
+		// entregar a ela um texto já strippado é exatamente o defeito que o
+		// JSDoc dela descreve. A linha sai do cru pelo mesmo motivo que o
+		// offset serve nas duas fontes — os strippers preservam as quebras.
+		const raw = ctx.read( file );
+		for ( const { fn, args, index } of gettextCalls( raw ) ) {
 			const problema = avaliarDominio( fn, args );
 			if ( problema === null ) {
 				continue;
@@ -283,7 +300,7 @@ function check( ctx ) {
 			achados.push( {
 				key: `${ file } → ${ fn }-dominio-${ problema.tipo }`,
 				file,
-				line: source.slice( 0, index ).split( '\n' ).length,
+				line: raw.slice( 0, index ).split( '\n' ).length,
 				message: problema.mensagem,
 			} );
 		}
@@ -293,8 +310,7 @@ function check( ctx ) {
 
 const contarChamadas = ( ctx ) =>
 	phpSources( ctx ).reduce(
-		( total, file ) =>
-			total + gettextCalls( stripPhpComments( ctx.read( file ) ) ).length,
+		( total, file ) => total + gettextCalls( ctx.read( file ) ).length,
 		0
 	);
 

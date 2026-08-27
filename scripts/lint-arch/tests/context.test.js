@@ -349,20 +349,12 @@ describe( 'heredoc / nowdoc', () => {
 		}
 	} );
 
-	it( 'espaço à direita do rótulo não abre heredoc, e a composição se mantém', () => {
+	it( 'espaço à direita do rótulo não abre heredoc; espaço à esquerda abre', () => {
 		// PHP aceita `<<< EOT` (espaço ANTES do rótulo) e rejeita `<<<EOT `
-		// (espaço DEPOIS) — `php -l` confirma. Aceitar o espaço à direita
-		// parecia inofensivo (código que nem compila), mas quebrava a
-		// composição de que `gettextCalls` depende e que o JSDoc dele afirma:
-		// `stripPhpComments` apaga comentário PARA ESPAÇO, então a primeira
-		// passada podia SINTETIZAR um cabeçalho de heredoc que não existia, e
-		// o corpo sintético engolia o resto do arquivo — falso negativo em
-		// toda chamada gettext depois dele.
+		// (espaço DEPOIS) — `php -l` confirma. As duas metades são a regra do
+		// lexer do PHP, e cada uma tem sua asserção aqui.
 		const minima = '<?=<<<T#\n(';
-		expect( stripPhpNoise( stripPhpComments( minima ) ) ).toBe(
-			stripPhpNoise( minima )
-		);
-		// O `(` sobrevive nas duas rotas: nunca houve heredoc nenhum aqui.
+		// O `(` sobrevive: `<<<T#` não é cabeçalho nenhum, não há heredoc.
 		expect( stripPhpNoise( minima ) ).toMatch( /\($/ );
 
 		// Espaço ANTES do rótulo continua sendo heredoc de verdade.
@@ -375,19 +367,73 @@ describe( 'heredoc / nowdoc', () => {
 		expect( stripPhpNoise( invalido ) ).toMatch( /^exec\(\);$/m );
 	} );
 
-	it( 'a composição vale em todo o corpus real de .php', () => {
+	it( 'os dois strippers NÃO compõem, e nenhuma regra pode depender disso', () => {
+		// Registro executável de uma propriedade que o linter já afirmou ter e
+		// nunca teve. `stripPhpComments` apaga comentário PARA ESPAÇO, e
+		// `<<< EOT` (espaço à esquerda do rótulo) é PHP legal, então a primeira
+		// passada SINTETIZA um cabeçalho que o original não tinha e o corpo
+		// sintético engole o resto do arquivo. Não dá para consertar apertando
+		// `HEREDOC_CABECALHO_RE`: na segunda passada esse espaço é
+		// indistinguível do espaço legítimo, e apertar reprovaria heredoc
+		// legal — falso positivo no lugar de falso negativo.
+		const vetor = '<?php\n$a = <<</*x*/EOT\nexec();\n';
+		expect( stripPhpNoise( stripPhpComments( vetor ) ) ).not.toBe(
+			stripPhpNoise( vetor )
+		);
+		// A rota que as regras usam — o stripper direto sobre o CRU — enxerga
+		// `exec()`. A composta não: some.
+		expect( stripPhpNoise( vetor ) ).toMatch( /^exec\(\);$/m );
+		expect( stripPhpNoise( stripPhpComments( vetor ) ) ).not.toMatch(
+			/exec/
+		);
+	} );
+
+	it( 'nenhuma regra compõe os dois strippers', () => {
+		// A garantia estrutural que substitui a composição: cada regra roda os
+		// dois strippers sobre o arquivo CRU, em passadas independentes. Uma
+		// composição em qualquer regra reabre a classe inteira de falso
+		// negativo do teste acima, e é barata demais de escrever por engano
+		// para ficar só documentada em prosa.
+		const dir = path.join( __dirname, '..', 'rules' );
+		for ( const nome of fs.readdirSync( dir ).sort() ) {
+			if ( ! nome.endsWith( '.js' ) ) {
+				continue;
+			}
+			const fonte = fs
+				.readFileSync( path.join( dir, nome ), 'utf8' )
+				// Só o código: um comentário PODE citar a composição, e este
+				// arquivo depende disso para explicar por que ela é proibida.
+				.replace( /\/\*[\s\S]*?\*\//g, ' ' )
+				.replace( /^[ \t]*\/\/.*$/gm, ' ' )
+				.replace( /\s+/g, '' );
+			expect( {
+				nome,
+				compoe: fonte.includes( 'stripPhpNoise(stripPhpComments(' ),
+			} ).toEqual( { nome, compoe: false } );
+		}
+	} );
+
+	it( 'comprimento e quebras de linha preservados em todo o corpus real de .php', () => {
+		// O invariante de verdade, o que substitui a composição: os dois
+		// strippers apagam PARA ESPAÇO, então um offset achado num deles
+		// aponta para o mesmo byte no outro. É disso que o padrão de duas
+		// fontes das regras depende.
 		const arquivos = trackedFiles( REPO_ROOT ).filter( ( f ) =>
 			f.endsWith( '.php' )
 		);
+		expect( arquivos.length ).toBeGreaterThan( 0 );
 		const ctx = createContext( { root: REPO_ROOT, files: arquivos } );
 		for ( const file of arquivos ) {
 			const src = ctx.read( file );
-			expect( {
-				file,
-				igual:
-					stripPhpNoise( stripPhpComments( src ) ) ===
-					stripPhpNoise( src ),
-			} ).toEqual( { file, igual: true } );
+			const linhas = src.split( '\n' ).length;
+			for ( const fn of [ stripPhpComments, stripPhpNoise ] ) {
+				const out = fn( src );
+				expect( {
+					file,
+					bytes: out.length,
+					linhas: out.split( '\n' ).length,
+				} ).toEqual( { file, bytes: src.length, linhas } );
+			}
 		}
 	} );
 

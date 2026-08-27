@@ -337,6 +337,52 @@ describe( 'i18n-text-domain', () => {
 		} );
 	} );
 
+	// A regra faz DUAS passadas independentes sobre o arquivo CRU, como
+	// `rest-namespace.js` e `php-class-naming.js`. Ela já compôs — rodava
+	// `stripPhpNoise` sobre a saída de `stripPhpComments` — e a composição
+	// sintetizava cabeçalho de heredoc: falso negativo silencioso.
+	describe( 'as duas passadas são sobre o arquivo cru', () => {
+		it( 'um comentário no cabeçalho do heredoc não engole a chamada seguinte', () => {
+			// O vetor: `stripPhpComments` apaga `/*x*/` para espaço, e
+			// `<<< EOT` (espaço à esquerda do rótulo) é PHP legal — então a
+			// segunda passada, se rodasse sobre a saída da primeira, leria
+			// `<<<     EOT\n` como cabeçalho de verdade e o corpo sintético
+			// engoliria o resto do arquivo, com a violação dentro.
+			const src = "<?php\n$a = <<</*x*/EOT\n__( 'Olá', 'outro' );\n";
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].line ).toBe( 3 );
+			expect( a[ 0 ].key ).toBe(
+				'features/x/php/class-a.php → __-dominio-errado'
+			);
+		} );
+
+		it( 'e um heredoc de verdade continua opaco, com a chamada depois dele visível', () => {
+			// A outra metade: matar a composição não pode custar o suporte a
+			// heredoc. O corpo segue apagado (o apóstrofo não abre string), e
+			// a chamada depois do terminador — precedida de um comentário —
+			// continua sendo vista.
+			const src =
+				"<?php\n$a = <<<EOT\nd'água __( 'x', 'outro' )\nEOT;\n" +
+				"/* c */ __( 'Olá', 'outro' );\n";
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].line ).toBe( 5 );
+		} );
+
+		it( 'gettextCalls recebe o CRU: um comentário não vira argumento', () => {
+			// A assinatura mudou de "arquivo já sem comentários" para o cru.
+			// O argumento continua vindo de `stripPhpComments`, então o
+			// comentário entre os argumentos vira espaço e não entra no
+			// literal — se `args` viesse do cru, o domínio lido seria
+			// `/* c */ 'post-voice'`, que não é literal nenhum, e a regra
+			// acusaria PHP correto.
+			const src = "<?php\n__( 'Olá', /* c */ 'post-voice' );\n";
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			expect( regra.gettextCalls( src ) ).toHaveLength( 1 );
+		} );
+	} );
+
 	it( 'gettextCalls devolve fn, args e index', () => {
 		const source = "<?php\n__( 'Olá', 'post-voice' );\n";
 		const chamadas = regra.gettextCalls( source );

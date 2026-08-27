@@ -35,13 +35,23 @@ function blank( text ) {
 // que não importa aqui.
 //
 // Espaço só ANTES do rótulo: `<<< EOT` é legal, `<<<EOT ` (com espaço depois)
-// é erro de sintaxe — confirmado com `php -l`. A assimetria parece pedante e
-// não é: `stripPhpComments` apaga comentário PARA ESPAÇO, então aceitar espaço
-// à direita deixava a primeira passada SINTETIZAR um cabeçalho que não existia
-// no original, e o corpo sintético engolia o resto do arquivo. `<?=<<<T#\n(`
-// é a entrada mínima: o `#` vira espaço, e `stripPhpNoise( stripPhpComments(
-// x ) )` deixa de ser igual a `stripPhpNoise( x )` — a composição de que
-// `gettextCalls` depende, documentada no JSDoc dele.
+// é erro de sintaxe — confirmado com `php -l`. A assimetria é a do próprio
+// lexer do PHP, e é por isso que ela fica: o `[ \t]*` da esquerda está certo e
+// não sai daqui.
+//
+// O que NÃO se pode concluir dessa assimetria é que os dois strippers
+// componham. Eles não compõem, e não é possível fazê-los compor apertando este
+// padrão: `stripPhpComments` apaga comentário PARA ESPAÇO, e o espaço à
+// esquerda do rótulo é PHP legal, então `<<</*x*/EOT\n` vira `<<<     EOT\n` na
+// primeira passada e a segunda lê ali um cabeçalho que o original não tinha.
+// Distinguir esse espaço do espaço legítimo de `<<< EOT` é impossível na
+// segunda passada — o texto é o mesmo — e apertar o padrão só trocaria um falso
+// negativo por um falso positivo em heredoc legal. A saída é não compor: cada
+// regra roda os dois strippers sobre o arquivo CRU, em passadas independentes
+// (ver o JSDoc de `gettextCalls`). O invariante de que as regras dependem é
+// outro, e esse vale sempre: os dois strippers apagam para espaço, portanto
+// preservam comprimento em bytes e número de linhas, e um offset em um vale no
+// outro.
 const HEREDOC_CABECALHO_RE = /^<<<[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\r?\n/;
 
 /**
