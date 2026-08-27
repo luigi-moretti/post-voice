@@ -25,9 +25,7 @@ describe( 'no-server-side-tts', () => {
 		expect( achados ).toHaveLength( 1 );
 		expect( achados[ 0 ].line ).toBe( 2 );
 		expect( achados[ 0 ].message ).toMatch( motivo );
-		expect( achados[ 0 ].key ).toBe(
-			`${ PROD } → ${ achados[ 0 ].key.split( ' → ' )[ 1 ] }`
-		);
+		expect( achados[ 0 ].key.startsWith( `${ PROD } → ` ) ).toBe( true );
 	} );
 
 	it( 'ignora o que está em comentário', () => {
@@ -61,6 +59,7 @@ describe( 'no-narration-logic-in-php', () => {
 		'md5( $c );',
 		'sha1( $c );',
 		'hash( "sha256", $c );',
+		'hash_hmac( "sha256", $c, $k );',
 		'parse_blocks( $c );',
 	] )( 'acusa %s', ( linha ) => {
 		expect(
@@ -72,6 +71,30 @@ describe( 'no-narration-logic-in-php', () => {
 		expect(
 			narration.check( ctxCom( PROD, '<?php\n$hash = $meta;\n' ) )
 		).toEqual( [] );
+	} );
+
+	it( 'não acusa chamada de método nem estática do próprio código', () => {
+		expect(
+			narration.check(
+				ctxCom( PROD, '<?php\n$this->hash( $x );\nself::md5( $y );\n' )
+			)
+		).toEqual( [] );
+		expect(
+			narration.check(
+				ctxCom(
+					PROD,
+					'<?php\npassword_hash( $p, PASSWORD_DEFAULT );\n'
+				)
+			)
+		).toEqual( [] );
+	} );
+
+	it( 'dá chaves distintas a violações diferentes no mesmo arquivo', () => {
+		const achados = narration.check(
+			ctxCom( PROD, '<?php\nmd5( $a );\nsha1( $b );\n' )
+		);
+		expect( achados ).toHaveLength( 2 );
+		expect( new Set( achados.map( ( f ) => f.key ) ).size ).toBe( 2 );
 	} );
 } );
 
