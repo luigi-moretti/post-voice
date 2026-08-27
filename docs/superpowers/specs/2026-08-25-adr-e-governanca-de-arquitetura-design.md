@@ -43,6 +43,8 @@ perdida, onboarding e saúde do projeto. O design abaixo atende as quatro com um
 | Ciclos entre features (5 arestas) | Congelados como desvios listados, mais um spike medindo o custo da inversão | Guard rail ativo imediatamente, custo zero de refatoração, e a saída fica desenhada em vez de virar linha no `FOLLOW-UPS.md` |
 | Layout `features/` | Mantido | O que falhou foi a regra de **dependência**, ortogonal ao layout. Reorganizar pastas deixaria os mesmos 5 ciclos no lugar |
 | Linguagem das ADRs | Português | Segue os specs, que são os documentos irmãos. `CLAUDE.md`, código e commits continuam em inglês |
+| Onde mora a convenção | `CLAUDE.md` com teto verificado, mais `.claude/rules/*.md` com `paths` estreito | `CLAUDE.md` custa contexto em toda sessão e perde aderência ao crescer; rule com `paths` só carrega quando um arquivo que casa é lido. O corte entre os dois é por custo de esquecer, não por tamanho |
+| `@import` no `CLAUDE.md`, e rule sem `paths` | Descartados | Ambos carregam no launch com o custo integral do `CLAUDE.md`. A documentação é explícita: *"imported files still load and enter the context window at launch"*. Reorganizam sem economizar |
 | Dependências novas | Zero | O lockfile é a superfície de auditoria (`CLAUDE.md`); `audit-check.mjs` e `bump-plugin-version.mjs` já são standalone assim |
 
 ## Estado atual medido
@@ -103,6 +105,7 @@ Entra:
 - `scripts/lint-arch/` — gate determinístico, configurado pelas ADRs
 - `scripts/doctor.mjs` — relatório de saúde, sem bloquear
 - `.claude/skills/adr/SKILL.md` — skill de projeto
+- `.claude/rules/*.md` — as Conventions do `CLAUDE.md`, path-scoped
 - Integração: `package.json`, `.github/workflows/ci.yml`, `jest.config.js`,
   `.eslintrc.js`, `CLAUDE.md`
 - Um spike medindo o custo de inverter as 5 arestas cross-feature
@@ -305,10 +308,17 @@ por regra, não pelo conjunto.
 - `lint:arch` em modo relatório: os desvios listados também aparecem, como dívida
 - ADRs: contagem por status; `revisar_quando` cujo gatilho disparou; ADR acima de 120 linhas
 - ADR cuja `origem` aponta para arquivo inexistente
-- Toda linha de bullet sob as seções `## Conventions` e `## Never` do `CLAUDE.md` cita
-  ao menos uma ADR existente, no formato `(ADR-NNNN)`. Só essas duas seções são
-  verificadas: `## Before opening a pull request` e `## Gotchas…` são procedimento e
-  armadilha operacional, não decisão de arquitetura, e não devem citar ADR
+- Toda linha de bullet sob as seções `## Conventions` e `## Never` do `CLAUDE.md`, e
+  toda linha de bullet de `.claude/rules/*.md`, cita ao menos uma ADR existente, no
+  formato `(ADR-NNNN)`. Do `CLAUDE.md` só essas duas seções são verificadas:
+  `## Before opening a pull request` e `## Gotchas…` são procedimento e armadilha
+  operacional, não decisão de arquitetura, e não devem citar ADR. As rules entram
+  inteiras — sem isso, uma convenção migra do `CLAUDE.md` para a rule e escapa do check
+- `CLAUDE.md` acima de **80 linhas**: aponta qual seção cresceu e a rule de destino
+- `paths` de rule que não casa com nenhum arquivo versionado — glob morto, rule que
+  nunca carrega. Falha silenciosa da mesma família que o resto deste trabalho combate
+- `paths` de rule que casa com mais de 60% dos arquivos versionados — rule que sempre
+  carrega, ou seja, `CLAUDE.md` com passos extras
 - Tamanho de arquivo acima do p95 do repo — sinal relativo de "faz coisa demais",
   sem limiar arbitrário
 - `FOLLOW-UPS.md`: número de itens abertos
@@ -324,22 +334,76 @@ produz falso positivo.
 | `.github/workflows/ci.yml`, job `lint` | `npm run lint:arch` — Node puro, sem Docker |
 | `CLAUDE.md`, passo 1 do pré-PR | `lint:arch` na lista ordenada, logo após `lint:js` |
 | `CLAUDE.md`, passo 3 (code review) | `npm run doctor` |
+| `.claude/rules/*.md` | as Conventions, path-scoped — ver abaixo |
 | pre-commit | nada |
 
-### `CLAUDE.md`
+### Onde cada regra mora
 
-Encolhe sem perder as regras: ele carrega em todo contexto, as ADRs não. Cada
-convenção permanece como uma linha imperativa que **cita** a ADR:
+O `CLAUDE.md` tem 113 linhas hoje: 42 de workflow pré-PR, 32 de Conventions, 13 de
+Gotchas, 6 de Never. Se cada ADR nova custasse duas linhas ali, 50 ADRs chegariam a
+~213 — acima das 200 que a documentação do Claude Code marca como ponto de queda de
+aderência. E o modo de falha não é custo de token: é **desobediência silenciosa**, que
+é a primeira das quatro dores desta lista.
+
+Quatro camadas, cada uma com um perfil de crescimento diferente:
+
+| Camada | Custo de contexto | Cresce com |
+|---|---|---|
+| `CLAUDE.md` | toda sessão | nº total de regras — linear, nunca amortizado |
+| `.claude/rules/*.md` com `paths` | só quando um arquivo que casa é lido | escopo da sessão, **não** tamanho do repo |
+| `docs/adr/*.md` | zero — lido sob demanda | nada; 15 ou 500 custam o mesmo |
+| `scripts/lint-arch/` | zero | nada, e não degrada com a atenção do modelo |
+
+O corte entre as duas primeiras **não é por tamanho, é por custo de esquecer**. O
+`CLAUDE.md` da raiz é reinjetado do disco depois de `/compact`; rule com `paths` só
+recarrega quando um arquivo que casa voltar a ser lido.
+
+| Custo de esquecer | Onde mora |
+|---|---|
+| Catastrófico e irreversível — commitar em `master`, `--no-verify`, mexer em pin de contrato | `CLAUDE.md`: `## Never` e o workflow pré-PR |
+| Um ciclo de review | `.claude/rules/*.md`: as Conventions |
+| Nenhum, o `lint:arch` pega | só ADR mais regra; não entra em contexto |
+
+Rules previstas, com o glob:
+
+| Arquivo | `paths` | ADRs |
+|---|---|---|
+| `php.md` | `features/**/php/**/*.php`, `shared/php/**/*.php` | 0006, 0008, 0009 |
+| `rest.md` | `**/class-rest-api.php` | 0007 |
+| `editor.md` | `features/**/editor/**/*.{ts,tsx}` | 0010, 0011 |
+| `tests.md` | `**/tests/**`, `e2e/**`, `**/*.test.ts` | 0012, 0013 |
+| `adr.md` | `docs/adr/**/*.md` | 0001 |
+
+i18n não ganha rule própria: um glob cobrindo `.php`, `.ts` e `.tsx` casaria com quase
+todo o repo, o que é rule sem `paths` com passos extras. A regra se cola em `php.md` e
+`editor.md`. Vale como teste geral: **rule cujo glob casa com mais de 60% do repo não
+deveria ser rule.**
+
+O corpo da ADR nunca é duplicado na rule — duplicação é a divergência que este trabalho
+existe para eliminar. Uma imperativa, a citação, e o porquê a um `Read` de distância:
+
+```
+- Prefixo `Post_Voice_`, uma classe por arquivo, `class-*.php` (ADR-0006).
+```
+
+Mesma forma nas linhas que permanecem no `CLAUDE.md`:
 
 ```
 - **Layout is feature-based** (ADR-0004); a feature never references another (ADR-0005).
 ```
 
-O porquê fica a um `Read` de distância, a regra continua no contexto imediato, e o
-`doctor` valida que toda linha de convenção cita uma ADR existente — se o `CLAUDE.md`
-andar sozinho outra vez, o relatório acusa.
-
 Além disso: `docs/adr/README.md` entra no topo dos "documents of record".
+
+### A regra de crescimento
+
+**ADR nova não toca o `CLAUDE.md`.** Vira um arquivo em `docs/adr/`, uma linha no
+`README.md` índice e — se for enforcável — uma regra do `lint:arch`. Só cria linha em
+rule quando for guard rail que precisa estar na cabeça de quem escreve *antes* do
+código existir.
+
+Disciplina não segura teto de arquivo por seis meses; gate segura. O teto do
+`CLAUDE.md` é **80 linhas**, verificado pelo `doctor` — margem sobre as ~65 previstas
+depois de as Conventions migrarem para as rules.
 
 ### Skill
 
@@ -366,7 +430,8 @@ Conteúdo:
 | 6 | `scripts/doctor.mjs` | Jest no que for puro |
 | 7 | `package.json`, `ci.yml`, `jest.config.js`, `.eslintrc.js` | CI |
 | 8 | `.claude/skills/adr/SKILL.md` | — |
-| 9 | `CLAUDE.md` reescrito | `doctor` |
+| 9 | `.claude/rules/*.md` — Conventions migradas, com `paths` | `doctor` |
+| 10 | `CLAUDE.md` reescrito, dentro do teto de 80 linhas | `doctor` |
 
 As ADRs vêm antes do script porque **o script lê as ADRs**. Escrever a regra primeiro
 seria derivar a decisão a partir do código — o inverso do que este trabalho existe
@@ -405,8 +470,12 @@ para fazer.
    mensagem citando a ADR-0005 e o caminho do arquivo.
 4. Toda regra tem fixtures nos dois sentidos, e `npm run test:unit` cobre as 13.
 5. `npm run doctor` imprime o relatório completo e sai com código 0 mesmo com dívida.
-6. Toda linha de convenção do `CLAUDE.md` cita uma ADR existente, e o `doctor` verifica.
-7. O CI do `master` passa inteiro, sem nenhuma alteração em `features/`, `shared/`
+6. Toda linha de convenção do `CLAUDE.md` e de `.claude/rules/*.md` cita uma ADR
+   existente, e o `doctor` verifica.
+7. `CLAUDE.md` fica em 80 linhas ou menos, e o `doctor` acusa acima disso — relatório,
+   não bloqueio, como todo o resto do `doctor`. Toda rule tem `paths` que casa com pelo
+   menos um arquivo versionado e com menos de 60% deles.
+8. O CI do `master` passa inteiro, sem nenhuma alteração em `features/`, `shared/`
    ou `post-voice.php`.
 
 ## Não-metas explícitas
@@ -418,5 +487,8 @@ para fazer.
 - **Inverter as cinco arestas.** O spike mede o custo; executar é uma mudança própria,
   com seu próprio brainstorming.
 - **Migrar as decisões de produto para ADR.** Continuam nos specs, que é onde servem.
+- **Usar `@import` no `CLAUDE.md`, ou rule sem `paths`, para organizar.** Os dois
+  carregam no launch com o custo integral do `CLAUDE.md`: melhoram a leitura humana sem
+  reduzir contexto nem elevar aderência, que é o problema real.
 - **Criar série temporal de dívida.** O `doctor` reporta o presente. Histórico é uma
   mudança própria, se algum dia doer.
