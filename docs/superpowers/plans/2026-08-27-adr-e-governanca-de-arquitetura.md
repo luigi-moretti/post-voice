@@ -1406,7 +1406,7 @@ desvios:
 
 - **Contexto:** `npm audit` é gate deste projeto, e o que ele audita é o `package-lock.json`. `npm install` reescreve o lockfile silenciosamente, então uma auditoria verde pode ter sido feita sobre uma árvore diferente da que roda em produção.
 - **Decisão:** CI e scripts usam `npm ci`. `npm install` é para quando se está deliberadamente mudando uma dependência, na máquina do dev, com o lockfile no diff.
-- **Consequências:** fácil — o lockfile é a superfície de auditoria e é imutável no CI. Difícil — lockfile fora de sincronia faz o CI falhar imediatamente, o que é o comportamento desejado.
+- **Consequências:** fácil — o lockfile é a superfície de auditoria e é imutável no CI. Difícil — mudar uma dependência deixa de ser uma linha: exige rodar `npm install` deliberadamente na máquina, conferir o lockfile no diff e commitá-lo junto; e `npm ci` apaga e reinstala `node_modules` do zero a cada execução, o que é mais lento que um install incremental. (Não escreva aqui que "o CI falha imediatamente" como se fosse o custo: isso é o benefício, e uma seção que nomeia um custo e o desqualifica em seguida fica sem nenhum.)
 - **Como verificar:** `no-npm-install`.
 - **Alternativas rejeitadas:** `npm install` com lockfile commitado (ainda reescreve); `--frozen-lockfile` (é pnpm/yarn, não npm).
 
