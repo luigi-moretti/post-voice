@@ -22,3 +22,8 @@ O que está decidido, por quê, e o que impede de ser desfeito por acidente.
 | [0008](0008-source-hash-e-calculado-no-cliente.md) | O `source_hash` é calculado no cliente; o PHP só guarda e compara | aceita | `no-narration-logic-in-php` |
 | [0009](0009-audio-comprimido-no-cliente.md) | O áudio é comprimido no cliente; o servidor nunca transcodifica | aceita | `no-server-side-audio-processing` |
 | [0010](0010-i18n-desde-o-primeiro-commit.md) | i18n desde o primeiro commit, com o domínio `post-voice` | aceita | `i18n-text-domain` |
+| [0011](0011-editor-em-typescript.md) | O editor é TypeScript | aceita-com-desvio | `no-untyped-editor-code` |
+| [0012](0012-fronteira-jest-e2e.md) | Fronteira entre Jest e E2E — Worker e ONNX não se mockam | aceita | `review-manual`, `doctor` |
+| [0013](0013-covers-por-classe-e-gates-de-cobertura.md) | `@covers` por classe, e gates de cobertura que não descem | aceita | `covers-annotation` |
+| [0014](0014-pins-de-contrato.md) | Pins de contrato mudam só por decisão própria | aceita | `contract-pins` |
+| [0015](0015-npm-ci-nunca-npm-install.md) | `npm ci` em CI e scripts; `npm install` nunca | aceita | `no-npm-install` |
