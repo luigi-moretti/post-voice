@@ -2,8 +2,26 @@ const { createContext } = require( '../context' );
 const naming = require( '../rules/php-class-naming' );
 const rest = require( '../rules/rest-namespace' );
 
+// Inclui um post-voice.php sintético com o require_once correspondente a
+// `file`, para que os testes que não são sobre a checagem de require_once
+// não sejam pegos por ela incidentalmente — os cenários de
+// require_once ausente/órfão usam `ctxArquivos` para controlar isso à mão.
 const ctxCom = ( file, src ) =>
-	createContext( { files: [ file ], read: () => src } );
+	createContext( {
+		files: [ file, 'post-voice.php' ],
+		read: ( f ) =>
+			f === 'post-voice.php'
+				? `<?php\nrequire_once POST_VOICE_PATH . '${ file }';\n`
+				: src,
+	} );
+
+// Para cenários com mais de um arquivo (post-voice.php + um arquivo de
+// classe), onde cada `read` precisa devolver algo diferente por caminho.
+const ctxArquivos = ( mapa ) =>
+	createContext( {
+		files: Object.keys( mapa ),
+		read: ( f ) => mapa[ f ],
+	} );
 
 describe( 'php-class-naming', () => {
 	it( 'declara a ADR-0006', () => {
@@ -82,6 +100,97 @@ describe( 'php-class-naming', () => {
 			'shared'
 		);
 	} );
+
+	it( 'aceita Class maiúsculo — a palavra-chave do PHP não diferencia caixa', () => {
+		expect(
+			naming.check(
+				ctxArquivos( {
+					'features/x/php/class-rest-api.php':
+						'<?php\nClass Post_Voice_Rest_Api {}\n',
+					'post-voice.php':
+						"<?php\nrequire_once POST_VOICE_PATH . 'features/x/php/class-rest-api.php';\n",
+				} )
+			)
+		).toEqual( [] );
+	} );
+
+	it( 'reescreve a mensagem de zero classes para apontar interface/trait', () => {
+		const a = naming.check(
+			ctxArquivos( {
+				'features/x/php/class-foo.php':
+					'<?php\ninterface Post_Voice_Foo {}\n',
+				'post-voice.php': '<?php\n',
+			} )
+		);
+		const semClasse = a.find(
+			( f ) =>
+				f.key ===
+				'features/x/php/class-foo.php → uma-classe-por-arquivo'
+		);
+		expect( semClasse.message ).toMatch( /interface ou trait/ );
+		expect( semClasse.message ).not.toMatch( /^0 classes/ );
+	} );
+
+	it( 'não exporta esperadoParaClasse — não é usado fora do módulo', () => {
+		expect( naming.esperadoParaClasse ).toBeUndefined();
+	} );
+
+	describe( 'require_once correspondente em post-voice.php', () => {
+		it( 'acusa classe sem require_once correspondente', () => {
+			const a = naming.check(
+				ctxArquivos( {
+					'features/x/php/class-rest-api.php':
+						'<?php\nclass Post_Voice_Rest_Api {}\n',
+					'post-voice.php': '<?php\n// nada requerido aqui\n',
+				} )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe(
+				'features/x/php/class-rest-api.php → require-once-ausente'
+			);
+		} );
+
+		it( 'acusa require_once órfão — caminho não corresponde a arquivo versionado', () => {
+			const a = naming.check(
+				ctxArquivos( {
+					'post-voice.php':
+						"<?php\nrequire_once POST_VOICE_PATH . 'features/x/php/class-ghost.php';\n",
+				} )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe(
+				'post-voice.php → require-once-orfao:features/x/php/class-ghost.php'
+			);
+		} );
+
+		it( 'dá chaves distintas a dois require_once órfãos no mesmo arquivo', () => {
+			const a = naming.check(
+				ctxArquivos( {
+					'post-voice.php':
+						"<?php\nrequire_once POST_VOICE_PATH . 'features/x/php/class-a.php';\nrequire_once POST_VOICE_PATH . 'features/x/php/class-b.php';\n",
+				} )
+			);
+			expect( a ).toHaveLength( 2 );
+			expect( new Set( a.map( ( f ) => f.key ) ).size ).toBe( 2 );
+		} );
+
+		it( 'não acusa nada quando classe e require_once correspondem', () => {
+			expect(
+				naming.check(
+					ctxArquivos( {
+						'features/x/php/class-rest-api.php':
+							'<?php\nclass Post_Voice_Rest_Api {}\n',
+						'post-voice.php':
+							"<?php\nrequire_once POST_VOICE_PATH . 'features/x/php/class-rest-api.php';\n",
+					} )
+				)
+			).toEqual( [] );
+		} );
+
+		it( 'post-voice.php de verdade requer as 10 classes do repo', () => {
+			expect( naming.check( createContext() ) ).toEqual( [] );
+		} );
+	} );
 } );
 
 describe( 'rest-namespace', () => {
@@ -141,6 +250,43 @@ describe( 'rest-namespace', () => {
 		);
 		expect( a ).toHaveLength( 1 );
 		expect( a[ 0 ].message ).toMatch( /não resolve/ );
+	} );
+
+	it( 'não confunde um literal de string cujo conteúdo parece uma chamada', () => {
+		// Regressão: antes do fix, o texto dentro da string era lido como uma
+		// chamada de verdade e virava um achado de namespace-dinamico.
+		expect(
+			rest.check(
+				ctxCom(
+					'features/x/php/class-rest-api.php',
+					"<?php\n$msg = 'lembrete: chame register_rest_route( \\'wp/v2\\', ... ) no init';\n"
+				)
+			)
+		).toEqual( [] );
+	} );
+
+	it( 'não confunde uma função cujo nome só termina em register_rest_route', () => {
+		// Regressão: sem guarda de fronteira, tanto a linha de definição quanto
+		// a chamada do wrapper eram lidas como chamadas de register_rest_route.
+		expect(
+			rest.check(
+				ctxCom(
+					'features/x/php/class-rest-api.php',
+					"<?php\nfunction custom_register_rest_route( $ns, $route ) {\n\treturn $ns;\n}\ncustom_register_rest_route( 'wp/v2', '/a' );\n"
+				)
+			)
+		).toEqual( [] );
+	} );
+
+	it( 'não confunde um método de instância chamado ->register_rest_route(', () => {
+		expect(
+			rest.check(
+				ctxCom(
+					'features/x/php/class-rest-api.php',
+					"<?php\n$obj->register_rest_route( 'wp/v2', '/a' );\n"
+				)
+			)
+		).toEqual( [] );
 	} );
 } );
 

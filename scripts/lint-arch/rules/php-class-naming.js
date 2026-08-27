@@ -1,8 +1,13 @@
 'use strict';
-const { stripPhpNoise, isTestPath } = require( '../context' );
+const { stripPhpNoise, stripPhpComments, isTestPath } = require( '../context' );
 
-const CLASS_RE = /^\s*(?:final\s+|abstract\s+)*class\s+(\w+)/gm;
+const CLASS_RE = /^\s*(?:final\s+|abstract\s+)*class\s+(\w+)/gim;
 const PREFIXO = 'Post_Voice_';
+
+// O mesmo formato usado pelo `require_once` em post-voice.php:
+// `require_once POST_VOICE_PATH . '<caminho>';`.
+const REQUIRE_RE = /require_once\s+POST_VOICE_PATH\s*\.\s*'([^']*)'/g;
+const ENTRY_FILE = 'post-voice.php';
 
 const classFiles = ( ctx ) =>
 	ctx.files.filter(
@@ -43,6 +48,29 @@ function declaradas( ctx, file ) {
 }
 
 /**
+ * Lê os `require_once POST_VOICE_PATH . '<caminho>'` de post-voice.php.
+ *
+ * stripPhpComments, e não stripPhpNoise: o caminho é o corpo do literal de
+ * string, que stripPhpNoise apagaria.
+ *
+ * @param {Object} ctx
+ * @return {{ path: string, line: number }[]} um item por `require_once`
+ */
+function requireOnceEntries( ctx ) {
+	const source = stripPhpComments( ctx.read( ENTRY_FILE ) );
+	REQUIRE_RE.lastIndex = 0;
+	const out = [];
+	let m;
+	while ( ( m = REQUIRE_RE.exec( source ) ) !== null ) {
+		out.push( {
+			path: m[ 1 ],
+			line: source.slice( 0, m.index ).split( '\n' ).length,
+		} );
+	}
+	return out;
+}
+
+/**
  * @param {Object} ctx
  * @return {Map<string, { feature: string, file: string }>} classe → dono
  */
@@ -66,11 +94,16 @@ function check( ctx ) {
 		const classes = declaradas( ctx, file );
 
 		if ( classes.length !== 1 ) {
+			const message =
+				classes.length === 0
+					? 'nenhuma classe declarada — provavelmente uma interface ou trait; ' +
+					  'um arquivo "class-*.php" tem de declarar uma classe (ADR-0006)'
+					: `${ classes.length } classes declaradas; o padrão é uma classe por arquivo (ADR-0006)`;
 			achados.push( {
 				key: `${ file } → uma-classe-por-arquivo`,
 				file,
 				line: classes[ 1 ] ? classes[ 1 ].line : 1,
-				message: `${ classes.length } classes declaradas; o padrão é uma classe por arquivo (ADR-0006)`,
+				message,
 			} );
 			continue;
 		}
@@ -95,13 +128,41 @@ function check( ctx ) {
 			} );
 		}
 	}
+
+	// ADR-0006 promete as duas direções: toda classe tem um `require_once`
+	// correspondente, e todo `require_once` de formato `class-*.php` corresponde
+	// a uma classe de fato versionada — não um arquivo renomeado ou removido.
+	const rastreados = new Set( classFiles( ctx ) );
+	const entries = requireOnceEntries( ctx );
+	const exigidos = new Set( entries.map( ( e ) => e.path ) );
+
+	for ( const file of classFiles( ctx ) ) {
+		if ( ! exigidos.has( file ) ) {
+			achados.push( {
+				key: `${ file } → require-once-ausente`,
+				file,
+				line: 1,
+				message: `a classe em ${ file } não tem um require_once correspondente em ${ ENTRY_FILE } (ADR-0006)`,
+			} );
+		}
+	}
+
+	const FORMATO_ARQUIVO_CLASSE =
+		/^(?:features\/[^/]+|shared)\/php\/class-[a-z0-9-]+\.php$/;
+	for ( const { path, line } of entries ) {
+		if ( FORMATO_ARQUIVO_CLASSE.test( path ) && ! rastreados.has( path ) ) {
+			// O caminho entra na chave de propósito: dois órfãos no mesmo arquivo
+			// não podem colidir numa única chave de desvio.
+			achados.push( {
+				key: `${ ENTRY_FILE } → require-once-orfao:${ path }`,
+				file: ENTRY_FILE,
+				line,
+				message: `${ ENTRY_FILE } tem um require_once para "${ path }", que não é um arquivo de classe versionado (ADR-0006)`,
+			} );
+		}
+	}
+
 	return achados;
 }
 
-module.exports = {
-	id: 'php-class-naming',
-	adr: '0006',
-	check,
-	phpClassOwners,
-	esperadoParaClasse,
-};
+module.exports = { id: 'php-class-naming', adr: '0006', check, phpClassOwners };
