@@ -835,6 +835,25 @@ describe( 'run', () => {
 		expect( out.warnings ).toEqual( [] );
 	} );
 
+	it( 'não afirma dívida quitada quando uma regra da ADR não existe', () => {
+		// Sem regra, não há achado — mas isso é informação indisponível, não
+		// prova de que o desvio deixou de existir.
+		const out = run( {
+			adrs: [
+				adr( {
+					enforcedBy: [ 'feature-deps', 'regra-que-nao-existe' ],
+					status: 'aceita-com-desvio',
+					desvios: [ 'a.php → B' ],
+				} ),
+			],
+			registry: { 'feature-deps': regra( 'feature-deps', '0005', [] ) },
+			ctx,
+		} );
+		expect( out.warnings ).toEqual( [] );
+		expect( out.problems ).toHaveLength( 1 );
+		expect( out.problems[ 0 ].message ).toMatch( /não existe/ );
+	} );
+
 	it( 'avisa quando um desvio listado não viola mais', () => {
 		const out = run( {
 			adrs: [ adr( { status: 'aceita-com-desvio', desvios: [ 'a.php → B' ] } ) ],
@@ -1020,6 +1039,16 @@ function run( { adrs, registry, ctx } ) {
 				line: finding.line,
 				message: `${ finding.file }:${ finding.line } viola a ADR-${ adr.id } (${ adr.titulo }) — ${ finding.message }. Regra: ${ finding.rule }. Chave de desvio: "${ finding.key }". O porquê está em ${ adr.file }.`,
 			} );
+		}
+
+		// Dívida quitada só é afirmável quando TODAS as regras da ADR existem.
+		// Com uma regra ausente, `achados` fica incompleto por omissão e todo
+		// desvio listado pareceria quitado — o aviso mandaria apagar entradas que
+		// ainda são violações reais. "Regra ausente" já é reportado como problema
+		// à parte; aqui o correto é silêncio, não uma afirmação falsa.
+		const idsReais = adr.enforcedBy.filter( ( id ) => ! LITERAIS.has( id ) );
+		if ( ! idsReais.every( ( id ) => registry[ id ] ) ) {
+			continue;
 		}
 
 		const vistos = new Set( achados.map( ( f ) => f.key ) );
