@@ -28,12 +28,15 @@ na máquina do desenvolvedor, com o lockfile entrando no diff do PR junto do
 
 ## Consequências
 
-Fica mais fácil: o lockfile é a superfície de auditoria de verdade, e é
-imutável dentro do CI — o que rodou é o que foi auditado. Fica mais difícil:
-um lockfile fora de sincronia com `package.json` faz o CI falhar
-imediatamente, antes de qualquer outro gate, em vez de seguir adiante com uma
-árvore reescrita silenciosamente — que é o comportamento desejado, não um
-custo a evitar.
+Fica mais fácil: o lockfile é a superfície de auditoria de verdade e é
+imutável dentro do CI; um lockfile fora de sincronia com `package.json` faz o
+CI falhar imediatamente, antes de qualquer outro gate, em vez de seguir
+adiante com uma árvore reescrita em silêncio. Fica mais difícil: mudar uma
+dependência deixa de ser uma edição de uma linha em `package.json` — exige
+rodar `npm install` deliberadamente na própria máquina, conferir o lockfile
+resultante e commitá-lo junto da mudança. `npm ci` também apaga e reinstala
+`node_modules` do zero a cada execução, o que é mais lento que uma instalação
+incremental.
 
 ## Como verificar
 
