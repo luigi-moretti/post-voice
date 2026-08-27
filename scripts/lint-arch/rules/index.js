@@ -6,4 +6,6 @@ module.exports = {
 	'no-server-side-tts': require( './no-server-side-tts' ),
 	'no-narration-logic-in-php': require( './no-narration-logic-in-php' ),
 	'no-server-side-audio-processing': require( './no-server-side-audio-processing' ),
+	'php-class-naming': require( './php-class-naming' ),
+	'rest-namespace': require( './rest-namespace' ),
 };
