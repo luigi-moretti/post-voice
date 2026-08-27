@@ -92,7 +92,8 @@ classe é declarada em outra feature; comentários são ignorados, strings
 não — a aresta 6 é um callable em string (`array( 'Post_Voice_Post_Meta',
 'auth_callback' )`) e sumiria se strings fossem descartadas junto com
 comentários. Em TypeScript: um import relativo que sobe até
-`features/<outra>/`. Módulos de `shared/` nunca contam como aresta.
+`features/<outra>/`. Classes e módulos de `shared/` nunca contam como
+aresta, nas duas linguagens.
 
 ## Alternativas rejeitadas
 
