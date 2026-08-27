@@ -47,6 +47,8 @@ module.exports = {
 		'features/pronunciation/editor/row-ids.ts',
 		'features/player-style/admin/contrast.ts',
 		'features/player-style/admin/hex-field.ts',
+		'scripts/lint-arch/**/*.js',
+		'!scripts/lint-arch/tests/**',
 	],
 	coverageThreshold: {
 		global: { lines: 80 },

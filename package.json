@@ -6,6 +6,7 @@
 	"scripts": {
 		"build": "wp-scripts build",
 		"start": "wp-scripts start",
+		"lint:arch": "node scripts/lint-arch/index.js",
 		"lint:js": "wp-scripts lint-js",
 		"format": "wp-scripts format",
 		"test:unit": "wp-scripts test-unit-js",
