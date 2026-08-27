@@ -386,7 +386,7 @@ describe( 'parseAdr', () => {
 		expect( adr.status ).toBe( 'aceita-com-desvio' );
 		expect( adr.data ).toBe( '2026-08-27' );
 		expect( adr.origem ).toBe(
-			'specs/2026-08-08-wp-narration-plugin-mvp-design.md#arquitetura'
+			'superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md#arquitetura'
 		);
 		expect( adr.revisarQuando ).toBe( 'uma quarta feature entrar' );
 		expect( adr.file ).toBe( 'docs/adr/0005-x.md' );
@@ -707,7 +707,7 @@ const adr = ( over = {} ) => ( {
 	titulo: 'Topologia de dependência entre features',
 	status: 'aceita',
 	data: '2026-08-27',
-	origem: 'specs/x.md',
+	origem: 'superpowers/specs/x.md',
 	enforcedBy: [ 'feature-deps' ],
 	revisarQuando: '',
 	desvios: [],
