@@ -32,10 +32,17 @@ function blank( text ) {
 // `<<<` seguido de espaço opcional e então um identificador — cru, ou entre
 // aspas simples (nowdoc) ou duplas (heredoc); PHP não distingue os dois para
 // fins de onde o corpo começa e termina, só para se ele interpola variável, o
-// que não importa aqui. O resto da linha de abertura só pode ter espaço em
-// branco até a quebra de linha — é aí que o corpo começa.
-const HEREDOC_CABECALHO_RE =
-	/^<<<[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[ \t]*\r?\n/;
+// que não importa aqui.
+//
+// Espaço só ANTES do rótulo: `<<< EOT` é legal, `<<<EOT ` (com espaço depois)
+// é erro de sintaxe — confirmado com `php -l`. A assimetria parece pedante e
+// não é: `stripPhpComments` apaga comentário PARA ESPAÇO, então aceitar espaço
+// à direita deixava a primeira passada SINTETIZAR um cabeçalho que não existia
+// no original, e o corpo sintético engolia o resto do arquivo. `<?=<<<T#\n(`
+// é a entrada mínima: o `#` vira espaço, e `stripPhpNoise( stripPhpComments(
+// x ) )` deixa de ser igual a `stripPhpNoise( x )` — a composição de que
+// `gettextCalls` depende, documentada no JSDoc dele.
+const HEREDOC_CABECALHO_RE = /^<<<[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\r?\n/;
 
 /**
  * Reconhece um heredoc/nowdoc que começa em `source[i]` (que já é `<<<`).

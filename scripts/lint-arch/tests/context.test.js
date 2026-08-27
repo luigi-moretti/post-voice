@@ -349,6 +349,48 @@ describe( 'heredoc / nowdoc', () => {
 		}
 	} );
 
+	it( 'espaço à direita do rótulo não abre heredoc, e a composição se mantém', () => {
+		// PHP aceita `<<< EOT` (espaço ANTES do rótulo) e rejeita `<<<EOT `
+		// (espaço DEPOIS) — `php -l` confirma. Aceitar o espaço à direita
+		// parecia inofensivo (código que nem compila), mas quebrava a
+		// composição de que `gettextCalls` depende e que o JSDoc dele afirma:
+		// `stripPhpComments` apaga comentário PARA ESPAÇO, então a primeira
+		// passada podia SINTETIZAR um cabeçalho de heredoc que não existia, e
+		// o corpo sintético engolia o resto do arquivo — falso negativo em
+		// toda chamada gettext depois dele.
+		const minima = '<?=<<<T#\n(';
+		expect( stripPhpNoise( stripPhpComments( minima ) ) ).toBe(
+			stripPhpNoise( minima )
+		);
+		// O `(` sobrevive nas duas rotas: nunca houve heredoc nenhum aqui.
+		expect( stripPhpNoise( minima ) ).toMatch( /\($/ );
+
+		// Espaço ANTES do rótulo continua sendo heredoc de verdade.
+		const legal = '<?php\n$a = <<< EOT\nexec( 1 );\nEOT;\nb();\n';
+		expect( stripPhpNoise( legal ) ).not.toMatch( /exec/ );
+		expect( stripPhpNoise( legal ) ).toMatch( /^b\(\);$/m );
+
+		// E espaço à direita não abre nada: o corpo "falso" segue sendo código.
+		const invalido = '<?php\n$a = <<<EOT \nexec();\n';
+		expect( stripPhpNoise( invalido ) ).toMatch( /^exec\(\);$/m );
+	} );
+
+	it( 'a composição vale em todo o corpus real de .php', () => {
+		const arquivos = trackedFiles( REPO_ROOT ).filter( ( f ) =>
+			f.endsWith( '.php' )
+		);
+		const ctx = createContext( { root: REPO_ROOT, files: arquivos } );
+		for ( const file of arquivos ) {
+			const src = ctx.read( file );
+			expect( {
+				file,
+				igual:
+					stripPhpNoise( stripPhpComments( src ) ) ===
+					stripPhpNoise( src ),
+			} ).toEqual( { file, igual: true } );
+		}
+	} );
+
 	// As duas bocas, escritas como o defeito que elas eram.
 
 	it( 'apóstrofo no corpo não engole a chamada seguinte (era falso negativo)', () => {
