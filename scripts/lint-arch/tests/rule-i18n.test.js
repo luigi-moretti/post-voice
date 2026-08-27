@@ -291,6 +291,13 @@ describe( 'i18n-text-domain', () => {
 				// negativo, que é a direção pior.
 				"$function & translate( 'x', 'outro' );",
 				"$function&translate( 'x', 'outro' );",
+				// O mesmo `$`, agora na guarda de `new`. Esta linha NÃO é PHP
+				// que o parser aceite (duas expressões sem operador entre
+				// elas) — está aqui pelo mesmo critério que fez a rodada 2b
+				// tratar `<<<EOT `: é o que trava a guarda no lugar. Sem o
+				// `$`, `new\s+\\?` absolveria a chamada, e no dia em que
+				// alguém alargar essa guarda por reflexo o teste avisa.
+				"$new \\translate( 'x', 'outro' );",
 				// Instanciação e chamada na mesma linha: a guarda de `new`
 				// absolve o nome da classe, não o argumento.
 				"$a = new Foo( translate( 'x', 'outro' ) );",

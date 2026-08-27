@@ -394,6 +394,14 @@ describe( 'heredoc / nowdoc', () => {
 		// composição em qualquer regra reabre a classe inteira de falso
 		// negativo do teste acima, e é barata demais de escrever por engano
 		// para ficar só documentada em prosa.
+		//
+		// Fio de tropeço, não prova: pega a forma literal
+		// `stripPhpNoise( stripPhpComments( x ) )`, e só ela. Uma composição
+		// escrita em duas linhas, por uma variável intermediária, passa por
+		// aqui — quem a pega é o fixture de comportamento em
+		// `rule-i18n.test.js` ("um comentário no cabeçalho do heredoc não
+		// engole a chamada seguinte"), que é o teste discriminante. Este aqui
+		// existe para que a forma óbvia falhe barulhenta e imediatamente.
 		const dir = path.join( __dirname, '..', 'rules' );
 		for ( const nome of fs.readdirSync( dir ).sort() ) {
 			if ( ! nome.endsWith( '.js' ) ) {
