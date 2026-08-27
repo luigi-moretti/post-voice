@@ -1,34 +1,92 @@
 'use strict';
 const { phpSources, stripPhpComments, stripPhpNoise } = require( '../context' );
 
-const DOMINIO = "'post-voice'";
+const DOMINIO = 'post-voice';
+// Como o domínio aparece nas mensagens de violação: o literal PHP canônico,
+// entre aspas simples. A comparação não usa esta forma — ver `textoDoLiteral`.
+const DOMINIO_LITERAL = `'${ DOMINIO }'`;
 
+// A lista completa das funções gettext do WordPress que recebem um text
+// domain. Conferida contra `wp-includes/l10n.php` do WordPress 6.6 (o mínimo
+// suportado) e contra o mapa `$translation_functions` do sniff
+// `WordPress.WP.I18n` do WPCS em `vendor/`, que traz exatamente estes dezesseis
+// nomes. Uma lista parcial não é uma cobertura parcial: é um falso negativo
+// silencioso, porque a chamada simplesmente não é vista.
+//
+// `translate_nooped_plural( $nooped, $count, $domain )` fica de fora de
+// propósito — recebe um domínio, mas o WPCS não a trata como função de
+// tradução (o texto já foi registrado por `_n_noop`/`_nx_noop`), e incluí-la
+// divergiria da lista de referência sem cobrir nenhum texto novo.
+//
 // Guarda de fronteira em três partes, igual a `rest-namespace.js` e
 // `php-class-naming.js`: `\b` não separa `_` do resto do nome — `_` é
 // caractere de palavra — então `\b__\(` não distingue `__(` de `my_helper__(`,
 // e `esc_html__` termina exatamente nos mesmos dois caracteres que `__`. As
 // alternativas de nome mais longo vêm primeiro: o motor tenta a alternação na
 // ordem dada, e mesmo sem isso o `\s*\(` que segue forçaria o backtracking a
-// achar a alternativa certa, mas a ordem deixa a intenção explícita.
+// achar a alternativa certa, mas a ordem deixa a intenção explícita. Aqui isso
+// importa em quatro pares: `_n` é prefixo de `_nx`, `_n_noop` e `_nx_noop`, e
+// `translate` é prefixo de `translate_with_gettext_context`.
+//
+// A flag `i` porque nome de função em PHP não diferencia caixa: `_X( 'a' )` e
+// `__( 'a' )` chamam as mesmas funções que `_x(` e `__(`. Os três lookbehinds
+// não têm letra nenhuma, então a caixa não os afeta.
 const CALL_RE =
-	/(?<!\w)(?<!->)(?<!::)(esc_html__|esc_attr__|esc_html_e|esc_attr_e|_nx|_ex|__|_e|_x|_n)\s*\(/g;
+	/(?<!\w)(?<!->)(?<!::)(translate_with_gettext_context|esc_attr__|esc_attr_e|esc_attr_x|esc_html__|esc_html_e|esc_html_x|translate|_nx_noop|_n_noop|_nx|_ex|__|_e|_n|_x)\s*\(/gi;
 
 // Aridade mínima de cada função — o domínio é sempre o ÚLTIMO argumento.
 // Usado para separar "domínio ausente" (menos argumentos do que a função
 // exige) de "domínio errado" (o último argumento existe e não é
 // 'post-voice'): dois defeitos diferentes, precisam de chaves diferentes.
+// Cada número é a contagem de parâmetros da assinatura real em l10n.php.
 const ARIDADE = {
+	// ( $text, $domain )
 	__: 2,
 	_e: 2,
-	esc_html__: 2,
 	esc_attr__: 2,
-	esc_html_e: 2,
 	esc_attr_e: 2,
+	esc_html__: 2,
+	esc_html_e: 2,
+	translate: 2,
+	// ( $text, $context, $domain )
 	_x: 3,
 	_ex: 3,
+	esc_attr_x: 3,
+	esc_html_x: 3,
+	translate_with_gettext_context: 3,
+	// ( $singular, $plural, $domain )
+	_n_noop: 3,
+	// ( $singular, $plural, $context, $domain )
+	_nx_noop: 4,
+	// ( $single, $plural, $number, $domain )
 	_n: 4,
+	// ( $single, $plural, $number, $context, $domain )
 	_nx: 5,
 };
+
+// Um literal de string PHP e nada mais — aspas simples ou duplas. `"post-voice"`
+// é PHP tão legal quanto `'post-voice'`, e comparar contra a forma com aspas
+// simples reprovava a outra. Estrito de propósito: uma barra invertida em
+// qualquer das duas famílias, ou um `$` dentro de aspas duplas, derruba o
+// reconhecimento — `"post-$voice"` interpola e `'post' . '-voice'` concatena, e
+// nenhum dos dois é um literal cujo valor dê para ler daqui. Isso não perde
+// nada: o domínio procurado não contém `\`, `$` nem aspas, então nenhum literal
+// que precise de escape poderia ser igual a ele de todo modo.
+const LITERAL_ASPAS_SIMPLES_RE = /^'([^'\\]*)'$/;
+const LITERAL_ASPAS_DUPLAS_RE = /^"([^"\\$]*)"$/;
+
+/**
+ * O texto de um literal de string PHP simples.
+ *
+ * @param {string} arg um argumento já trimado
+ * @return {string|null} o conteúdo, ou null se `arg` não for um literal simples
+ */
+function textoDoLiteral( arg ) {
+	const m =
+		LITERAL_ASPAS_SIMPLES_RE.exec( arg ) ||
+		LITERAL_ASPAS_DUPLAS_RE.exec( arg );
+	return m === null ? null : m[ 1 ];
+}
 
 /**
  * Todas as chamadas gettext do arquivo, com os argumentos crus.
@@ -86,7 +144,12 @@ function gettextCalls( source ) {
 			}
 		}
 		out.push( {
-			fn: m[ 1 ],
+			// Nome canônico, em minúsculas: PHP não diferencia caixa em nome
+			// de função, então `_X(` e `_x(` são a MESMA função e o mesmo
+			// defeito. Sem normalizar aqui, as duas grafias virariam duas
+			// chaves de desvio diferentes para um defeito só — e `ARIDADE`,
+			// indexada pelo nome canônico, não acharia `_X`.
+			fn: m[ 1 ].toLowerCase(),
 			args: source.slice( abre, fecha + 1 ),
 			index: m.index,
 		} );
@@ -144,7 +207,14 @@ function dividirArgumentos( args ) {
 		}
 		atual += c;
 	}
-	if ( corpo.trim() !== '' || partes.length > 0 ) {
+	// A parte que sobra depois do último separador só é um argumento se tiver
+	// conteúdo. Uma vírgula à direita — `__( 'x', 'post-voice', )`, legal desde
+	// o PHP 8.0 — deixa ali uma parte vazia que não é argumento nenhum, e
+	// empurrá-la fazia a checagem ler o domínio como "" e reprovar PHP correto.
+	// Descartá-la é também o que mantém `__( 'x', )` contando UM argumento, ou
+	// seja, domínio AUSENTE, e não um domínio vazio "errado": os dois são
+	// defeitos diferentes e não podem colidir na mesma chave.
+	if ( atual.trim() !== '' ) {
 		partes.push( atual );
 	}
 	return partes.map( ( p ) => p.trim() );
@@ -163,16 +233,16 @@ function avaliarDominio( fn, args ) {
 	if ( partes.length < minimo ) {
 		return {
 			tipo: 'ausente',
-			mensagem: `${ fn }() está sem o argumento de text domain; o esperado é ${ DOMINIO } (ADR-0010)`,
+			mensagem: `${ fn }() está sem o argumento de text domain; o esperado é ${ DOMINIO_LITERAL } (ADR-0010)`,
 		};
 	}
 	const ultimo = partes[ partes.length - 1 ];
-	if ( ultimo === DOMINIO ) {
+	if ( textoDoLiteral( ultimo ) === DOMINIO ) {
 		return null;
 	}
 	return {
 		tipo: 'errado',
-		mensagem: `${ fn }() não usa o text domain ${ DOMINIO } (ADR-0010)`,
+		mensagem: `${ fn }() não usa o text domain ${ DOMINIO_LITERAL } (ADR-0010)`,
 	};
 }
 

@@ -13,14 +13,67 @@ describe( 'i18n-text-domain', () => {
 		expect( regra.id ).toBe( 'i18n-text-domain' );
 	} );
 
-	it.each( [
-		"__( 'Olá', 'post-voice' )",
-		"_x( 'Olá', 'saudação', 'post-voice' )",
-		"esc_html__( 'Olá', 'post-voice' )",
-		"_n( 'um', 'dois', $n, 'post-voice' )",
-	] )( 'aceita %s', ( chamada ) => {
-		expect( regra.check( ctxCom( `<?php\n${ chamada };\n` ) ) ).toEqual(
-			[]
+	// A lista completa das dezesseis funções gettext do WordPress que recebem
+	// um text domain — a mesma de `wp-includes/l10n.php` e do sniff
+	// `WordPress.WP.I18n` do WPCS. Cada linha usa a aridade real da
+	// assinatura, com o domínio no ÚLTIMO argumento. Uma função que falte na
+	// regra não vira "cobertura parcial": a chamada não é vista, e um domínio
+	// errado nela passa em silêncio — por isso cada nome aparece aqui duas
+	// vezes, uma aceitando e uma acusando.
+	const CHAMADAS = [
+		[ '__', "__( 'Olá', %d )" ],
+		[ '_e', "_e( 'Olá', %d )" ],
+		[ 'esc_attr__', "esc_attr__( 'Olá', %d )" ],
+		[ 'esc_attr_e', "esc_attr_e( 'Olá', %d )" ],
+		[ 'esc_html__', "esc_html__( 'Olá', %d )" ],
+		[ 'esc_html_e', "esc_html_e( 'Olá', %d )" ],
+		[ 'translate', "translate( 'Olá', %d )" ],
+		[ '_x', "_x( 'Olá', 'saudação', %d )" ],
+		[ '_ex', "_ex( 'Olá', 'saudação', %d )" ],
+		[ 'esc_attr_x', "esc_attr_x( 'Olá', 'saudação', %d )" ],
+		[ 'esc_html_x', "esc_html_x( 'Olá', 'saudação', %d )" ],
+		[
+			'translate_with_gettext_context',
+			"translate_with_gettext_context( 'Olá', 'saudação', %d )",
+		],
+		[ '_n_noop', "_n_noop( 'um', 'dois', %d )" ],
+		[ '_nx_noop', "_nx_noop( 'um', 'dois', 'contagem', %d )" ],
+		[ '_n', "_n( 'um', 'dois', $n, %d )" ],
+		[ '_nx', "_nx( 'um', 'dois', $n, 'contagem', %d )" ],
+	];
+	const comDominio = ( molde, dominio ) => molde.replace( '%d', dominio );
+
+	it( 'cobre as dezesseis funções gettext do WordPress, e só elas', () => {
+		expect( CHAMADAS ).toHaveLength( 16 );
+		expect( new Set( CHAMADAS.map( ( [ fn ] ) => fn ) ).size ).toBe( 16 );
+	} );
+
+	it.each( CHAMADAS )( 'aceita %s com o domínio certo', ( fn, molde ) => {
+		const src = `<?php\n${ comDominio( molde, "'post-voice'" ) };\n`;
+		expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		expect( regra.gettextCalls( src )[ 0 ].fn ).toBe( fn );
+	} );
+
+	it.each( CHAMADAS )( 'acusa %s com o domínio errado', ( fn, molde ) => {
+		const src = `<?php\n${ comDominio( molde, "'outro'" ) };\n`;
+		const a = regra.check( ctxCom( src ) );
+		expect( a ).toHaveLength( 1 );
+		// A chave nomeia a função de verdade: ler `_n_noop` como `_n`, ou
+		// `translate_with_gettext_context` como `translate`, produziria a
+		// chave errada — e, com a aridade errada junto, o tipo errado.
+		expect( a[ 0 ].key ).toBe(
+			`features/x/php/class-a.php → ${ fn }-dominio-errado`
+		);
+	} );
+
+	it.each( CHAMADAS )( 'acusa %s sem o domínio', ( fn, molde ) => {
+		// A mesma chamada com o último argumento removido: aridade abaixo do
+		// mínimo é "ausente", não "errado".
+		const src = `<?php\n${ molde.replace( /,\s*%d/, '' ) };\n`;
+		const a = regra.check( ctxCom( src ) );
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toBe(
+			`features/x/php/class-a.php → ${ fn }-dominio-ausente`
 		);
 	} );
 
@@ -98,6 +151,135 @@ describe( 'i18n-text-domain', () => {
 		// 'wrong-domain' )" está ali dentro, caractere por caractere.
 		const src = "<?php\n$msg = \"chame __( 'x', 'wrong-domain' )\";\n";
 		expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+	} );
+
+	// Nome de função em PHP não diferencia maiúsculas de minúsculas: `_X(` é
+	// uma chamada a `_x()`. Uma `CALL_RE` sensível à caixa simplesmente não
+	// via a chamada — falso negativo silencioso, não um alarme a menos.
+	describe( 'caixa do nome da função', () => {
+		it( 'aceita `_X` com o domínio certo', () => {
+			expect(
+				regra.check(
+					ctxCom( "<?php\n_X( 'Olá', 'saudação', 'post-voice' );\n" )
+				)
+			).toEqual( [] );
+		} );
+
+		it( 'acusa `_X` com o domínio errado, sob a chave canônica `_x`', () => {
+			const a = regra.check(
+				ctxCom( "<?php\n_X( 'Olá', 'saudação', 'outro' );\n" )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe(
+				'features/x/php/class-a.php → _x-dominio-errado'
+			);
+		} );
+
+		it( '`_X` e `_x` no mesmo arquivo são o MESMO defeito, uma chave só', () => {
+			// A chave é identidade de desvio, casada caractere a caractere no
+			// front-matter da ADR. Duas grafias da mesma função não podem
+			// virar duas identidades — uma entrada de `desvios:` tem de
+			// absolver as duas ou nenhuma.
+			const src =
+				"<?php\n_X( 'a', 'c', 'outro' );\n_x( 'b', 'c', 'outro' );\n";
+			const chaves = regra.check( ctxCom( src ) ).map( ( f ) => f.key );
+			expect( chaves ).toHaveLength( 2 );
+			expect( new Set( chaves ).size ).toBe( 1 );
+		} );
+
+		it( '`_X` sem domínio é AUSENTE — a aridade é lida pelo nome canônico', () => {
+			// `ARIDADE` é indexada em minúsculas. Sem canonizar `fn`, a
+			// consulta devolveria `undefined`, `partes.length < undefined`
+			// seria falso, e o defeito viraria "errado" — outra chave, outro
+			// conserto, para o mesmo problema.
+			const a = regra.check(
+				ctxCom( "<?php\n_X( 'Olá', 'saudação' );\n" )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe(
+				'features/x/php/class-a.php → _x-dominio-ausente'
+			);
+		} );
+
+		it( 'a guarda de fronteira continua valendo com a caixa ignorada', () => {
+			expect(
+				regra.check(
+					ctxCom( "<?php\n$o->_X( 'a' );\nSelf::_X( 'b' );\n" )
+				)
+			).toEqual( [] );
+			expect(
+				regra.check( ctxCom( '<?php\nmy_helper_X( $a );\n' ) )
+			).toEqual( [] );
+		} );
+	} );
+
+	// PHP legal que a regra reprovava.
+	describe( 'formas legais do argumento de domínio', () => {
+		it( 'aceita o domínio entre aspas duplas', () => {
+			expect(
+				regra.check( ctxCom( '<?php\n__( \'Olá\', "post-voice" );\n' ) )
+			).toEqual( [] );
+		} );
+
+		it( 'não aceita interpolação nem concatenação como se fossem o domínio', () => {
+			// `"post-$voice"` e `'post' . '-voice'` podem valer "post-voice"
+			// em tempo de execução, mas daqui não dá para saber — e tratá-los
+			// como o domínio seria aceitar qualquer expressão que por acaso
+			// contenha o texto.
+			for ( const arg of [
+				'"post-$voice"',
+				'"post-{$voice}"',
+				"'post' . '-voice'",
+				'$dominio',
+			] ) {
+				const a = regra.check(
+					ctxCom( `<?php\n__( 'Olá', ${ arg } );\n` )
+				);
+				expect( { arg, achados: a.length } ).toEqual( {
+					arg,
+					achados: 1,
+				} );
+				expect( a[ 0 ].key ).toMatch( /-dominio-errado$/ );
+			}
+		} );
+
+		it( 'uma vírgula escapada dentro do texto não separa argumentos', () => {
+			// `dividirArgumentos` só conta vírgulas de nível superior e fora de
+			// aspas; a aspa escapada não fecha a string, então a vírgula que
+			// vem depois dela continua sendo texto. Sem isso, o "último
+			// argumento" seria ` ok'` e o domínio certo seria reprovado.
+			const src =
+				"<?php\n__( 'it\\'s, ok', 'post-voice' );\n" +
+				'__( "a\\", b", \'outro\' );\n';
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].line ).toBe( 3 );
+			expect( a[ 0 ].key ).toBe(
+				'features/x/php/class-a.php → __-dominio-errado'
+			);
+		} );
+
+		it( 'aceita vírgula à direita (PHP 8.0+)', () => {
+			expect(
+				regra.check( ctxCom( "<?php\n__( 'Olá', 'post-voice', );\n" ) )
+			).toEqual( [] );
+			expect(
+				regra.check(
+					ctxCom( "<?php\n_n( 'um', 'dois', $n, 'post-voice', );\n" )
+				)
+			).toEqual( [] );
+		} );
+
+		it( 'vírgula à direita sem domínio continua sendo domínio AUSENTE', () => {
+			// A parte vazia depois da última vírgula não é um argumento. Se
+			// entrasse na contagem, `__( 'Olá', )` viraria "domínio errado" —
+			// outro defeito, outra chave, outra correção.
+			const a = regra.check( ctxCom( "<?php\n__( 'Olá', );\n" ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe(
+				'features/x/php/class-a.php → __-dominio-ausente'
+			);
+		} );
 	} );
 
 	it( 'gettextCalls devolve fn, args e index', () => {
