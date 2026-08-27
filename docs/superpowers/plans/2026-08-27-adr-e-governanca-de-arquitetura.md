@@ -1751,6 +1751,22 @@ describe( 'createContext', () => {
 } );
 
 describe( 'phpSources', () => {
+	it( 'exclui PHP de ferramental — e2e/mu-plugins e scripts/', () => {
+		const ctx = createContext( {
+			files: [
+				'features/narration/php/class-assets.php',
+				'e2e/mu-plugins/coop-coep-headers.php',
+				'scripts/check-coverage-threshold.php',
+				'post-voice.php',
+			],
+			read: () => '',
+		} );
+		expect( phpSources( ctx ) ).toEqual( [
+			'features/narration/php/class-assets.php',
+			'post-voice.php',
+		] );
+	} );
+
 	it( 'devolve só .php de produção', () => {
 		const ctx = createContext( {
 			files: [
@@ -1865,11 +1881,28 @@ const stripPhpNoise = ( source ) => strip( source, true );
 const isTestPath = ( file ) => TEST_PATH_RE.test( file );
 
 /**
+ * PHP de produção: o que é entregue dentro do plugin.
+ *
+ * Allowlist por raiz, e não só "não é teste". `e2e/mu-plugins/*.php` e
+ * `scripts/check-coverage-threshold.php` são PHP versionado, não moram em
+ * diretório de teste, e não são código do plugin — deixá-los entrar faria as
+ * regras de conteúdo (ADRs 0002, 0008, 0009), a de namespace REST (0007) e a
+ * de i18n (0010) valerem sobre ferramental de teste. Hoje nenhum deles as
+ * dispararia; um harness futuro que use `exec` ou uma string sem text domain
+ * dispararia, e o lint reprovaria código correto.
+ *
  * @param {Object} ctx
- * @return {string[]} .php versionados fora de qualquer diretório de teste
+ * @return {string[]} .php versionados de `features/`, `shared/` e a raiz do plugin
  */
 function phpSources( ctx ) {
-	return ctx.files.filter( ( f ) => f.endsWith( '.php' ) && ! isTestPath( f ) );
+	return ctx.files.filter(
+		( f ) =>
+			f.endsWith( '.php' ) &&
+			! isTestPath( f ) &&
+			( f === 'post-voice.php' ||
+				f.startsWith( 'features/' ) ||
+				f.startsWith( 'shared/' ) )
+	);
 }
 
 /**
