@@ -3,7 +3,7 @@ id: 0001
 titulo: Registrar decisões de arquitetura como ADR
 status: aceita
 data: 2026-08-27
-origem: specs/2026-08-25-adr-e-governanca-de-arquitetura-design.md
+origem: superpowers/specs/2026-08-25-adr-e-governanca-de-arquitetura-design.md
 enforced_by: [ doctor ]
 revisar_quando: o índice passar de 40 ADRs, ou uma ADR levar mais de meia hora para ser escrita
 desvios: []

@@ -3,7 +3,7 @@ id: NNNN
 titulo: Uma frase nominal, não uma frase completa
 status: proposta
 data: AAAA-MM-DD
-origem: specs/AAAA-MM-DD-nome-do-spec.md#secao
+origem: superpowers/specs/AAAA-MM-DD-nome-do-spec.md#secao
 enforced_by: [ id-da-regra ]
 revisar_quando: uma condição observável, nunca uma data
 desvios: []
