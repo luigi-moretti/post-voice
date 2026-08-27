@@ -1077,7 +1077,7 @@ if ( require.main === module ) {
 - [ ] **Step 5: Rodar e ver passar**
 
 Run: `npm run test:unit -- scripts/lint-arch/tests/index.test.js`
-Esperado: PASS, 13 testes.
+Esperado: PASS, 12 testes.
 
 - [ ] **Step 6: Ligar o comando e as configs**
 
