@@ -167,7 +167,7 @@ satisfazem a regra" — vale aqui também.
   relocação", seguindo exatamente o precedente já existente de
   `shared/php/class-settings-page.php`, requerido antes de `pronunciation/`).
 - **Testes:** `features/narration/tests/php/test-post-meta.php::test_auth_callback_requires_edit_post_capability`
-  (linhas 121-130) teria que se mudar para um novo
+  (linhas 121-131) teria que se mudar para um novo
   `shared/tests/php/test-*.php` — pelo `@covers` do projeto, deixar o teste
   em `test-post-meta.php` depois do método sair de `Post_Voice_Post_Meta`
   para de compilar (o método não existe mais na classe).
@@ -268,7 +268,7 @@ sentido do import (`pronunciation` lê `narration`) já é o correto. Mover para
 grep -rln "SUPPORTED_LANGUAGES" features/
 ```
 
-retorna 9 arquivos: 6 dentro de `narration` (`model-source.ts`,
+retorna 10 arquivos: 6 dentro de `narration` (`model-source.ts`,
 `voice-catalog.ts`, `segment.ts`, `block-narration-attributes.ts`,
 `inline-language-format.ts`, `index.tsx`) + 2 testes de `narration`
 (`model-source.test.ts`, `voice-catalog.test.ts`) contra só 2 arquivos de
