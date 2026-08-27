@@ -727,7 +727,14 @@ Os cinco comportamentos que o runner tem de produzir, do spec:
 | Código viola e o desvio **está** listado | passa |
 | Desvio listado e o código **não** viola mais | **aviso** — dívida quitada, remova da lista |
 
-Detalhe que importa: os achados são agrupados **por ADR**, não por regra. A ADR-0004 tem duas regras (`feature-layout` e `shared-two-consumers`) e uma única lista de `desvios:`; comparando por regra, um desvio de uma seria acusado de "dívida quitada" pela outra.
+Detalhe que importa: `index.js` é uma **biblioteca com uma casca de CLI**, e os três
+`require` de módulos irmãos (`./adr`, `./context`, `./rules`) moram dentro do bloco
+`require.main === module`, nunca no topo. `require` de topo executa no load, então um
+require de topo tornaria o módulo inimportável enquanto `context.js` não existisse — e
+ele só nasce na Tarefa 9. A suíte importa `{ run, format }` e injeta um `ctx` falso;
+é essa separação que a mantém executável.
+
+Segundo detalhe: os achados são agrupados **por ADR**, não por regra. A ADR-0004 tem duas regras (`feature-layout` e `shared-two-consumers`) e uma única lista de `desvios:`; comparando por regra, um desvio de uma seria acusado de "dívida quitada" pela outra.
 
 - [ ] **Step 1: Escrever o teste que falha**
 
@@ -925,8 +932,12 @@ module.exports = {};
 // Executa as regras de arquitetura usando as ADRs como configuração.
 // Ver docs/adr/README.md e o spec 2026-08-25-adr-e-governanca-de-arquitetura-design.md.
 const path = require( 'node:path' );
-const { loadAdrs } = require( './adr' );
-const { createContext } = require( './context' );
+
+// `./adr`, `./context` e `./rules` são exigidos dentro do bloco de CLI, no fim do
+// arquivo, e não aqui. `require` no topo executa no load, então um require de topo
+// tornaria este módulo impossível de importar enquanto qualquer um dos três não
+// existisse — e é exatamente isso que a suíte de testes faz: importa `{ run, format }`
+// e injeta um `ctx` falso. A separação biblioteca/CLI é o que mantém `run` testável.
 
 // Valores de `enforced_by` que não nomeiam uma regra: dizem que a decisão é
 // defendida por leitura humana ou por relatório, não por gate determinístico.
@@ -1050,11 +1061,13 @@ function format( { problems, warnings } ) {
 module.exports = { run, format };
 
 if ( require.main === module ) {
+	const { loadAdrs } = require( './adr' );
+	const { createContext } = require( './context' );
+	const registry = require( './rules' );
 	const root = process.cwd();
 	// --report: não sai não-zero. É como `npm run doctor` consome o linter.
 	const reportOnly = process.argv.includes( '--report' );
 	const adrs = loadAdrs( path.join( root, 'docs/adr' ) );
-	const registry = require( './rules' );
 	const resultado = run( { adrs, registry, ctx: createContext( { root } ) } );
 	process.stdout.write( format( resultado ) + '\n' );
 	process.exit( ! reportOnly && resultado.problems.length ? 1 : 0 );
