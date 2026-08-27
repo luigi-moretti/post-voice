@@ -2050,7 +2050,7 @@ describe( 'no-server-side-tts', () => {
 		expect( achados ).toHaveLength( 1 );
 		expect( achados[ 0 ].line ).toBe( 2 );
 		expect( achados[ 0 ].message ).toMatch( motivo );
-		expect( achados[ 0 ].key ).toBe( `${ PROD } → ${ achados[ 0 ].key.split( ' → ' )[ 1 ] }` );
+		expect( achados[ 0 ].key.startsWith( `${ PROD } → ` ) ).toBe( true );
 	} );
 
 	it( 'ignora o que está em comentário', () => {
@@ -2074,7 +2074,13 @@ describe( 'no-narration-logic-in-php', () => {
 		expect( narration.adr ).toBe( '0008' );
 	} );
 
-	it.each( [ 'md5( $c );', 'sha1( $c );', 'hash( "sha256", $c );', 'parse_blocks( $c );' ] )(
+	it.each( [
+		'md5( $c );',
+		'sha1( $c );',
+		'hash( "sha256", $c );',
+		'hash_hmac( "sha256", $c, $k );',
+		'parse_blocks( $c );',
+	] )(
 		'acusa %s',
 		( linha ) => {
 			expect( narration.check( ctxCom( PROD, `<?php\n${ linha }\n` ) ) ).toHaveLength( 1 );
@@ -2083,6 +2089,23 @@ describe( 'no-narration-logic-in-php', () => {
 
 	it( 'não confunde uma variável chamada $hash com a função', () => {
 		expect( narration.check( ctxCom( PROD, '<?php\n$hash = $meta;\n' ) ) ).toEqual( [] );
+	} );
+
+	it( 'não acusa chamada de método nem estática do próprio código', () => {
+		expect(
+			narration.check( ctxCom( PROD, '<?php\n$this->hash( $x );\nself::md5( $y );\n' ) )
+		).toEqual( [] );
+		expect(
+			narration.check( ctxCom( PROD, '<?php\npassword_hash( $p, PASSWORD_DEFAULT );\n' ) )
+		).toEqual( [] );
+	} );
+
+	it( 'dá chaves distintas a violações diferentes no mesmo arquivo', () => {
+		const achados = narration.check(
+			ctxCom( PROD, '<?php\nmd5( $a );\nsha1( $b );\n' )
+		);
+		expect( achados ).toHaveLength( 2 );
+		expect( new Set( achados.map( ( f ) => f.key ) ).size ).toBe( 2 );
 	} );
 } );
 
@@ -2135,19 +2158,25 @@ const { phpSources, stripPhpComments } = require( '../context' );
  * que uma palavra proibida citada num comentário não conta — o que é correto.
  *
  * @param {Object}   ctx
- * @param {Object[]} padroes { pattern: RegExp com /g, motivo: string, rotulo: string }
+ * @param {Object[]} padroes { pattern: RegExp com /g, motivo: string }
  * @return {Object[]} findings
  */
 function scanForbidden( ctx, padroes ) {
 	const achados = [];
 	for ( const file of phpSources( ctx ) ) {
 		const source = stripPhpComments( ctx.read( file ) );
-		for ( const { pattern, motivo, rotulo } of padroes ) {
+		for ( const { pattern, motivo } of padroes ) {
 			pattern.lastIndex = 0;
 			let m;
 			while ( ( m = pattern.exec( source ) ) !== null ) {
+				// A chave carrega o termo casado, não a categoria. Um padrão cobre
+				// vários nomes (`exec`, `shell_exec`, `proc_open`…), e com a
+				// categoria na chave um arquivo com dois deles produziria a mesma
+				// chave duas vezes — uma entrada de `desvios:` absolveria as duas,
+				// e a segunda violação passaria despercebida.
+				const termo = m[ 0 ].replace( /\s*\($/, '' );
 				achados.push( {
-					key: `${ file } → ${ rotulo }`,
+					key: `${ file } → ${ termo }`,
 					file,
 					line: source.slice( 0, m.index ).split( '\n' ).length,
 					message: motivo,
@@ -2175,18 +2204,19 @@ const { scanForbidden } = require( './forbidden-php' );
 // runtime ou ao arquivo do modelo.
 const PADROES = [
 	{
-		pattern: /\b(?:exec|shell_exec|proc_open|passthru|system|popen)\s*\(/g,
-		rotulo: 'spawn-de-processo',
+		// `(?<![>:])` impede casar `$obj->exec(` e `self::system(`: `\b` dispara
+		// logo depois de `->` e de `::`, e um método próprio com esse nome é
+		// código legítimo. `password_hash(` já não casa, porque `_` é caractere
+		// de palavra e o `\b` não abre ali.
+		pattern: /(?<![>:])\b(?:exec|shell_exec|proc_open|passthru|system|popen)\s*\(/g,
 		motivo: 'spawn de processo no servidor; o TTS roda no navegador (ADR-0002)',
 	},
 	{
 		pattern: /\.onnx\b/g,
-		rotulo: 'arquivo-onnx',
 		motivo: 'referência a arquivo ONNX no servidor; o modelo vive no navegador (ADR-0002)',
 	},
 	{
 		pattern: /\bonnxruntime\b/gi,
-		rotulo: 'onnxruntime',
 		motivo: 'referência ao runtime ONNX no servidor (ADR-0002)',
 	},
 ];
@@ -2206,14 +2236,13 @@ const { scanForbidden } = require( './forbidden-php' );
 
 const PADROES = [
 	{
-		pattern: /\b(?:md5|sha1|hash|hash_hmac)\s*\(/g,
-		rotulo: 'hash-no-servidor',
+		// Ver o comentário sobre `(?<![>:])` em no-server-side-tts.js.
+		pattern: /(?<![>:])\b(?:md5|sha1|hash|hash_hmac)\s*\(/g,
 		motivo:
 			'o cliente calcula source_hash; o servidor guarda e compara, nunca recomputa (ADR-0008)',
 	},
 	{
 		pattern: /\bparse_blocks\s*\(/g,
-		rotulo: 'parse-blocks',
 		motivo:
 			'a seleção do que é narrado é do cliente; o servidor não reimplementa (ADR-0008)',
 	},
@@ -2235,13 +2264,11 @@ const { scanForbidden } = require( './forbidden-php' );
 const PADROES = [
 	{
 		pattern: /\b(?:ffmpeg|avconv|lame|sox)\b/gi,
-		rotulo: 'encoder-externo',
 		motivo:
 			'encoder de áudio no servidor; o cliente comprime antes do upload (ADR-0009)',
 	},
 	{
 		pattern: /\bgetID3\b/g,
-		rotulo: 'getid3',
 		motivo: 'biblioteca de áudio no servidor (ADR-0009)',
 	},
 ];
