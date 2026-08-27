@@ -92,6 +92,18 @@ function run( { adrs, registry, ctx } ) {
 			} );
 		}
 
+		// Dívida quitada só é afirmável quando TODAS as regras da ADR existem.
+		// Com uma regra ausente, `achados` fica incompleto por omissão e todo
+		// desvio listado pareceria quitado — o aviso mandaria apagar entradas que
+		// ainda são violações reais. "Regra ausente" já é reportado como problema
+		// à parte; aqui o correto é silêncio, não uma afirmação falsa.
+		const idsReais = adr.enforcedBy.filter(
+			( id ) => ! LITERAIS.has( id )
+		);
+		if ( ! idsReais.every( ( id ) => registry[ id ] ) ) {
+			continue;
+		}
+
 		const vistos = new Set( achados.map( ( f ) => f.key ) );
 		for ( const desvio of adr.desvios ) {
 			if ( ! vistos.has( desvio ) ) {

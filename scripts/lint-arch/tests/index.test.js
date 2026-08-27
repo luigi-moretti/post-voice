@@ -103,6 +103,25 @@ describe( 'run', () => {
 		expect( out.warnings ).toEqual( [] );
 	} );
 
+	it( 'não afirma dívida quitada quando uma regra da ADR não existe', () => {
+		// Sem regra, não há achado — mas isso é informação indisponível, não
+		// prova de que o desvio deixou de existir.
+		const out = run( {
+			adrs: [
+				adr( {
+					enforcedBy: [ 'feature-deps', 'regra-que-nao-existe' ],
+					status: 'aceita-com-desvio',
+					desvios: [ 'a.php → B' ],
+				} ),
+			],
+			registry: { 'feature-deps': regra( 'feature-deps', '0005', [] ) },
+			ctx,
+		} );
+		expect( out.warnings ).toEqual( [] );
+		expect( out.problems ).toHaveLength( 1 );
+		expect( out.problems[ 0 ].message ).toMatch( /não existe/ );
+	} );
+
 	it( 'avisa quando um desvio listado não viola mais', () => {
 		const out = run( {
 			adrs: [
