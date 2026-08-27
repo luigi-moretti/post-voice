@@ -2100,6 +2100,17 @@ describe( 'no-narration-logic-in-php', () => {
 		).toEqual( [] );
 	} );
 
+	it( 'ainda pega chamada nua colada em `:` ou `>`', () => {
+		// O lookbehind bloqueia `->` e `::`, não os caracteres soltos: sem isso,
+		// `case 1:md5(` e `$a>md5(` escapariam, e são violações de verdade.
+		expect(
+			narration.check( ctxCom( PROD, '<?php\ncase 1:md5( $c );\n' ) )
+		).toHaveLength( 1 );
+		expect( narration.check( ctxCom( PROD, '<?php\n$a>md5( $c );\n' ) ) ).toHaveLength(
+			1
+		);
+	} );
+
 	it( 'dá chaves distintas a violações diferentes no mesmo arquivo', () => {
 		const achados = narration.check(
 			ctxCom( PROD, '<?php\nmd5( $a );\nsha1( $b );\n' )
@@ -2204,11 +2215,14 @@ const { scanForbidden } = require( './forbidden-php' );
 // runtime ou ao arquivo do modelo.
 const PADROES = [
 	{
-		// `(?<![>:])` impede casar `$obj->exec(` e `self::system(`: `\b` dispara
-		// logo depois de `->` e de `::`, e um método próprio com esse nome é
-		// código legítimo. `password_hash(` já não casa, porque `_` é caractere
-		// de palavra e o `\b` não abre ali.
-		pattern: /(?<![>:])\b(?:exec|shell_exec|proc_open|passthru|system|popen)\s*\(/g,
+		// `(?<!->)(?<!::)` impede casar `$obj->exec(` e `self::system(`: `\b`
+		// dispara logo depois de `->` e de `::`, e um método próprio com esse nome
+		// é código legítimo. Os dois lookbehinds são de dois caracteres de
+		// propósito — um `(?<![>:])` de um caractere só também engoliria
+		// `case 1:exec(` e `$a>exec(`, que são violações de verdade.
+		// `password_hash(` já não casa, porque `_` é caractere de palavra e o
+		// `\b` não abre ali.
+		pattern: /(?<!->)(?<!::)\b(?:exec|shell_exec|proc_open|passthru|system|popen)\s*\(/g,
 		motivo: 'spawn de processo no servidor; o TTS roda no navegador (ADR-0002)',
 	},
 	{
@@ -2236,8 +2250,8 @@ const { scanForbidden } = require( './forbidden-php' );
 
 const PADROES = [
 	{
-		// Ver o comentário sobre `(?<![>:])` em no-server-side-tts.js.
-		pattern: /(?<![>:])\b(?:md5|sha1|hash|hash_hmac)\s*\(/g,
+		// Ver o comentário sobre os dois lookbehinds em no-server-side-tts.js.
+		pattern: /(?<!->)(?<!::)\b(?:md5|sha1|hash|hash_hmac)\s*\(/g,
 		motivo:
 			'o cliente calcula source_hash; o servidor guarda e compara, nunca recomputa (ADR-0008)',
 	},
