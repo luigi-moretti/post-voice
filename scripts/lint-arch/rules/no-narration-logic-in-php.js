@@ -3,8 +3,8 @@ const { scanForbidden } = require( './forbidden-php' );
 
 const PADROES = [
 	{
-		// Ver o comentário sobre `(?<![>:])` em no-server-side-tts.js.
-		pattern: /(?<![>:])\b(?:md5|sha1|hash|hash_hmac)\s*\(/g,
+		// Ver o comentário sobre os dois lookbehinds em no-server-side-tts.js.
+		pattern: /(?<!->)(?<!::)\b(?:md5|sha1|hash|hash_hmac)\s*\(/g,
 		motivo: 'o cliente calcula source_hash; o servidor guarda e compara, nunca recomputa (ADR-0008)',
 	},
 	{

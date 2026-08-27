@@ -89,6 +89,17 @@ describe( 'no-narration-logic-in-php', () => {
 		).toEqual( [] );
 	} );
 
+	it( 'ainda pega chamada nua colada em `:` ou `>`', () => {
+		// O lookbehind bloqueia `->` e `::`, não os caracteres soltos: sem isso,
+		// `case 1:md5(` e `$a>md5(` escapariam, e são violações de verdade.
+		expect(
+			narration.check( ctxCom( PROD, '<?php\ncase 1:md5( $c );\n' ) )
+		).toHaveLength( 1 );
+		expect(
+			narration.check( ctxCom( PROD, '<?php\n$a>md5( $c );\n' ) )
+		).toHaveLength( 1 );
+	} );
+
 	it( 'dá chaves distintas a violações diferentes no mesmo arquivo', () => {
 		const achados = narration.check(
 			ctxCom( PROD, '<?php\nmd5( $a );\nsha1( $b );\n' )
