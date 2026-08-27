@@ -343,6 +343,8 @@ Claude-Session: https://claude.ai/code/session_01U2Uski78ozNPf1uBQXU95q"
 **Files:**
 - Create: `scripts/lint-arch/adr.js`
 - Test: `scripts/lint-arch/tests/adr.test.js`
+- Modify: `.eslintrc.js` — os dois overrides que o teste desta tarefa exige para
+  poder ser commitado (ver Step 5)
 
 **Interfaces:**
 - Consumes: o formato definido na Tarefa 1.
@@ -352,6 +354,13 @@ Claude-Session: https://claude.ai/code/session_01U2Uski78ozNPf1uBQXU95q"
   - `STATUSES: string[]`, `SUPERSEDED_RE: RegExp`.
 
 Por que um parser próprio e não `js-yaml`: dependência nova está proibida, e o subconjunto usado é `chave: valor`, lista inline `[ a, b ]` e lista em bloco com `-`. Trinta linhas de parser custam menos que uma entrada no lockfile que passa a ser superfície de auditoria.
+
+**Por que o `.eslintrc.js` entra aqui e não na Tarefa 3.** `.husky/pre-commit` roda
+`npx lint-staged`, que mapeia `*.{js,cjs,mjs,ts,tsx}` para `wp-scripts lint-js`. Um
+`.js` novo em `scripts/` com `require`/`module` dispara `no-undef`, e um arquivo de
+teste com `describe`/`it`/`expect` dispara de novo. Sem os overrides, **esta tarefa
+não consegue commitar** sem `--no-verify`, que é proibido. A config é pré-requisito
+do primeiro `.js` do diretório, não da integração — por isso mora aqui.
 
 - [ ] **Step 1: Escrever o teste que falha**
 
@@ -649,10 +658,36 @@ module.exports = { parseAdr, loadAdrs, STATUSES, SUPERSEDED_RE };
 Run: `npm run test:unit -- scripts/lint-arch/tests/adr.test.js`
 Esperado: PASS, 14 testes.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Ajustar o `.eslintrc.js`**
+
+Dois overrides. O primeiro amplia o que já existe (linha 11); o segundo é novo:
+
+```js
+	overrides: [
+		{
+			// Tooling that runs in Node, not in a browser or a bundle. Without an
+			// explicit env, the shared config leaves modern globals like
+			// `globalThis` undeclared and `no-undef` fires on correct code.
+			files: [ 'test/**/*.js', 'scripts/**/*.{js,mjs}', '*.config.js' ],
+			env: { node: true, es2022: true },
+		},
+		{
+			// Jest globals for the lint-arch suites. Scoped to that directory:
+			// `test/jest.setup.js` is plain Node setup and declares none of them.
+			files: [ 'scripts/**/tests/**/*.js' ],
+			env: { jest: true },
+		},
+	],
+```
+
+Uma entrada com chaves (`*.{js,mjs}`), não duas separadas — é a forma que a Tarefa 3
+espera encontrar. E o override de Jest cobre **só** `scripts/**/tests/**`:
+`test/jest.setup.js` é setup de Node puro e passa no lint hoje sem env de Jest.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/lint-arch/adr.js scripts/lint-arch/tests/adr.test.js
+git add scripts/lint-arch/adr.js scripts/lint-arch/tests/adr.test.js .eslintrc.js
 git commit -m "feat(lint-arch): parse ADR front matter
 
 A deliberate YAML subset — scalars, inline lists, block lists — rather than a
@@ -672,7 +707,6 @@ Claude-Session: https://claude.ai/code/session_01U2Uski78ozNPf1uBQXU95q"
 - Create: `scripts/lint-arch/rules/index.js`
 - Test: `scripts/lint-arch/tests/index.test.js`
 - Modify: `package.json` (script `lint:arch`)
-- Modify: `.eslintrc.js:11` (override de Node passa a cobrir `scripts/**/*.js`)
 - Modify: `jest.config.js:28-50` (`collectCoverageFrom`)
 
 **Interfaces:**
@@ -1040,11 +1074,9 @@ Esperado: PASS, 13 testes.
 		"lint:arch": "node scripts/lint-arch/index.js",
 ```
 
-`.eslintrc.js:11` — o override de Node cobre só `scripts/**/*.mjs` hoje; `scripts/lint-arch/` é CommonJS `.js`:
-
-```js
-			files: [ 'test/**/*.js', 'scripts/**/*.{js,mjs}', '*.config.js' ],
-```
+`.eslintrc.js` — **nada a fazer**: os dois overrides que `scripts/lint-arch/` precisa
+já entraram na Tarefa 2, que não conseguiria commitar o seu próprio teste sem eles.
+Confira que estão lá e siga.
 
 `jest.config.js` — acrescente ao fim do array `collectCoverageFrom` (linha 49, depois de `'features/player-style/admin/hex-field.ts'`):
 
@@ -1066,7 +1098,7 @@ Esperado: ambos passam.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add scripts/lint-arch/ package.json .eslintrc.js jest.config.js
+git add scripts/lint-arch/ package.json jest.config.js
 git commit -m "feat(lint-arch): run rules with the ADRs as configuration
 
 Findings are grouped per ADR rather than per rule: ADR-0004 has two rules and
@@ -4666,7 +4698,8 @@ Feita depois de escrever tudo, contra o spec.
 | Skill de projeto | Tarefa 19 |
 | `.claude/rules/*.md` path-scoped | Tarefa 20 |
 | `CLAUDE.md` encolhido, com teto verificado | Tarefa 21 |
-| Integração: `package.json`, `ci.yml`, `jest.config.js`, `.eslintrc.js` | Tarefa 3 (tudo menos `ci.yml`), Tarefa 17 (`ci.yml`) |
+| Integração: `.eslintrc.js` | Tarefa 2 |
+| Integração: `package.json`, `jest.config.js`, `ci.yml` | Tarefa 3 (as duas primeiras), Tarefa 17 (`ci.yml`) |
 | Testes: Jest sobre funções puras, nenhum E2E novo | toda tarefa de regra |
 
 Nenhuma lacuna. A ordem difere do spec em dois pontos, ambos declarados em "Duas refinações sobre o spec": o parser e o runner vêm antes das ADRs de decisão (o spec proíbe derivar a **decisão** do código, e um parser não é uma decisão), e o `ci.yml` só é ligado quando o repo está verde.
