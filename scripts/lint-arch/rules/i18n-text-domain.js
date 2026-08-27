@@ -8,31 +8,56 @@ const DOMINIO_LITERAL = `'${ DOMINIO }'`;
 
 // A lista completa das funções gettext do WordPress que recebem um text
 // domain. Conferida contra `wp-includes/l10n.php` do WordPress 6.6 (o mínimo
-// suportado) e contra o mapa `$translation_functions` do sniff
-// `WordPress.WP.I18n` do WPCS em `vendor/`, que traz exatamente estes dezesseis
-// nomes. Uma lista parcial não é uma cobertura parcial: é um falso negativo
-// silencioso, porque a chamada simplesmente não é vista.
+// suportado) e contra o mapa `$i18n_functions` do sniff `WordPress.WP.I18n` do
+// WPCS em `vendor/`, que traz exatamente estes dezesseis nomes. Uma lista
+// parcial não é uma cobertura parcial: é um falso negativo silencioso, porque
+// a chamada simplesmente não é vista.
 //
 // `translate_nooped_plural( $nooped, $count, $domain )` fica de fora de
 // propósito — recebe um domínio, mas o WPCS não a trata como função de
 // tradução (o texto já foi registrado por `_n_noop`/`_nx_noop`), e incluí-la
 // divergiria da lista de referência sem cobrir nenhum texto novo.
 //
-// Guarda de fronteira em três partes, igual a `rest-namespace.js` e
-// `php-class-naming.js`: `\b` não separa `_` do resto do nome — `_` é
+// Guarda de fronteira, igual a `rest-namespace.js` e `php-class-naming.js` nas
+// três primeiras partes: `\b` não separa `_` do resto do nome — `_` é
 // caractere de palavra — então `\b__\(` não distingue `__(` de `my_helper__(`,
-// e `esc_html__` termina exatamente nos mesmos dois caracteres que `__`. As
-// alternativas de nome mais longo vêm primeiro: o motor tenta a alternação na
-// ordem dada, e mesmo sem isso o `\s*\(` que segue forçaria o backtracking a
+// e `esc_html__` termina exatamente nos mesmos dois caracteres que `__`.
+// `(?<!->)` e `(?<!::)` tiram o método próprio, `$o->translate(` e
+// `Foo::translate(`.
+//
+// As três partes seguintes são o que separa CHAMADA de DECLARAÇÃO e de
+// INSTANCIAÇÃO, que `nome\s*\(` sozinho não distingue. Todas são PHP legal e
+// correto, e nenhuma é uma chamada gettext:
+//
+//     new Translate( $a, $b );                 → instanciação de classe
+//     function translate( $text, $domain ) {}  → declaração (ou um polyfill
+//     public function translate( $text ) {}      sob function_exists())
+//     $translate( 'a', 'b' );                  → chamada por variável, cujo
+//                                                alvo não dá para saber daqui
+//
+// O buraco é anterior à lista completa — `function __( $a, $b )` já acusava —
+// mas `translate` é uma palavra inglesa comum, e a lista completa a
+// transformou em gatilho. A guarda vale para os dezesseis nomes: `new _x(`
+// também deixa de casar.
+//
+// Os lookbehinds de `new` e `function` são de comprimento variável (V8 aceita)
+// porque `new  Translate(` com dois espaços e `function\ntranslate(` com quebra
+// de linha são igualmente legais. O `(?<!\w)` aninhado dentro de cada um é a
+// diferença entre "a palavra new" e "qualquer coisa terminada em new": sem ele,
+// `renew translate(` — que é uma chamada de verdade — seria absolvida.
+//
+// As alternativas de nome mais longo vêm primeiro: o motor tenta a alternação
+// na ordem dada, e mesmo sem isso o `\s*\(` que segue forçaria o backtracking a
 // achar a alternativa certa, mas a ordem deixa a intenção explícita. Aqui isso
 // importa em quatro pares: `_n` é prefixo de `_nx`, `_n_noop` e `_nx_noop`, e
 // `translate` é prefixo de `translate_with_gettext_context`.
 //
 // A flag `i` porque nome de função em PHP não diferencia caixa: `_X( 'a' )` e
-// `__( 'a' )` chamam as mesmas funções que `_x(` e `__(`. Os três lookbehinds
-// não têm letra nenhuma, então a caixa não os afeta.
+// `__( 'a' )` chamam as mesmas funções que `_x(` e `__(`. Nenhum lookbehind é
+// afetado por ela: `->`, `::` e `$` não têm letra, e `new`/`function` são
+// palavras-chave que o PHP também aceita em qualquer caixa.
 const CALL_RE =
-	/(?<!\w)(?<!->)(?<!::)(translate_with_gettext_context|esc_attr__|esc_attr_e|esc_attr_x|esc_html__|esc_html_e|esc_html_x|translate|_nx_noop|_n_noop|_nx|_ex|__|_e|_n|_x)\s*\(/gi;
+	/(?<!\w)(?<!->)(?<!::)(?<!(?<!\w)new\s+)(?<!(?<!\w)function\s+)(?<!\$)(translate_with_gettext_context|esc_attr__|esc_attr_e|esc_attr_x|esc_html__|esc_html_e|esc_html_x|translate|_nx_noop|_n_noop|_nx|_ex|__|_e|_n|_x)\s*\(/gi;
 
 // Aridade mínima de cada função — o domínio é sempre o ÚLTIMO argumento.
 // Usado para separar "domínio ausente" (menos argumentos do que a função

@@ -213,6 +213,61 @@ describe( 'i18n-text-domain', () => {
 		} );
 	} );
 
+	// `nome(` não distingue chamada de declaração nem de instanciação. O
+	// buraco é anterior à lista completa de dezesseis nomes — `function __(
+	// $a, $b )` já acusava — mas `translate` é uma palavra inglesa comum, e a
+	// lista completa a transformou em gatilho: o primeiro `public function
+	// translate( … )` numa classe `Post_Voice_*` reprovaria o `lint:arch` em
+	// código correto.
+	describe( 'declaração e instanciação não são chamada', () => {
+		it.each( [
+			[ 'new', 'new Translate( $a, $b );' ],
+			[ 'new com dois espaços', 'new  Translate( $a );' ],
+			[ 'new minúsculo', 'new translate( $a );' ],
+			[ 'function', 'function translate( $text, $domain ) {}' ],
+			[
+				'method',
+				'public function translate( $text, $domain = null ) {}',
+			],
+			[ 'function com quebra de linha', 'function\ntranslate( $t ) {}' ],
+			[ 'static method', 'private static function translate( $t ) {}' ],
+			[ 'chamada por variável', "$translate( 'a', 'b' );" ],
+		] )( 'não acusa %s', ( _rotulo, linha ) => {
+			expect( regra.check( ctxCom( `<?php\n${ linha }\n` ) ) ).toEqual(
+				[]
+			);
+		} );
+
+		it( 'a guarda vale para os dezesseis nomes, não só para translate', () => {
+			const src =
+				'<?php\nnew _x( $a );\nfunction __( $t, $d ) {}\n$_n( 1, 2 );\n';
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+
+		it( 'mas a chamada de verdade continua acusando', () => {
+			// A metade que importa: um falso negativo aqui seria pior que o
+			// falso positivo que a guarda corrige. Cada forma abaixo é uma
+			// chamada de verdade que passa perto de uma das guardas.
+			for ( const linha of [
+				"translate( 'x', 'outro' );",
+				"$a = translate( 'x', 'outro' );",
+				"return translate( 'x', 'outro' );",
+				// "renew" termina em "new", mas não É `new` — o `(?<!\w)`
+				// aninhado dentro do lookbehind é o que separa os dois.
+				"renew translate( 'x', 'outro' );",
+			] ) {
+				const a = regra.check( ctxCom( `<?php\n${ linha }\n` ) );
+				expect( { linha, achados: a.length } ).toEqual( {
+					linha,
+					achados: 1,
+				} );
+				expect( a[ 0 ].key ).toBe(
+					'features/x/php/class-a.php → translate-dominio-errado'
+				);
+			}
+		} );
+	} );
+
 	// PHP legal que a regra reprovava.
 	describe( 'formas legais do argumento de domínio', () => {
 		it( 'aceita o domínio entre aspas duplas', () => {
