@@ -13,4 +13,5 @@ module.exports = {
 	'feature-layout': require( './feature-layout' ),
 	'shared-two-consumers': require( './shared-two-consumers' ),
 	'feature-deps': require( './feature-deps' ),
+	'no-untyped-editor-code': require( './no-untyped-editor-code' ),
 };
