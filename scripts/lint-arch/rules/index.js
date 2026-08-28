@@ -12,4 +12,5 @@ module.exports = {
 	'covers-annotation': require( './covers-annotation' ),
 	'feature-layout': require( './feature-layout' ),
 	'shared-two-consumers': require( './shared-two-consumers' ),
+	'feature-deps': require( './feature-deps' ),
 };
