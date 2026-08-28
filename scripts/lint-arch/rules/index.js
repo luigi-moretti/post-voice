@@ -14,4 +14,6 @@ module.exports = {
 	'shared-two-consumers': require( './shared-two-consumers' ),
 	'feature-deps': require( './feature-deps' ),
 	'no-untyped-editor-code': require( './no-untyped-editor-code' ),
+	'contract-pins': require( './contract-pins' ),
+	'no-npm-install': require( './no-npm-install' ),
 };
