@@ -593,6 +593,17 @@ describe( 'heredoc / nowdoc', () => {
 					bytes: out.length,
 					linhas: out.split( '\n' ).length,
 				} ).toEqual( { file, bytes: src.length, linhas } );
+				let apagadoNoLugar = true;
+				for ( let i = 0; i < src.length; i += 1 ) {
+					if ( out[ i ] !== src[ i ] && out[ i ] !== ' ' ) {
+						apagadoNoLugar = false;
+						break;
+					}
+				}
+				expect( { file, apagadoNoLugar } ).toEqual( {
+					file,
+					apagadoNoLugar: true,
+				} );
 			}
 		}
 	} );
