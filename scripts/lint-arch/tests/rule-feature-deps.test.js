@@ -202,6 +202,50 @@ describe( 'feature-deps — TypeScript', () => {
 	} );
 } );
 
+describe( 'buracos que a review mediu', () => {
+	const ctxTs = ( file, src ) =>
+		createContext( { files: [ file ], read: () => src } );
+
+	it.each( [
+		[
+			'import dinâmico',
+			"const m = await import( '../../pronunciation/editor/x' );\n",
+		],
+		[
+			'import dinâmico sem espaço',
+			"import('../../pronunciation/editor/x');\n",
+		],
+	] )( 'acusa %s que atravessa feature', ( _forma, src ) => {
+		// `import\s+` exige espaço em branco e `(` não é espaço: sem um ramo
+		// próprio para a forma de chamada, o import dinâmico não casava nada.
+		// Não havia nenhum sob `features/`, então o buraco não aparecia em
+		// medição nenhuma — nem como falso positivo, nem como falso negativo.
+		const a = regra.check( ctxTs( 'features/narration/editor/a.ts', src ) );
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toBe(
+			'features/narration/editor/a.ts → pronunciation/editor/x'
+		);
+	} );
+
+	it( 'o corpo das strings é preservado de propósito, e isso tem preço', () => {
+		// A detecção em PHP lê o nome da classe com o corpo das strings
+		// intacto, porque é assim que uma referência dinâmica aparece —
+		// `[ 'Post_Voice_Dictionary_Store', 'metodo' ]` como callable é
+		// dependência de verdade. O preço é que uma string que só MENCIONA a
+		// classe também é acusada. É troca declarada, não descuido: erra
+		// acusando, que é a direção que esta branch escolheu em toda regra.
+		const ctx = ctxPhp( {
+			'features/narration/php/class-x.php':
+				"<?php\nclass Post_Voice_X {\n\tconst AVISO = 'veja Post_Voice_Dictionary_Store';\n}\n",
+		} );
+		const a = regra.check( ctx );
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toBe(
+			'features/narration/php/class-x.php → Post_Voice_Dictionary_Store'
+		);
+	} );
+} );
+
 describe( 'o repo de hoje', () => {
 	it( 'acha exatamente as onze arestas', () => {
 		expect( regra.check( createContext() ) ).toHaveLength( 11 );

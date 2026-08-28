@@ -6,7 +6,12 @@ const { stripPhpComments, isTestPath } = require( '../context' );
 const { phpClassOwners } = require( './php-class-naming' );
 
 const CLASSE_RE = /\bPost_Voice_\w+\b/g;
-const IMPORT_RE = /(?:from\s+|import\s+|require\s*\(\s*)['"](\.[^'"]+)['"]/g;
+// `import(` precisa de ramo próprio: `import\s+` exige espaço em branco, e
+// `(` não é espaço — sem ele o import dinâmico passava batido. Hoje não há
+// nenhum sob `features/`, então o buraco era silencioso: nada acusava, e nada
+// deixava de acusar. É o pior tipo de buraco de detecção.
+const IMPORT_RE =
+	/(?:from\s+|import\s*\(\s*|import\s+|require\s*\(\s*)['"](\.[^'"]+)['"]/g;
 const TS_RE = /\.tsx?$/;
 
 const featureDe = ( file ) => file.split( '/' )[ 1 ];
@@ -124,6 +129,4 @@ module.exports = {
 	id: 'feature-deps',
 	adr: '0005',
 	check: ( ctx ) => [ ...arestasPhp( ctx ), ...arestasTs( ctx ) ],
-	arestasPhp,
-	arestasTs,
 };
