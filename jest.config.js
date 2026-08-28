@@ -49,6 +49,13 @@ module.exports = {
 		'features/player-style/admin/hex-field.ts',
 		'scripts/lint-arch/**/*.js',
 		'!scripts/lint-arch/tests/**',
+		// `tools/` é ferramenta de investigação de quem mexe nas regras (hoje
+		// `covers-oracle-diff.js`, o harness diferencial contra o PHP): não
+		// roda no `lint:arch`, não roda na CI e teste nenhum depende dela —
+		// medir cobertura dela mediria o que ninguém executa em CI. O limiar
+		// de 80% não muda; o que muda é o denominador não incluir ferramenta
+		// que, por desenho, não tem suíte.
+		'!scripts/lint-arch/tools/**',
 	],
 	coverageThreshold: {
 		global: { lines: 80 },
