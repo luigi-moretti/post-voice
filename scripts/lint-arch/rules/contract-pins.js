@@ -32,6 +32,13 @@ const MODEL_SOURCE = 'features/narration/editor/model-source.ts';
 // mirror do modelo mudar de host" como evento que reabre a decisão. Mudar o
 // mirror já é, portanto, evento de ADR de qualquer jeito — fixá-lo aqui não
 // cria uma segunda linha de manutenção que "toda subida de mínimo" evitava.
+//
+// Mover o mirror mexe em TRÊS lugares, e este comentário existe para quem
+// estiver executando o `revisar_quando` da ADR-0014 achar os três:
+// `features/narration/editor/model-source.ts` (o valor de produção), a
+// constante aqui, e as URLs nos fixtures de `tests/rules-pins.test.js`. O gate
+// falha alto se um deles ficar para trás — é justamente o que esta regra faz —,
+// mas falhar alto não é o mesmo que dizer onde mexer.
 const MIRROR_PREFIX =
 	'https://huggingface.co/luigi-moretti/pocket-tts-onnx-mirror/resolve/';
 

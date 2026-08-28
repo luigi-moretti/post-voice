@@ -418,3 +418,40 @@ describe( 'no-npm-install', () => {
 		expect( npmci.check( createContext() ) ).toEqual( [] );
 	} );
 } );
+
+describe( 'a chave de divergência não depende da ordem de ctx.files', () => {
+	// A chave carrega o conjunto observado inteiro, e é isso que faz duas
+	// divergências diferentes não colidirem. Só que uma chave só serve de
+	// `desvios:` se for DETERMINÍSTICA: a mesma divergência tem de produzir a
+	// mesma string sempre, senão nenhuma linha congelada jamais bate.
+	//
+	// A ordem vem do array fixo `FONTES_*` da regra, não de `ctx.files`. Trocar
+	// a iteração para `ctx.files` passava despercebido, porque em todo fixture
+	// as duas ordens coincidiam. Aqui elas são deliberadamente opostas.
+	const divergente = {
+		'.wp-env.json': '{ "core": "WordPress/WordPress#6.7" }',
+	};
+
+	const chaveCom = ( ordem ) => {
+		const arquivos = { ...REPO, ...divergente };
+		return pins.check(
+			createContext( {
+				files: ordem,
+				read: ( f ) => arquivos[ f ],
+			} )
+		)[ 0 ].key;
+	};
+
+	it( 'a mesma divergência dá a mesma chave nas duas ordens', () => {
+		const naturais = Object.keys( { ...REPO, ...divergente } );
+		const invertidas = naturais.slice().reverse();
+		expect( chaveCom( invertidas ) ).toBe( chaveCom( naturais ) );
+	} );
+
+	it( 'e a ordem dentro da chave é a das FONTES, não a de ctx.files', () => {
+		const invertidas = Object.keys( { ...REPO, ...divergente } ).reverse();
+		expect( chaveCom( invertidas ) ).toBe(
+			'pins → WordPress-divergente:post-voice.php=6.6, readme.txt=6.6, .wp-env.json=6.7'
+		);
+	} );
+} );
