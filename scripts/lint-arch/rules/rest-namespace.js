@@ -71,7 +71,8 @@ function check( ctx ) {
 		// (`'lembre de chamar register_rest_route( ... )'`) não casa mais.
 		// `source`: strings mantidas — dele é lido o valor real do argumento,
 		// já que a chamada de verdade passa um literal ou `self::CONST`.
-		// Os dois preservam o comprimento em bytes, então um offset em um vale
+		// Os dois preservam o comprimento em unidades de código UTF-16 — que é
+		// o que os offsets do JavaScript indexam —, então um offset em um vale
 		// no outro.
 		const codigo = stripPhpNoise( raw );
 		const source = stripPhpComments( raw );

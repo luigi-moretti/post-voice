@@ -14,12 +14,16 @@
  * Por que ele existe: três rodadas de correção seguidas fecharam um defeito de
  * fronteira de texto e abriram outro, cada uma passando na própria suíte de
  * fixtures escritas à mão. Fixture escrita à mão prova o que o autor achava
- * que a linguagem faz. Aqui o esperado não é escrito por ninguém — ele é
- * perguntado ao PHP:
+ * que a linguagem faz. Aqui o esperado não é escrito por ninguém (*) — ele
+ * é perguntado ao PHP:
  *
  *     ( new ReflectionClass( 'X' ) )->getDocComment()
  *
- * que é exatamente a fonte que o PHPUnit 9.6 lê para achar `@covers`. O
+ * que é exatamente a fonte que o PHPUnit 9.6 lê para achar `@covers`.
+ * (*) Só metade: o PHP responde QUAL docblock a classe recebe; o que esse
+ * docblock significa é decidido por uma cópia de `COVERS_RE` mais abaixo.
+ * Essa segunda metade é fixada por fixture, não por este oráculo — está
+ * explicado no bloco junto de `esperadoDoOraculo`. O
  * harness gera arquivos PHP de formas variadas (docblock × separador ×
  * declaração), pergunta ao PHP qual docblock ele associa a cada classe,
  * pergunta à regra o que ela conclui, e separa as divergências em falso

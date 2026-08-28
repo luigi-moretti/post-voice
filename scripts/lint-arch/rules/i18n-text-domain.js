@@ -144,7 +144,8 @@ function textoDoLiteral( arg ) {
  * (`stripPhpComments`, com os literais de string intactos) é de onde vem o
  * argumento de verdade, já que é ali que o literal `'post-voice'`
  * sobrevive. Os dois strippers apagam PARA ESPAÇO, então preservam
- * comprimento em bytes e número de linhas: um offset em um vale no outro.
+ * comprimento em unidades de código UTF-16 (que é o que os offsets do
+ * JavaScript indexam) e número de linhas: um offset em um vale no outro.
  *
  * As duas passadas são independentes DE PROPÓSITO. Esta função já
  * compôs — `stripPhpNoise( stripPhpComments( x ) )` — sob a alegação de

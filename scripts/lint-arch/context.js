@@ -114,7 +114,15 @@ function lerHeredoc( source, i ) {
  *
  * `<?PHP` e `<?PhP` são PHP válido — a tag não diferencia maiúsculas de
  * minúsculas. `<?=` não tem letra nenhuma, então não precisa da mesma
- * checagem. A tag só abre quando o que vem depois dela é espaço em branco
+ * checagem; ela é a única tag curta que o PHP habilita sempre.
+ *
+ * `<?` sozinho NÃO é tag aqui, de propósito: ele só abre com
+ * `short_open_tag = On`, que é `Off` no default do PHP, e o `phpcs.xml.dist`
+ * herda `Generic.PHP.DisallowShortOpenTag` do ruleset WordPress — `composer
+ * run lint` barra a forma antes que ela chegue a importar. A consequência de
+ * ignorá-la é conhecida: num interpretador com a diretiva ligada, o que vem
+ * depois de um `<?` é código para o PHP e prosa para nós, e a varredura
+ * deixaria de ver uma classe declarada ali. A tag só abre quando o que vem depois dela é espaço em branco
  * (espaço, tab ou quebra de linha — é a regra do próprio lexer do PHP) ou o
  * fim do arquivo: `<?phpecho 1;` não abre nada, é texto literal.
  *

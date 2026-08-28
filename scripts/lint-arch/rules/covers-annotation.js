@@ -308,6 +308,12 @@ function varrerClasses( raw ) {
 			// para compilação nenhuma — sem ela a varredura abandonaria o
 			// resto do arquivo e perderia as classes seguintes (falso
 			// negativo).
+			//
+			// A guarda `::`, essa sim, é inalcançável: `__halt_compiler` é
+			// palavra reservada de verdade, e `php -l` recusa tanto um método
+			// quanto uma constante com esse nome — `X::__halt_compiler` não
+			// existe em PHP válido. Fica por simetria com o tratamento de
+			// `class`, não porque algum caso a exija.
 			break;
 		}
 		if ( palavra === 'class' ) {
