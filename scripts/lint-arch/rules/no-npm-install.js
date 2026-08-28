@@ -1,23 +1,36 @@
 'use strict';
 
 // Só onde o comando de fato executa: `package.json`, os workflows sob
-// `.github/workflows/` e os scripts sob `scripts/` — o escopo que a própria
-// ADR-0015, em "## Como verificar", nomeia. Documentação (CLAUDE.md,
+// `.github/workflows/` e os scripts sob `scripts/` — os três lugares que a
+// própria ADR-0015 nomeia em "## Como verificar". Documentação (CLAUDE.md,
 // TESTING.md, o texto das próprias ADRs) fica de fora de propósito: ela FALA
 // sobre `npm install` para proibi-lo, e varrê-la acusaria o próprio arquivo
 // que registra a proibição.
+//
+// `.husky/` NÃO está aqui. Nem "## Decisão" nem "## Como verificar" da
+// ADR-0015 mencionam git hooks em nenhuma direção — ao contrário do que
+// `no-untyped-editor-code.js` faz para as extensões (onde a "## Decisão" da
+// ADR-0011 genuinamente licencia um escopo mais largo que "## Como
+// verificar", e o comentário lá diz isso). Incluir `.husky/` aqui sem uma
+// ADR que o nomeie seria o mesmo defeito que este comentário está evitando:
+// afirmar que o escopo é "o que a ADR nomeia" e incluir um quarto padrão que
+// ela não nomeia.
 const ESCOPO_RE =
-	/^(?:package\.json|\.github\/workflows\/.*\.ya?ml|scripts\/.*\.(?:sh|mjs|js)|\.husky\/.*)$/;
+	/^(?:package\.json|\.github\/workflows\/.*\.ya?ml|scripts\/.*\.(?:sh|mjs|js))$/;
 
-// Auto-referência: esta regra mora em scripts/lint-arch/, dentro do próprio
-// escopo que ela varre, e a mensagem que ela produz contém a string literal
-// "npm install" (com espaço de verdade) para explicar a violação a quem ler o
-// relatório. Sem esta exclusão, `lint:arch` acusaria a si mesmo — e ao seu
-// próprio arquivo de teste, que também contém a string para fixá-la em
-// fixture — no exato commit que os introduz. A exclusão é por caminho, não
-// por reescrever a agulha: ofuscar `NEEDLE_RE` para escapar de si mesma
-// esconderia a intenção do próximo leitor.
-const AUTO_REFERENCIA_RE = /^scripts\/lint-arch\//;
+// Auto-referência: só estes dois arquivos citam a string literal "npm
+// install" (com espaço de verdade) de propósito — a mensagem de violação
+// desta regra, e o fixture que a fixa no teste. Sem excluí-los, `lint:arch`
+// acusaria os dois no exato commit que os introduz. A exclusão é por
+// caminho EXATO, não pelo diretório inteiro: `context.js`, `adr.js` e as
+// outras regras sob `scripts/lint-arch/` não têm motivo nenhum para ficar
+// fora da varredura, e um `npm install` de verdade ali continua sendo
+// achado. Também não é por ofuscar a agulha — reescrever `NPM_INSTALL_RE`
+// para escapar de si mesma esconderia a intenção do próximo leitor.
+const AUTO_REFERENCIA = new Set( [
+	'scripts/lint-arch/rules/no-npm-install.js',
+	'scripts/lint-arch/tests/rules-pins.test.js',
+] );
 
 // A agulha é `npm install` de verdade, não qualquer "install": o job `lint`
 // do CI roda `npx playwright install --with-deps` e `composer install`, e uma
@@ -30,7 +43,7 @@ const NPM_INSTALL_RE = /\bnpm\s+(?:install|i|add)\b/g;
 function check( ctx ) {
 	const achados = [];
 	for ( const file of ctx.files.filter(
-		( f ) => ESCOPO_RE.test( f ) && ! AUTO_REFERENCIA_RE.test( f )
+		( f ) => ESCOPO_RE.test( f ) && ! AUTO_REFERENCIA.has( f )
 	) ) {
 		const source = ctx.read( file );
 		NPM_INSTALL_RE.lastIndex = 0;

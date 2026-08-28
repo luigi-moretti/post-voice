@@ -3,14 +3,16 @@ const { createContext } = require( '../context' );
 const pins = require( '../rules/contract-pins' );
 const npmci = require( '../rules/no-npm-install' );
 
+const MIRROR_SHA = 'b18a05128c4f727ead5b23a643b65b93eaf8ee5d';
+const MIRROR_URL = `https://huggingface.co/luigi-moretti/pocket-tts-onnx-mirror/resolve/${ MIRROR_SHA }/`;
+
 const REPO = {
 	'post-voice.php': ' * Requires at least: 6.6\n * Requires PHP: 8.2\n',
 	'readme.txt': 'Requires at least: 6.6\nRequires PHP: 8.2\n',
 	'composer.json': '{ "require": { "php": ">=8.2" } }',
 	'phpcs.xml.dist': '<config name="testVersion" value="8.2-"/>',
 	'.wp-env.json': '{ "core": "WordPress/WordPress#6.6" }',
-	'features/narration/editor/model-source.ts':
-		"export const MODEL_BASE_URL =\n\t'https://huggingface.co/x/y/resolve/b18a05128c4f727ead5b23a643b65b93eaf8ee5d/';\n",
+	'features/narration/editor/model-source.ts': `export const MODEL_BASE_URL =\n\t'${ MIRROR_URL }';\n`,
 };
 
 const com = ( over = {} ) => {
@@ -53,11 +55,47 @@ describe( 'contract-pins', () => {
 		const a = pins.check(
 			com( {
 				'features/narration/editor/model-source.ts':
-					"export const MODEL_BASE_URL =\n\t'https://huggingface.co/x/y/resolve/main/';\n",
+					"export const MODEL_BASE_URL =\n\t'https://huggingface.co/luigi-moretti/pocket-tts-onnx-mirror/resolve/main/';\n",
 			} )
 		);
 		expect( a ).toHaveLength( 1 );
 		expect( a[ 0 ].message ).toMatch( /SHA/ );
+	} );
+
+	// BLOQUEANTE 1 (rodada 1 de correção): a ADR-0014 exige DUAS coisas do
+	// pin — um SHA de commit, E que ele viva no mirror próprio do plugin,
+	// "nunca ... para o repositório upstream". Antes deste fixture, a regra
+	// só conferia a forma do SHA; uma URL para o upstream real com um SHA de
+	// forma válida passava com zero achados.
+	it( 'acusa MODEL_BASE_URL apontando para o repositório upstream, mesmo com SHA de forma válida', () => {
+		const a = pins.check(
+			com( {
+				'features/narration/editor/model-source.ts': `export const MODEL_BASE_URL =\n\t'https://huggingface.co/KevinAHM/pocket-tts-onnx/resolve/${ MIRROR_SHA }/';\n`,
+			} )
+		);
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].message ).toMatch( /mirror/ );
+	} );
+
+	it( 'acusa MODEL_BASE_URL apontando para um host qualquer, mesmo com SHA de forma válida', () => {
+		const a = pins.check(
+			com( {
+				'features/narration/editor/model-source.ts': `export const MODEL_BASE_URL =\n\t'https://exemplo.invalido/x/y/resolve/${ MIRROR_SHA }/';\n`,
+			} )
+		);
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].message ).toMatch( /mirror/ );
+	} );
+
+	it( 'não fixa o SHA em si: qualquer SHA de 40 hexadígitos no mirror certo passa', () => {
+		expect(
+			pins.check(
+				com( {
+					'features/narration/editor/model-source.ts':
+						"export const MODEL_BASE_URL =\n\t'https://huggingface.co/luigi-moretti/pocket-tts-onnx-mirror/resolve/0000000000000000000000000000000000000000/';\n",
+				} )
+			)
+		).toEqual( [] );
 	} );
 
 	it( 'não fixa o valor: 6.7 em todos os cinco passa', () => {
@@ -77,9 +115,9 @@ describe( 'contract-pins', () => {
 		// Se a regra varresse composer.json em busca do mínimo de WordPress,
 		// este fixture (que não muda WordPress em lugar nenhum) continuaria
 		// batendo, porque composer.json não tem "Requires at least" para casar
-		// — e "ilegível" e "divergente" são achados distintos. O teste real
-		// desta decisão é a ausência de qualquer achado aqui, junto da lista
-		// FONTES_WP não incluir composer.json.
+		// — e "formato desconhecido" e "divergente" são achados distintos. O
+		// teste real desta decisão é a ausência de qualquer achado aqui,
+		// junto da lista FONTES_WP não incluir composer.json.
 		expect( pins.check( com() ) ).toEqual( [] );
 	} );
 
@@ -97,15 +135,21 @@ describe( 'contract-pins', () => {
 		expect( pins.check( ctx ) ).toEqual( [] );
 	} );
 
-	it( 'um arquivo presente mas sem o padrão esperado é "ilegível", não "divergente"', () => {
+	it( 'um arquivo presente mas num formato que a regra não reconhece não é "divergente"', () => {
 		// phpcs.xml.dist só é fonte de PHP (não de WordPress) — quebrar só o
 		// seu padrão produz exatamente um achado, não um em cada dimensão.
 		const a = pins.check(
 			com( { 'phpcs.xml.dist': '<config name="outraCoisa" value="x"/>' } )
 		);
 		expect( a ).toHaveLength( 1 );
-		expect( a[ 0 ].key ).toBe( 'phpcs.xml.dist → PHP-ilegivel' );
-		expect( a[ 0 ].message ).toMatch( /não foi possível ler/ );
+		expect( a[ 0 ].key ).toBe(
+			'phpcs.xml.dist → PHP-formato-desconhecido'
+		);
+		expect( a[ 0 ].message ).toMatch( /não reconheço o formato/ );
+		// Palavra deliberadamente evitada: um formato válido mas incomum
+		// (caret range, range do phpcs) não é um arquivo corrompido, e a
+		// mensagem não deve sugerir isso.
+		expect( a[ 0 ].message ).not.toMatch( /não foi possível ler/ );
 	} );
 
 	it( 'sem MODEL_BASE_URL no arquivo, também acusa (não silencia por ausência de match)', () => {
@@ -131,6 +175,45 @@ describe( 'contract-pins', () => {
 		expect( pins.check( ctx ) ).toEqual( [] );
 	} );
 
+	// BLOQUEANTE 2 (rodada 1 de correção): duas divergências DIFERENTES —
+	// aqui, "readme.txt é o dissidente" e "wp-env.json é o dissidente" — não
+	// podem produzir a mesma `key`, porque uma linha de `desvios:` que
+	// absolvesse uma absolveria a outra em silêncio. `file` também tem de
+	// apontar para um arquivo que de fato participa da divergência.
+	describe( 'chave e file de uma divergência identificam QUAL divergência, não só a dimensão', () => {
+		const divergenciaReadme = () =>
+			pins.check(
+				com( {
+					'readme.txt': 'Requires at least: 6.7\nRequires PHP: 8.2\n',
+				} )
+			);
+		const divergenciaWpEnv = () =>
+			pins.check(
+				com( {
+					'.wp-env.json': '{ "core": "WordPress/WordPress#6.7" }',
+				} )
+			);
+
+		it( 'produzem chaves diferentes', () => {
+			const a = divergenciaReadme();
+			const b = divergenciaWpEnv();
+			expect( a ).toHaveLength( 1 );
+			expect( b ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).not.toBe( b[ 0 ].key );
+		} );
+
+		it( '`file` aponta para o arquivo que de fato diverge, não sempre para post-voice.php', () => {
+			expect( divergenciaReadme()[ 0 ].file ).toBe( 'readme.txt' );
+			expect( divergenciaWpEnv()[ 0 ].file ).toBe( '.wp-env.json' );
+		} );
+
+		it( 'a mesma divergência produz sempre a mesma chave (determinístico)', () => {
+			const primeira = divergenciaReadme()[ 0 ].key;
+			const segunda = divergenciaReadme()[ 0 ].key;
+			expect( primeira ).toBe( segunda );
+		} );
+	} );
+
 	it( 'o repo de hoje concorda', () => {
 		expect( pins.check( createContext() ) ).toEqual( [] );
 	} );
@@ -146,6 +229,20 @@ describe( 'no-npm-install', () => {
 			createContext( {
 				files: [ '.github/workflows/ci.yml' ],
 				read: () => '      - run: npm install\n',
+			} )
+		);
+		expect( a ).toHaveLength( 1 );
+	} );
+
+	// SHOULD-FIX 3 (rodada 1 de correção): `package.json` é um dos três
+	// lugares que a ADR-0015, em "## Como verificar", nomeia — e não tinha
+	// fixture nenhum. Sem ele, tirar `package.json` do escopo deixava a
+	// suíte inteira verde.
+	it( 'acusa npm install em package.json', () => {
+		const a = npmci.check(
+			createContext( {
+				files: [ 'package.json' ],
+				read: () => '{ "scripts": { "postinstall": "npm install" } }',
 			} )
 		);
 		expect( a ).toHaveLength( 1 );
@@ -230,7 +327,22 @@ describe( 'no-npm-install', () => {
 		).toEqual( [] );
 	} );
 
-	it( 'HAZARD A: não acusa a si mesma — scripts/lint-arch/ fica fora do escopo mesmo casando a extensão', () => {
+	// SHOULD-FIX 4 (rodada 1 de correção): nem "## Decisão" nem "## Como
+	// verificar" da ADR-0015 mencionam git hooks. `.husky/` saiu do escopo —
+	// o comentário do escopo não pode afirmar paridade com a ADR e incluir
+	// um quarto padrão que ela não nomeia.
+	it( 'não varre .husky/, fora do escopo que a ADR-0015 nomeia', () => {
+		expect(
+			npmci.check(
+				createContext( {
+					files: [ '.husky/pre-commit' ],
+					read: () => 'npm install\n',
+				} )
+			)
+		).toEqual( [] );
+	} );
+
+	it( 'HAZARD A: não acusa a si mesma — o arquivo da regra fica fora do escopo mesmo casando a extensão', () => {
 		// scripts/lint-arch/rules/no-npm-install.js "casaria" o padrão de
 		// escopo (scripts/.../*.js) se não fosse excluído explicitamente, e o
 		// próprio arquivo contém a string "npm install" na mensagem que
@@ -246,7 +358,7 @@ describe( 'no-npm-install', () => {
 		expect( a ).toEqual( [] );
 	} );
 
-	it( 'HAZARD A: também exclui o próprio arquivo de teste sob scripts/lint-arch/', () => {
+	it( 'HAZARD A: também exclui o próprio arquivo de teste que fixa a string em fixture', () => {
 		const a = npmci.check(
 			createContext( {
 				files: [ 'scripts/lint-arch/tests/rules-pins.test.js' ],
@@ -254,6 +366,21 @@ describe( 'no-npm-install', () => {
 			} )
 		);
 		expect( a ).toEqual( [] );
+	} );
+
+	// SHOULD-FIX 6 (rodada 1 de correção): a exclusão de auto-referência era
+	// o diretório inteiro (`scripts/lint-arch/`), o que também tirava
+	// `context.js`, `adr.js` e as OUTRAS regras da varredura sem nenhum
+	// motivo — só os dois arquivos acima citam a string literal de propósito.
+	// Este fixture prova que o resto do diretório continua policiado.
+	it( 'HAZARD A não é larga demais: um outro arquivo sob scripts/lint-arch/ continua policiado', () => {
+		const a = npmci.check(
+			createContext( {
+				files: [ 'scripts/lint-arch/context.js' ],
+				read: () => 'npm install\n',
+			} )
+		);
+		expect( a ).toHaveLength( 1 );
 	} );
 
 	it( 'fora de scripts/lint-arch/, um outro arquivo sob scripts/ continua sendo varrido', () => {
