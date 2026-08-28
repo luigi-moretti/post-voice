@@ -720,6 +720,90 @@ describe( 'covers-annotation', () => {
 		} );
 	} );
 
+	describe( 'região não-PHP: texto fora de `<?php … ?>` não é código', () => {
+		// Todos os esperados desta seção vêm de `class_exists()` sob o PHP
+		// 8.2.32, não de expectativa. `strip` copia o texto fora das tags ao pé
+		// da letra — está certo e está documentado —, e a varredura precisa
+		// saber disso: `class <Ident> extends <Ident>` em prosa NÃO é uma
+		// declaração, e acusá-la punha na linha `desvios:` da ADR-0013 o nome
+		// de uma classe que não existe.
+
+		it( 'classe em prosa dentro do HTML entre `?>` e `<?php` não é descoberta, e a classe depois dele é', () => {
+			// PHP: `class_exists( 'Fantasma' )` é false; `P02b` e `Depois`
+			// existem. A varredura tem de pular o HTML sem parar nele: se
+			// desistisse do arquivo no `?>`, `Depois` sumiria (falso negativo).
+			const src =
+				'<?php\nclass P02b extends A {} ?>\n' +
+				'<p>the class Fantasma extends nothing here</p>\n' +
+				'<?php\nclass Depois extends A {}\n';
+			expect(
+				regra.classesDeTeste( ctxCom( src ) ).map( ( c ) => c.nome )
+			).toEqual( [ 'P02b', 'Depois' ] );
+			expect(
+				regra.check( ctxCom( src ) ).map( ( x ) => x.key )
+			).toEqual( [
+				`${ ARQ } → sem-covers:P02b`,
+				`${ ARQ } → sem-covers:Depois`,
+			] );
+		} );
+
+		it( 'arquivo sem tag PHP nenhuma não declara classe nenhuma', () => {
+			// PHP: nada neste arquivo é compilado, `class_exists( 'P08' )` é
+			// false. O arquivo começa FORA do PHP.
+			const src = '<h1>sem php</h1>\n<p>class P08 extends A</p>\n';
+			expect( regra.classesDeTeste( ctxCom( src ) ) ).toEqual( [] );
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+
+		it( 'a tag de reabertura em maiúsculas volta a valer como código', () => {
+			// PHP: `Dois` existe (a tag não diferencia caixa). Se a varredura
+			// exigisse `<?php` minúsculo, o resto do arquivo viraria prosa e
+			// `Dois` sumiria — falso negativo.
+			const src =
+				'<?php\n/** @covers Post_Voice_Assets */\nclass Um extends A {} ?>\n' +
+				'<p>texto</p>\n<?PHP\nclass Dois extends A {}\n';
+			expect(
+				regra.classesDeTeste( ctxCom( src ) ).map( ( c ) => c.nome )
+			).toEqual( [ 'Um', 'Dois' ] );
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:Dois` );
+		} );
+
+		it( '`__halt_compiler()` termina o código: o que vem depois é dado', () => {
+			// PHP: `Q9` existe, `Falsa` NÃO — a compilação para na chamada e o
+			// resto do arquivo é dado.
+			const src =
+				'<?php\nclass Q9 extends A {}\n__halt_compiler();\nclass Falsa extends A {}\n';
+			expect(
+				regra.classesDeTeste( ctxCom( src ) ).map( ( c ) => c.nome )
+			).toEqual( [ 'Q9' ] );
+		} );
+
+		it( 'uma PROPRIEDADE chamada `__halt_compiler` não termina nada', () => {
+			// `$o->__halt_compiler` é busca de propriedade, PHP válido (só um
+			// aviso em tempo de execução), e `class_exists( 'B' )` é true.
+			// Sem a guarda `->`, a varredura abandonaria o resto do arquivo.
+			const src =
+				'<?php\n$o = new A();\nvar_dump( $o->__halt_compiler );\nclass B extends A {}\n';
+			expect(
+				regra.classesDeTeste( ctxCom( src ) ).map( ( c ) => c.nome )
+			).toEqual( [ 'B' ] );
+		} );
+
+		it( 'o docblock não atravessa a região não-PHP (divergência ratificada)', () => {
+			// PHP anexa: `getDocComment()` de `Tres` devolve o docblock, mesmo
+			// com HTML no meio. A regra acusa assim mesmo, porque o `?>` é
+			// token de código entre os dois — conservador, erra acusando.
+			const src =
+				'<?php\n/** @covers Post_Voice_Assets */ ?>\n<p>html</p>\n' +
+				'<?php\nclass Tres extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:Tres` );
+		} );
+	} );
+
 	it( 'o repo de hoje tem 10 classes de teste, todas cobertas', () => {
 		const ctx = createContext();
 		expect( regra.check( ctx ) ).toEqual( [] );

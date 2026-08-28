@@ -102,6 +102,34 @@ function lerHeredoc( source, i ) {
 }
 
 /**
+ * O comprimento da tag de abertura de PHP que começa em `source[i]`, ou 0
+ * quando não há tag ali.
+ *
+ * Uma definição só, usada por `strip` e pela varredura de
+ * `rules/covers-annotation.js`: as duas precisam concordar sobre ONDE o código
+ * PHP começa, e duas cópias da regra são duas chances de divergirem.
+ *
+ * `<?PHP` e `<?PhP` são PHP válido — a tag não diferencia maiúsculas de
+ * minúsculas. `<?=` não tem letra nenhuma, então não precisa da mesma
+ * checagem. A tag só abre quando o que vem depois dela é espaço em branco
+ * (espaço, tab ou quebra de linha — é a regra do próprio lexer do PHP) ou o
+ * fim do arquivo: `<?phpecho 1;` não abre nada, é texto literal.
+ *
+ * @param {string} source
+ * @param {number} i      posição a testar
+ * @return {number} 5 (`<?php`), 3 (`<?=`) ou 0 (não é tag de abertura)
+ */
+function phpOpenTagAt( source, i ) {
+	const abrePhp =
+		/^<\?php/i.test( source.slice( i, i + 5 ) ) &&
+		( i + 5 === source.length || /[ \t\r\n]/.test( source[ i + 5 ] ) );
+	if ( abrePhp ) {
+		return 5;
+	}
+	return source.startsWith( '<?=', i ) ? 3 : 0;
+}
+
+/**
  * Substitui comentários PHP por espaços, e opcionalmente o corpo das strings.
  *
  * Substitui em vez de remover para que linha e coluna de um match continuem
@@ -127,25 +155,14 @@ function strip( source, strings ) {
 	let dentro = false;
 	while ( i < source.length ) {
 		if ( ! dentro ) {
-			// `<?PHP` e `<?PhP` são PHP válido — a tag não diferencia
-			// maiúsculas de minúsculas. `<?=` não tem letra nenhuma, então
-			// não precisa da mesma checagem.
-			//
-			// A tag só abre quando o que vem depois dela é espaço em branco
-			// (espaço, tab ou quebra de linha — é a regra do próprio lexer do
-			// PHP) ou o fim do arquivo. `<?phpecho 1;` não abre nada: é texto
-			// literal. Sem essa segunda metade, o stripper entrava em modo
-			// código onde o PHP não entra, e apagava como comentário/string
-			// algo que na verdade é saída literal.
-			const abrePhp =
-				/^<\?php/i.test( source.slice( i, i + 5 ) ) &&
-				( i + 5 === source.length ||
-					/[ \t\r\n]/.test( source[ i + 5 ] ) );
-			const abreEcho = ! abrePhp && source.startsWith( '<?=', i );
-			if ( abrePhp || abreEcho ) {
+			// Sem a exigência de espaço em branco depois da tag (ver
+			// `phpOpenTagAt`), o stripper entrava em modo código onde o PHP não
+			// entra, e apagava como comentário/string algo que na verdade é
+			// saída literal.
+			const comprimento = phpOpenTagAt( source, i );
+			if ( comprimento !== 0 ) {
 				// `slice`, não um literal fixo: preserva a caixa original da
 				// tag em vez de normalizar para `<?php` minúsculo.
-				const comprimento = abrePhp ? 5 : 3;
 				out += source.slice( i, i + comprimento );
 				i += comprimento;
 				dentro = true;
@@ -307,6 +324,7 @@ module.exports = {
 	trackedFiles,
 	stripPhpComments,
 	stripPhpNoise,
+	phpOpenTagAt,
 	isTestPath,
 	phpSources,
 };

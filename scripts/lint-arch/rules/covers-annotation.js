@@ -1,5 +1,9 @@
 'use strict';
-const { stripPhpComments, stripPhpNoise } = require( '../context' );
+const {
+	phpOpenTagAt,
+	stripPhpComments,
+	stripPhpNoise,
+} = require( '../context' );
 
 // O glob que a ADR-0013 usa literalmente ("toda classe de teste PHPUnit sob
 // `features/*/tests/php/` e `shared/tests/php/`"), não uma cópia das pastas
@@ -142,6 +146,13 @@ function fimDoAtributo( codigo, i ) {
  * O modelo, verificado caso a caso contra `getDocComment()` do PHP 8.2.32
  * (ver `tools/covers-oracle-diff.js`):
  *
+ * - o arquivo começa FORA do PHP, e só o que está DENTRO de `<?php … ?>`
+ *   (ou `<?= … ?>`) é código. Fora, o texto é saída literal: `class Fantasma
+ *   extends Nada` no meio de um HTML é prosa, e o PHP nunca a compila —
+ *   acusá-la seria pôr na linha `desvios:` da ADR-0013 uma classe que não
+ *   existe. `__halt_compiler()` tem o mesmo efeito daí para a frente: o resto
+ *   do arquivo é dado, não código (medido: `class_exists` responde false para
+ *   uma classe declarada depois dele);
  * - um DOCBLOCK passa a ser o docblock em vigor (o mais próximo vence,
  *   porque o seguinte simplesmente sobrescreve o anterior);
  * - espaço em branco, comentário comum (`/* *\/`, `//`, `#`), atributo do
@@ -192,6 +203,9 @@ function varrerClasses( raw ) {
 	const semComentarios = stripPhpComments( raw );
 	const encontradas = [];
 	let i = 0;
+	// O arquivo começa FORA do PHP, como em `strip`. Para os arquivos que
+	// começam com `<?php` — todos os do repo — a fatia "fora" é vazia.
+	let dentro = false;
 	let docblock = null;
 	let abstrata = false;
 	let palavraAnterior = null;
@@ -201,6 +215,37 @@ function varrerClasses( raw ) {
 	// os segue.
 	let doisAnteriores = '';
 	while ( i < raw.length ) {
+		if ( ! dentro ) {
+			// Saída literal: nada aqui é código, então nada aqui é
+			// declaração, comentário ou docblock. Só a tag de abertura
+			// interessa — e ela é a MESMA definição que `strip` usa, para que
+			// as duas não possam divergir sobre onde o código começa.
+			const abre = phpOpenTagAt( codigo, i );
+			if ( abre !== 0 ) {
+				dentro = true;
+				i += abre;
+				continue;
+			}
+			i += 1;
+			continue;
+		}
+
+		if ( codigo[ i ] === '?' && codigo[ i + 1 ] === '>' ) {
+			// A tag de fechamento é um token como outro qualquer para a
+			// adjacência (descarta o docblock em vigor — divergência
+			// ratificada), e além disso volta o arquivo para saída literal.
+			// Um `?>` dentro de string, heredoc ou `/* */` não chega aqui:
+			// em `codigo` esses corpos já são espaço. Um `?>` que fecha um
+			// comentário de LINHA chega, porque `fimDoComentario` para nele.
+			docblock = null;
+			abstrata = false;
+			palavraAnterior = null;
+			doisAnteriores = '?>';
+			dentro = false;
+			i += 2;
+			continue;
+		}
+
 		if ( ehBranco( codigo[ i ] ) ) {
 			// Em branco em `codigo` é uma de três coisas. Comentário: em
 			// branco também em `semComentarios`, com texto no cru. Corpo de
@@ -245,6 +290,20 @@ function varrerClasses( raw ) {
 
 		const palavra = ident[ 0 ].toLowerCase();
 		let fim = i + ident[ 0 ].length;
+		if (
+			palavra === '__halt_compiler' &&
+			doisAnteriores !== '::' &&
+			doisAnteriores !== '->'
+		) {
+			// Daqui para a frente o arquivo é DADO: o PHP para de compilar, e
+			// uma classe declarada depois disto não existe (medido com
+			// `class_exists`). A guarda `->` não é decoração:
+			// `$o->__halt_compiler` é busca de propriedade, PHP válido, e não
+			// para compilação nenhuma — sem ela a varredura abandonaria o
+			// resto do arquivo e perderia as classes seguintes (falso
+			// negativo).
+			break;
+		}
 		if ( palavra === 'class' ) {
 			NOME_DA_CLASSE_RE.lastIndex = fim;
 			const nome = NOME_DA_CLASSE_RE.exec( codigo );
