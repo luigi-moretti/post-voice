@@ -398,5 +398,4 @@ module.exports = {
 	adr: '0013',
 	check,
 	classesDeTeste,
-	varrerClasses,
 };
