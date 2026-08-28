@@ -21,6 +21,118 @@ const ARQUIVO_PROD = 'features/narration/php/class-x.php';
 const ctxCom = ( src ) =>
 	createContext( { files: [ ARQUIVO_PROD ], read: () => src } );
 
+// Apagador de comentários JS usado só pelo fio de tropeço abaixo (FIX H) —
+// não é a lógica do linter, é o instrumento de teste que varre `rules/*.js`.
+// Ciente de string ('…', "…", `…`) para não confundir um `//` dentro de um
+// literal com o início de um comentário; sem essa consciência, um `//` que
+// fizesse parte de uma URL ou de uma mensagem dentro de aspas seria apagado
+// como se fosse comentário, e o fio passaria a comer código de verdade.
+//
+// Também ciente de literal de regex — `rules/*.js` tem vários, e mais de um
+// contém aspa dentro da classe de caracteres (`/^'([^'\\]*)'$/` em
+// `i18n-text-domain.js`, entre outros). Sem tratar isso à parte, essas aspas
+// seriam lidas como abertura/fechamento de STRING, e o rastreamento saía do
+// sincronismo pelo resto do arquivo — inclusive engolindo o `/**...*/`
+// seguinte, que é exatamente o comentário que cita a composição e precisa
+// ser apagado. `podeIniciarRegex` é a mesma heurística de qualquer
+// tokenizador JS simples: uma `/` só abre regex depois de um caractere que
+// não pode terminar uma expressão (operador, abre-parênteses/colchete/chave,
+// vírgula, ponto e vírgula, ou o início do arquivo) — nunca depois de
+// identificador, dígito, `)` ou `]`, onde seria divisão.
+function apagarComentariosJs( fonte ) {
+	let saida = '';
+	let aspas = null;
+	let ultimoChar = null;
+	const podeIniciarRegex = ( c ) =>
+		c === null || /[([{,;:=&|!?+\-*%^~<>]/.test( c );
+
+	for ( let i = 0; i < fonte.length; i += 1 ) {
+		const c = fonte[ i ];
+		if ( aspas ) {
+			saida += c;
+			if ( c === '\\' ) {
+				saida += fonte[ i + 1 ] || '';
+				i += 1;
+				continue;
+			}
+			if ( c === aspas ) {
+				aspas = null;
+			}
+			continue;
+		}
+		if ( c === "'" || c === '"' || c === '`' ) {
+			aspas = c;
+			saida += c;
+			ultimoChar = c;
+			continue;
+		}
+		if ( c === '/' && fonte[ i + 1 ] === '*' ) {
+			const fim = fonte.indexOf( '*/', i + 2 );
+			i = fim === -1 ? fonte.length - 1 : fim + 1;
+			saida += ' ';
+			continue;
+		}
+		if ( c === '/' && fonte[ i + 1 ] === '/' ) {
+			// Fim de linha OU fim de arquivo — o antigo `/^[ \t]*\/\/.*$/gm`
+			// só pegava a primeira forma; esta trata as duas, e é o que muda
+			// no FIX H: um `//` no fim de uma linha de código também apaga.
+			let fim = fonte.indexOf( '\n', i );
+			if ( fim === -1 ) {
+				fim = fonte.length;
+			}
+			i = fim - 1;
+			saida += ' ';
+			continue;
+		}
+		if ( c === '/' && podeIniciarRegex( ultimoChar ) ) {
+			// Candidato a literal de regex: procura a barra de fechamento não
+			// escapada, respeitando que `/` dentro de `[...]` não fecha nada.
+			let j = i + 1;
+			let dentroClasse = false;
+			while ( j < fonte.length ) {
+				const cc = fonte[ j ];
+				if ( cc === '\\' ) {
+					j += 2;
+					continue;
+				}
+				if ( cc === '[' ) {
+					dentroClasse = true;
+					j += 1;
+					continue;
+				}
+				if ( cc === ']' ) {
+					dentroClasse = false;
+					j += 1;
+					continue;
+				}
+				if ( cc === '/' && ! dentroClasse ) {
+					break;
+				}
+				if ( cc === '\n' ) {
+					// Regex não cruza linha; se não fechou até aqui, não era
+					// regex — trata a `/` inicial como divisão, cai abaixo.
+					break;
+				}
+				j += 1;
+			}
+			if ( j < fonte.length && fonte[ j ] === '/' ) {
+				let k = j + 1;
+				while ( k < fonte.length && /[a-z]/i.test( fonte[ k ] ) ) {
+					k += 1;
+				}
+				saida += ' ';
+				i = k - 1;
+				continue;
+			}
+		}
+		saida += c;
+		if ( ! /\s/.test( c ) ) {
+			ultimoChar = c;
+		}
+	}
+	return saida;
+}
+
 describe( 'stripPhpComments', () => {
 	// Todo fragmento aqui é prefixado com `<?php\n`: um arquivo PHP de verdade
 	// sempre começa fora do modo código (ver describe 'tags PHP' abaixo), e
@@ -407,13 +519,12 @@ describe( 'heredoc / nowdoc', () => {
 			if ( ! nome.endsWith( '.js' ) ) {
 				continue;
 			}
-			const fonte = fs
-				.readFileSync( path.join( dir, nome ), 'utf8' )
-				// Só o código: um comentário PODE citar a composição, e este
-				// arquivo depende disso para explicar por que ela é proibida.
-				.replace( /\/\*[\s\S]*?\*\//g, ' ' )
-				.replace( /^[ \t]*\/\/.*$/gm, ' ' )
-				.replace( /\s+/g, '' );
+			// Só o código: um comentário PODE citar a composição — de bloco,
+			// de linha própria, ou de fim de linha — e este arquivo depende
+			// disso para explicar por que ela é proibida.
+			const fonte = apagarComentariosJs(
+				fs.readFileSync( path.join( dir, nome ), 'utf8' )
+			).replace( /\s+/g, '' );
 			expect( {
 				nome,
 				compoe: fonte.includes( 'stripPhpNoise(stripPhpComments(' ),
@@ -421,11 +532,52 @@ describe( 'heredoc / nowdoc', () => {
 		}
 	} );
 
+	it( 'um comentário de fim de linha citando a composição não derruba o fio (FIX H)', () => {
+		// A lacuna que a rodada 4 deixou: `/^[ \t]*\/\/.*$/gm` só apagava um
+		// `//` em linha própria. Um comentário de ALERTA no fim de uma linha
+		// de código — exatamente o que alguém escreveria depois de ler esta
+		// rodada — sobrevivia à limpeza e derrubava o fio numa citação, não
+		// numa composição de verdade.
+		const fonteComComentario =
+			'const x = 1; // nunca faça stripPhpNoise( stripPhpComments( x ) ) aqui\n' +
+			"module.exports = { id: 'fake' };\n";
+		const limpo = apagarComentariosJs( fonteComComentario ).replace(
+			/\s+/g,
+			''
+		);
+		expect( limpo.includes( 'stripPhpNoise(stripPhpComments(' ) ).toBe(
+			false
+		);
+	} );
+
+	it( 'uma composição de verdade, em código, continua acionando o fio (FIX H)', () => {
+		// O outro sentido: o conserto do teste acima não pode virar uma
+		// licença para composição de verdade escapar por trás de qualquer
+		// coisa que pareça comentário. Sem `//` antes, é código, e o fio
+		// continua vermelho.
+		const fonteComComposicao =
+			'const out = stripPhpNoise( stripPhpComments( x ) );\n';
+		const limpo = apagarComentariosJs( fonteComComposicao ).replace(
+			/\s+/g,
+			''
+		);
+		expect( limpo.includes( 'stripPhpNoise(stripPhpComments(' ) ).toBe(
+			true
+		);
+	} );
+
 	it( 'comprimento e quebras de linha preservados em todo o corpus real de .php', () => {
 		// O invariante de verdade, o que substitui a composição: os dois
 		// strippers apagam PARA ESPAÇO, então um offset achado num deles
 		// aponta para o mesmo byte no outro. É disso que o padrão de duas
 		// fontes das regras depende.
+		//
+		// Comprimento e número de linhas iguais são condição NECESSÁRIA, não
+		// suficiente — um stripper que trocasse dois trechos de mesmo tamanho
+		// de posição passaria nessas duas asserções e ainda assim quebraria o
+		// padrão de duas fontes. A forma forte, no mesmo laço (FIX I): cada
+		// caractere da saída é OU o caractere original, OU um espaço — nunca
+		// outra coisa. É apagamento no lugar, não só um proxy do tamanho.
 		const arquivos = trackedFiles( REPO_ROOT ).filter( ( f ) =>
 			f.endsWith( '.php' )
 		);
