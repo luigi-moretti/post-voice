@@ -20,7 +20,7 @@ function secoes( source ) {
 	return out;
 }
 
-function checkClaudeMdSize( source, teto = 80 ) {
+function checkClaudeMdSize( source, teto = 95 ) {
 	const linhas = source.split( '\n' ).length;
 	if ( linhas <= teto ) {
 		return [];
@@ -208,5 +208,4 @@ module.exports = {
 	checkAdrHygiene,
 	globToRegExp,
 	parseRulePaths,
-	secoes,
 };

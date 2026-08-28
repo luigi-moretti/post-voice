@@ -13,6 +13,22 @@ describe( 'checkClaudeMdSize', () => {
 		expect( checkClaudeMdSize( 'a\n'.repeat( 60 ), 80 ) ).toEqual( [] );
 	} );
 
+	it( 'o teto padrão é 95, e é decisão registrada, não estimativa', () => {
+		// A estimativa original do plano era 80, feita antes de o CLAUDE.md
+		// existir. A redação real dá ~94, e chegar a 80 exigiria cortar os
+		// Gotchas — que não são path-scopáveis, então não têm para onde ir.
+		// Com o teto vindo por parâmetro em todos os outros casos, o padrão
+		// nunca era exercido: trocar 80 por 95 não deixava nada vermelho.
+		// `split( '\n' )` conta a linha vazia depois do último `\n`, então
+		// `repeat( n )` vale n+1 linhas — 94 repetições são as 95 do teto.
+		expect( checkClaudeMdSize( 'a\n'.repeat( 94 ) ) ).toEqual( [] );
+		const acima = checkClaudeMdSize( 'a\n'.repeat( 95 ) );
+		expect( acima ).toHaveLength( 1 );
+		expect( acima[ 0 ].message ).toMatch(
+			/96 linhas, acima do teto de 95/
+		);
+	} );
+
 	it( 'acusa acima do teto e nomeia a maior seção', () => {
 		const src = '## Conventions\n' + 'x\n'.repeat( 90 ) + '## Never\n- a\n';
 		const a = checkClaudeMdSize( src, 80 );

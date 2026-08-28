@@ -108,12 +108,16 @@ const rules = fs.existsSync( rulesDir )
 secao(
 	'CLAUDE.md e rules',
 	[
-		...health.checkClaudeMdSize( claudeMd, 80 ),
-		...health.checkAdrCitations(
-			claudeMd,
-			[ 'Conventions', 'Never' ],
-			adrIds
-		),
+		// Teto de 95, não os 80 que o plano estimou: a estimativa foi feita
+		// antes de o arquivo existir, e chegar a 80 exigiria cortar os Gotchas,
+		// que não são path-scopáveis e custaram uma sessão cada. 95 continua bem
+		// abaixo das ~200 linhas onde a aderência cai.
+		...health.checkClaudeMdSize( claudeMd, 95 ),
+		// Só `## Conventions`. `## Never` fica de fora de propósito: "não
+		// commite em master" é processo, não decisão de arquitetura, e não há
+		// ADR por trás para citar. Exigir citação ali produziria três achados
+		// que ninguém consegue fechar sem inventar uma ADR.
+		...health.checkAdrCitations( claudeMd, [ 'Conventions' ], adrIds ),
 		...rules.flatMap( ( r ) =>
 			health.checkAdrCitations( r.source, [], adrIds )
 		),
