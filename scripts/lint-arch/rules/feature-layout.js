@@ -5,6 +5,11 @@ const CODIGO_RE = /\.(?:php|ts|tsx|js|jsx)$/;
 
 // Fora de features/, estes prefixos são o resto legítimo do repo. `build/`,
 // `vendor/` e `node_modules/` não aparecem porque não são versionados.
+//
+// `shared/` entra inteiro, sem checagem de subestrutura, ao contrário de
+// `features/<f>/`: a ADR-0004 prescreve layout só para as features. Se um dia
+// se decidir que shared/ espelha a mesma convenção, é aqui que muda — e é
+// decisão de ADR, não de regra.
 const RAIZES_PERMITIDAS = [
 	'shared/',
 	'scripts/',

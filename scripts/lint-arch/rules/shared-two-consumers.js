@@ -5,9 +5,19 @@ const { phpClassOwners } = require( './php-class-naming' );
 /**
  * Todo módulo de shared/ precisa de dois consumidores reais.
  *
- * `post-voice.php` não conta: a raiz carrega e registra tudo, e contá-la faria
+ * Consumidor é arquivo PHP de produção sob `features/`, e o mecanismo é esse
+ * filtro, não uma checagem por nome: `post-voice.php` fica de fora porque não
+ * começa com `features/` — a raiz carrega e registra tudo, e contá-la faria
  * qualquer módulo de shared/ parecer ter um consumidor a mais do que tem.
- * Testes também não contam — um teste consome por definição.
+ * Teste também não conta, e esse sim tem guarda própria (`isTestPath`): um
+ * teste consome por definição, então contá-lo faria qualquer módulo atingir o
+ * limiar sem feature nenhuma depender dele.
+ *
+ * Ponto cego conhecido: a busca é pelo nome da classe dentro dos arquivos de
+ * feature, então consumo TRANSITIVO — feature usa o módulo A de shared/, que
+ * por sua vez usa o B — lê o B como tendo zero consumidores. Hoje não alcança
+ * nada (shared/ tem um módulo só); vale rever quando o `revisar_quando` da
+ * ADR-0004 disparar em "shared/ passar de três módulos".
  *
  * @param {Object} ctx
  * @return {Object[]} achados

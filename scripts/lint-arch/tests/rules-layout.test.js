@@ -111,6 +111,39 @@ describe( 'shared-two-consumers', () => {
 		expect( shared.check( ctx ) ).toHaveLength( 1 );
 	} );
 
+	it( 'teste não conta como consumidor: duas features, mas só em tests/', () => {
+		// Um teste consome por definição — é para isso que ele existe. Contar
+		// arquivo de teste faria qualquer módulo de shared/ atingir o limiar de
+		// dois sem que feature nenhuma dependesse dele de verdade, que é
+		// exatamente o que a ADR-0004 quer impedir: abstrair a partir de um
+		// consumidor só.
+		//
+		// Aqui as DUAS features referenciam a classe, mas ambas apenas de
+		// dentro de `tests/`. Sem a guarda `isTestPath` o achado desaparece:
+		// falso negativo.
+		const ctx = comArquivos(
+			[
+				'shared/php/class-settings-page.php',
+				'features/a/php/class-a.php',
+				'features/a/tests/php/test-a.php',
+				'features/b/tests/php/test-b.php',
+			],
+			( f ) => {
+				if ( f.startsWith( 'shared/' ) ) {
+					return '<?php\nclass Post_Voice_Settings_Page {}\n';
+				}
+				// A classe de produção da feature não cita a compartilhada;
+				// quem cita são só os dois arquivos de teste.
+				return f.includes( '/tests/' )
+					? '<?php\nPost_Voice_Settings_Page::MENU_SLUG;\n'
+					: '<?php\nclass Post_Voice_A {}\n';
+			}
+		);
+		const a = shared.check( ctx );
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].message ).toMatch( /0 feature/ );
+	} );
+
 	it( 'o repo de hoje não acusa nada', () => {
 		expect( shared.check( createContext() ) ).toEqual( [] );
 	} );
