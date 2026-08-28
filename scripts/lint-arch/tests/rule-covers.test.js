@@ -424,6 +424,277 @@ describe( 'covers-annotation', () => {
 		} );
 	} );
 
+	// A rodada 4 trocou a busca para trás ("o que pode separar o docblock da
+	// classe?") por uma varredura para a frente que imita o lexer do PHP. Os
+	// fixtures abaixo vieram do harness diferencial
+	// (`tools/covers-oracle-diff.js`), não de expectativa escrita à mão: em
+	// cada um, o valor esperado é o que `ReflectionClass::getDocComment()`
+	// respondeu sob PHP 8.2.32.
+	describe( 'rodada 4 — fronteira medida contra o PHP', () => {
+		describe( 'D1 — comentário de bloco comum entre o docblock e a classe', () => {
+			it( 'um banner de uma linha não quebra a adjacência (o PHP anexa)', () => {
+				const src =
+					'<?php\n/**\n * @covers Post_Voice_Assets\n */\n/* Testes da fatia de assets */\nclass X extends A {}\n';
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+
+			it( 'um banner de várias linhas também não quebra', () => {
+				const src =
+					'<?php\n/**\n * @covers Post_Voice_Assets\n */\n/*\n * banner\n */\nclass X extends A {}\n';
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+		} );
+
+		describe( 'D2 — a declaração não começa no início da linha física', () => {
+			it( 'docblock na MESMA linha da classe é encontrado', () => {
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */ class X extends A {}\n';
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+
+			it( 'docblock na mesma linha, com atributo no meio, é encontrado', () => {
+				const src =
+					"<?php\n/** @covers Post_Voice_Assets */ #[Group( 'a' )] class X extends A {}\n";
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+
+			it( '"final" numa linha própria não quebra a adjacência', () => {
+				const src =
+					'<?php\n/**\n * @covers Post_Voice_Assets\n */\nfinal\nclass X extends A {}\n';
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+
+			it( '"final readonly" quebrado em duas linhas também não quebra', () => {
+				const src =
+					'<?php\n/**\n * @covers Post_Voice_Assets\n */\nfinal\nreadonly\nclass X extends A {}\n';
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+		} );
+
+		describe( 'D3 — corpo de string não é estrutura', () => {
+			it( 'um `]` dentro da string de um atributo não quebra a adjacência', () => {
+				const src =
+					"<?php\n/** @covers Post_Voice_Assets */\n#[Group( ']//' )]\nclass X extends A {}\n";
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+
+			it( 'um `*/` dentro da string de um atributo não quebra a adjacência', () => {
+				const src =
+					"<?php\n/** @covers Post_Voice_Assets */\n#[Group( '*/ //' )]\nclass X extends A {}\n";
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+
+			it( 'um `]` em string dentro de atributo seguido de comentário grudado', () => {
+				const src =
+					"<?php\n/** @covers Post_Voice_Assets */\n#[TestWith( ['a]//b'] )] // nota\nclass X extends A {}\n";
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+
+			it( 'um `//` dentro do TEXTO do próprio docblock não o invalida', () => {
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets — ver [1]// nota */\nclass X extends A {}\n';
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+			} );
+		} );
+
+		describe( 'o que é um docblock é a regra do lexer do PHP, não "parece um"', () => {
+			it( '`/**` sem espaço depois não é docblock para o PHP — a classe é acusada', () => {
+				// `getDocComment()` devolve false para `/**@covers X*/`: o lexer
+				// exige `/**` seguido de espaço em branco. O PHPUnit 9.6 não vê
+				// `@covers` nenhum aqui, então aceitar seria falso NEGATIVO.
+				const src =
+					'<?php\n/**@covers Post_Voice_Assets*/\nclass X extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+			} );
+
+			it( '`/***` (três estrelas) também não é docblock para o PHP', () => {
+				const src =
+					'<?php\n/*** @covers Post_Voice_Assets */\nclass X extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+			} );
+
+			it( 'um `/**` no CORPO de um comentário de bloco comum não empresta o @covers (R1-resto)', () => {
+				const src =
+					'<?php\n/* nota: /** @covers Post_Voice_Assets */\nclass X extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+			} );
+		} );
+
+		describe( 'o docblock é CONSUMIDO pela declaração, como no PHP', () => {
+			it( 'a classe seguinte não herda o @covers da anterior', () => {
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\nclass A_Test extends A {}\nclass B_Test extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a.map( ( x ) => x.key ) ).toEqual( [
+					`${ ARQ } → sem-covers:B_Test`,
+				] );
+			} );
+
+			it( 'nem quando as duas estão na MESMA linha', () => {
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\nclass A_Test extends A {} class B_Test extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a.map( ( x ) => x.key ) ).toEqual( [
+					`${ ARQ } → sem-covers:B_Test`,
+				] );
+			} );
+
+			it( 'uma classe abstrata no meio também consome o docblock', () => {
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\nabstract class Base_Test extends A {}\nclass X_Test extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a.map( ( x ) => x.key ) ).toEqual( [
+					`${ ARQ } → sem-covers:X_Test`,
+				] );
+			} );
+		} );
+
+		describe( 'a varredura não confunde `class` de expressão com declaração', () => {
+			it( '`Foo::class` no corpo de um método não vira classe descoberta', () => {
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\nclass X extends A {\n\tpublic function t() { return Post_Voice_Assets::class; }\n}\n';
+				const ctx = ctxCom( src );
+				expect( regra.classesDeTeste( ctx ) ).toHaveLength( 1 );
+				expect( regra.check( ctx ) ).toEqual( [] );
+			} );
+
+			it( '`$obj->class` também não', () => {
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\nclass X extends A {\n\tpublic function t() { return $o->class; }\n}\n';
+				expect( regra.classesDeTeste( ctxCom( src ) ) ).toHaveLength(
+					1
+				);
+			} );
+
+			it( 'uma classe anônima não vira classe descoberta', () => {
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\nclass X extends A {\n\tpublic function t() { return new class extends B {}; }\n}\n';
+				const ctx = ctxCom( src );
+				expect( regra.classesDeTeste( ctx ) ).toHaveLength( 1 );
+				expect( regra.check( ctx ) ).toEqual( [] );
+			} );
+
+			it( '`class` como sufixo de um identificador maior não é declaração', () => {
+				// A varredura lê identificadores inteiros; `myclass` é um
+				// identificador só. Uma busca por substring acharia `class` no
+				// meio dele e inventaria uma classe.
+				expect(
+					regra.classesDeTeste(
+						ctxCom( '<?php\nmyclass X_Test extends A {}\n' )
+					)
+				).toEqual( [] );
+			} );
+		} );
+
+		describe( 'buracos de teste que a review 3 mediu vivos', () => {
+			it( 'a barra final do glob importa: tests/phpstan/ e tests/php-helpers/ ficam fora (M-N)', () => {
+				const ctx = ctxArquivos( {
+					'features/narration/tests/phpstan/x.php':
+						'<?php\nclass X_Test extends A {}\n',
+					'shared/tests/php-helpers/x.php':
+						'<?php\nclass Y_Test extends A {}\n',
+				} );
+				expect( regra.classesDeTeste( ctx ) ).toEqual( [] );
+				expect( regra.check( ctx ) ).toEqual( [] );
+			} );
+
+			it( 'o filtro .php importa: uma fixture não-PHP na pasta de teste fica fora (M-M)', () => {
+				const ctx = ctxArquivos( {
+					'features/narration/tests/php/fixtures/sample.mp3':
+						'<?php\nclass X_Test extends A {}\n',
+				} );
+				expect( regra.classesDeTeste( ctx ) ).toEqual( [] );
+				expect( regra.check( ctx ) ).toEqual( [] );
+			} );
+
+			it( 'COVERS_RE não aceita a sintaxe de atributo citada DENTRO do docblock (M-P)', () => {
+				// O fixture da rodada 3 deixava `CoversClass` fora da fatia que
+				// COVERS_RE lê, então uma regex frouxa passava. Aqui o texto
+				// está dentro do docblock: só uma regex que exige `@covers`
+				// mantém a acusação.
+				const src =
+					'<?php\n/** @see #[CoversClass( Post_Voice_Assets::class )] */\nclass X extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+			} );
+
+			it( '`final` e `readonly` estão no conjunto de modificadores (M-J)', () => {
+				// `abstract readonly class` é PHP 8.2 legal. Se `readonly` saísse
+				// do conjunto, a varredura pararia nele e a classe deixaria de
+				// ser reconhecida como abstrata — passaria a ser acusada.
+				const src =
+					'<?php\nabstract readonly class Base_Test extends R {}\n';
+				expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+				expect( regra.classesDeTeste( ctxCom( src ) ) ).toEqual( [] );
+			} );
+
+			it( 'corpo de string não é comentário: uma classe na mesma linha de uma string continua descoberta', () => {
+				// A varredura separa "comentário" de "corpo de string" usando as
+				// DUAS fontes: em `stripPhpNoise` os dois ficam em branco, e é
+				// `stripPhpComments` que os distingue (ele preserva o corpo da
+				// string). Se essa segunda fonte sumir, o corpo da string passa
+				// a ser lido como comentário de linha e a varredura pula até o
+				// fim da linha — engolindo a declaração que vem depois dela.
+				// Falso NEGATIVO, a direção pior.
+				const src = "<?php\n$s = 'x'; class X_Test extends A {}\n";
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X_Test` );
+			} );
+		} );
+
+		describe( 'divergência ratificada: código entre o docblock e a classe', () => {
+			it( 'uma atribuição quebra a adjacência, ainda que o PHP anexasse', () => {
+				// O PHP anexa o docblock através de `$x = 1;` — a regra
+				// deliberadamente não (decisão da rodada 2). Direção
+				// conservadora: erra acusando, nunca absolvendo.
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\n$x = 1;\nclass X extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+			} );
+
+			it( 'um comentário de linha que termina numa tag `?>` também quebra', () => {
+				// O `?>` fecha o comentário e volta a ser sintaxe: ele não pode
+				// ser engolido junto com o texto do comentário, senão o
+				// `<?php` seguinte também seria, e a varredura perderia o
+				// pedaço do arquivo entre os dois.
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\n// nota ?>\n<?php\nclass X extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+			} );
+
+			it( 'um atributo sem `]` de fechamento não engole a classe seguinte', () => {
+				// PHP inválido, e por isso mesmo: a varredura não pode desistir
+				// do resto do arquivo por causa dele. A classe continua
+				// descoberta e acusada.
+				const src =
+					"<?php\n/** @covers Post_Voice_Assets */\n#[Group( 'a'\nclass X extends A {}\n";
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+			} );
+
+			it( 'uma tag de fechamento também quebra', () => {
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\n?>\n<?php\nclass X extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+			} );
+		} );
+	} );
+
 	it( 'o repo de hoje tem 10 classes de teste, todas cobertas', () => {
 		const ctx = createContext();
 		expect( regra.check( ctx ) ).toEqual( [] );

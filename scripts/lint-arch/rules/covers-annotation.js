@@ -1,5 +1,5 @@
 'use strict';
-const { stripPhpNoise } = require( '../context' );
+const { stripPhpComments, stripPhpNoise } = require( '../context' );
 
 // O glob que a ADR-0013 usa literalmente ("toda classe de teste PHPUnit sob
 // `features/*/tests/php/` e `shared/tests/php/`"), não uma cópia das pastas
@@ -9,136 +9,42 @@ const { stripPhpNoise } = require( '../context' );
 // `phpunit.xml.dist`. Checar que o XML concorda com este glob é um defeito
 // diferente (teste que existe e não roda) e pertence a `contract-pins`, uma
 // task futura — não é este arquivo que deve fechar essa ponta.
+//
+// A barra final de cada alternativa é carga: sem ela, `tests/phpstan/` e
+// `tests/php-helpers/` (que existem no repo) entrariam na checagem, porque
+// `tests/php` é prefixo dos dois.
 const EM_PASTA_DE_TESTE_RE =
 	/^(?:features\/[^/]+\/tests\/php\/|shared\/tests\/php\/)/;
 
 const emPastaDeTeste = ( f ) =>
 	f.endsWith( '.php' ) && EM_PASTA_DE_TESTE_RE.test( f );
 
-// `class Nome`, opcionalmente seguido de `extends Alvo` — sem âncora de
-// início de linha. A âncora `^` que a rodada 1 usava perdia qualquer
-// declaração que não abrisse a própria linha: `<?php class X_Test extends A
-// {}` (tudo numa linha só) e `#[Group('a')] class X_Test {}` (atributo antes,
-// mesma linha) ficavam com ZERO classes descobertas — o arquivo inteiro
-// desaparecia da checagem, em silêncio.
-//
-// Guarda de fronteira em três partes, e não `\b` (mesma técnica de
-// `rest-namespace.js` e `php-class-naming.js`): `\b` não separa `->` nem
-// `::` do nome que os segue, então sem as duas partes extras isto casaria
-// `$obj->class` e `Foo::class` como se fossem declaração.
-//
-// O grupo de `extends` existe só para FIX 3 (ver `classesNoArquivo`) — decidir
-// se a classe é "de teste" não depende dele, decidir se ela ENTRA na
-// descoberta depende.
-const CLASS_RE =
-	/(?<!\w)(?<!->)(?<!::)class\s+(\w+)(?:\s+extends\s+([\w\\]+))?/gi;
-
-// Palavras que podem preceder `class` sem impedir que ela seja descoberta —
-// paradas no meio de uma varredura para trás por `classeEhAbstrata` sem que
-// a varredura desista. `abstract` é a única que muda o resultado; as outras
-// só são "atravessadas".
+// Palavras que podem preceder `class` sem quebrar a ligação com o docblock:
+// o PHP anexa o docblock normalmente através delas, em qualquer combinação e
+// capitalização. `abstract` é a única que muda o resultado (a classe sai de
+// escopo); as outras só são atravessadas.
 const MODIFICADORES_DE_CLASSE = new Set( [ 'abstract', 'final', 'readonly' ] );
-const ULTIMA_PALAVRA_RE = /[A-Za-z_]\w*$/;
 
-/**
- * Anda para trás a partir de `matchStart` (o início do match de `CLASS_RE`,
- * isto é, o começo da palavra `class`) pulando modificadores conhecidos
- * (`final`, `readonly`, em qualquer combinação e capitalização) até achar
- * `abstract` (verdadeiro) ou uma palavra que não é modificador — ou o início
- * do arquivo (falso).
- *
- * Roda sobre `codigo` (stripPhpNoise): um comentário ou uma string logo
- * antes de `class` não pode ser lido como se fosse `abstract`.
- *
- * @param {string} codigo     arquivo com stripPhpNoise
- * @param {number} matchStart offset de início do match de `CLASS_RE`
- * @return {boolean} verdadeiro quando a classe é abstrata
- */
-function classeEhAbstrata( codigo, matchStart ) {
-	let pos = matchStart;
-	while ( true ) {
-		while ( pos > 0 && /\s/.test( codigo[ pos - 1 ] ) ) {
-			pos--;
-		}
-		const m = ULTIMA_PALAVRA_RE.exec( codigo.slice( 0, pos ) );
-		if ( ! m ) {
-			return false;
-		}
-		const palavra = m[ 0 ].toLowerCase();
-		if ( palavra === 'abstract' ) {
-			return true;
-		}
-		if ( ! MODIFICADORES_DE_CLASSE.has( palavra ) ) {
-			return false;
-		}
-		pos -= m[ 0 ].length;
-	}
-}
+// Um identificador PHP a partir da posição corrente (sticky). `\w` basta:
+// nomes de classe fora de [A-Za-z0-9_] não existem neste repo e o critério
+// anterior era o mesmo.
+const IDENTIFICADOR_RE = /[A-Za-z_]\w*/y;
 
-/**
- * As classes em escopo — não abstratas, e que estendem alguma coisa.
- *
- * Abstrata é pulada aqui, na descoberta — não filtrada depois nem absolvida
- * por uma anotação de escape. PHPUnit não instancia uma classe abstrata; ela
- * não é "classe de teste PHPUnit" no sentido do `## Contexto` da ADR-0013
- * (não gera número de cobertura nenhum para atribuir mal), é infraestrutura.
- *
- * "Não estende nada" também é pulada — e esta é uma correção sobre a rodada
- * anterior, não uma permissão nova dela: fechar `@coversNothing` sem abrir
- * mais nada deixava uma classe concreta auxiliar (um stub, um builder de
- * dados) em escopo sem NENHUMA saída. Sob `phpunit/phpunit: ^9.6` (9.6.36 no
- * lock), uma classe só é coletada como teste se estende `TestCase` — não
- * existe coleta por atributo antes do PHPUnit 10 (mesma razão do comentário
- * perto de `COVERS_RE`). "Não estende nada" implica com segurança "não é
- * classe de teste" sob esta versão; as 10 classes reais do repo estendem
- * `WP_UnitTestCase`, nenhuma estende nada. Migrar para o PHPUnit 10+ é o que
- * reabriria esta decisão — assim como reabriria a de `COVERS_RE`.
- *
- * @param {Object} ctx
- * @param {string} file
- * @return {{nome:string, line:number, declStart:number}[]} uma por classe em escopo
- */
-function classesNoArquivo( ctx, file ) {
-	const codigo = stripPhpNoise( ctx.read( file ) );
-	CLASS_RE.lastIndex = 0;
-	const out = [];
-	let m;
-	while ( ( m = CLASS_RE.exec( codigo ) ) !== null ) {
-		if ( classeEhAbstrata( codigo, m.index ) ) {
-			continue; // abstract — pulada, ver JSDoc acima
-		}
-		if ( ! m[ 2 ] ) {
-			continue; // não estende nada — pulada, ver JSDoc acima
-		}
-		const inicioLinha = codigo.lastIndexOf( '\n', m.index ) + 1;
-		out.push( {
-			nome: m[ 1 ],
-			line: codigo.slice( 0, inicioLinha ).split( '\n' ).length,
-			declStart: inicioLinha,
-		} );
-	}
-	return out;
-}
+// `class` seguido do nome, com o `extends` opcional logo depois. Rodam sobre
+// `codigo` (stripPhpNoise), onde comentário e corpo de string já são espaço —
+// então um comentário entre `class` e o nome, ou entre o nome e `extends`,
+// é atravessado sem tratamento especial.
+const NOME_DA_CLASSE_RE = /\s+(\w+)/y;
+const EXTENDS_RE = /\s*extends\s+[\w\\]+/iy;
 
-/**
- * Toda classe de teste PHPUnit em escopo — uma entrada por classe, não por
- * arquivo, porque a ADR fala em classe ("toda classe de teste PHPUnit...") e
- * um arquivo pode declarar mais de uma. Um arquivo que não declara nenhuma
- * classe elegível (os dois traits auxiliares, `bootstrap.php`,
- * `wp-tests-config.php`) não contribui entrada nenhuma.
- *
- * @param {Object} ctx
- * @return {{file:string, nome:string, line:number, declStart:number}[]} uma por classe em escopo
- */
-function classesDeTeste( ctx ) {
-	const out = [];
-	for ( const file of ctx.files.filter( emPastaDeTeste ) ) {
-		for ( const c of classesNoArquivo( ctx, file ) ) {
-			out.push( { file, ...c } );
-		}
-	}
-	return out;
-}
+// A regra do próprio lexer do PHP para o que é um DOCBLOCK e não um
+// comentário de bloco qualquer: `/**` seguido de espaço em branco. Verificado
+// contra `ReflectionClass::getDocComment()` do PHP 8.2.32 —
+// `/**@covers Foo*/` (sem o espaço), `/*** @covers Foo */` (três estrelas) e
+// `/**/` NÃO são docblocks para o PHP, e portanto o PHPUnit não lê `@covers`
+// nenhum ali. Aceitá-los aqui seria absolver uma classe que o PHPUnit conta
+// como sem cobertura declarada — falso negativo, a direção pior.
+const ABRE_DOCBLOCK_RE = /^\/\*\*[ \t\r\n]/;
 
 // `@coversNothing` é checada à parte, NUNCA por esta — ver `check`. Sem a
 // alternância "Nothing" aqui, `@covers\b` sozinho não casa "@coversNothing"
@@ -152,232 +58,260 @@ function classesDeTeste( ctx ) {
 // série 9.6 lê anotação de docblock e ignora atributo — cobertura por
 // atributo só existe a partir do PHPUnit 10. Uma classe cujo único "covers"
 // é um atributo não tem cobertura declarada de fato hoje, e é corretamente
-// acusada. Migrar para PHPUnit 10+ é o que reabriria esta decisão. Isto não
-// depende de `COVERS_RE` "recusar" o atributo — o atributo nunca chega a ser
-// lido por `COVERS_RE`, porque `docblockDaClasse` só devolve texto de dentro
-// de um docblock (ver abaixo), e um atributo não é um docblock.
+// acusada. Migrar para PHPUnit 10+ é o que reabriria esta decisão. O atributo
+// também nunca chega a ser lido: a varredura pula atributo inteiro, e o que
+// `COVERS_RE` recebe é sempre texto de dentro de um docblock. As duas
+// proteções são independentes de propósito, e as duas têm teste.
 const COVERS_RE = /@covers(?:DefaultClass)?\b/;
 const COVERS_NOTHING_RE = /@coversNothing\b/;
 
+const ehBranco = ( ch ) => ch === undefined || /\s/.test( ch );
+
 /**
- * Tenta ler `codigo[ fim - 1 ]` como o `]` de fechamento de um atributo do
- * PHP 8 (`#[ ... ]`) e devolve o offset do `#` que o abre, ou `fim` sem
- * mudança quando não é um atributo.
+ * O fim (exclusivo) do comentário que começa em `i`.
  *
- * Roda sobre `codigo` (stripPhpNoise), não sobre o cru: uma string dentro do
- * atributo — `#[Group('lento')]` — teria colchetes de verdade se o corpo da
- * string sobrevivesse, e um `]` dentro dela contaria errado na contagem de
- * profundidade. stripPhpNoise apaga o corpo da string para espaço, então os
- * únicos `[`/`]` que sobram em `codigo` são estrutura de código de verdade.
+ * Mesmas fronteiras que `strip` em `context.js` usa, porque é o mesmo texto
+ * sendo lido: um `/* ... *\/` termina no primeiro `*\/` (não há aninhamento em
+ * PHP) ou no fim do arquivo; um comentário de linha termina na quebra de
+ * linha OU numa tag `?>`, o que vier primeiro — a tag fecha o comentário e
+ * volta a ser sintaxe, então ela não pode ser engolida aqui.
+ *
+ * @param {string} raw arquivo cru
+ * @param {number} i   offset do primeiro caractere do comentário
+ * @return {number} offset exclusivo do fim do comentário
+ */
+function fimDoComentario( raw, i ) {
+	if ( raw.startsWith( '/*', i ) ) {
+		const fecha = raw.indexOf( '*/', i + 2 );
+		return fecha === -1 ? raw.length : fecha + 2;
+	}
+	const fimLinha = raw.indexOf( '\n', i );
+	const fimTag = raw.indexOf( '?>', i );
+	if ( fimTag !== -1 && ( fimLinha === -1 || fimTag < fimLinha ) ) {
+		return fimTag;
+	}
+	return fimLinha === -1 ? raw.length : fimLinha;
+}
+
+/**
+ * O offset logo depois do `]` que fecha o atributo do PHP 8 aberto em `i`
+ * (`codigo[i]` é `#` e `codigo[i+1]` é `[`), ou `i` quando o colchete não
+ * fecha.
+ *
+ * Conta profundidade sobre `codigo` (stripPhpNoise), nunca sobre o cru: um
+ * `]` dentro de uma string do atributo — `#[Group( ']' )]` — é corpo de
+ * string, não estrutura, e contá-lo fecharia o atributo cedo demais. Em
+ * `codigo` o corpo da string já é espaço, então os únicos colchetes que
+ * sobram são os de verdade. Este é o padrão de duas fontes do projeto:
+ * ESTRUTURA sai de `codigo`, CONTEÚDO sai do cru — e os dois têm o mesmo
+ * comprimento, então o offset vale nos dois.
  *
  * @param {string} codigo arquivo com stripPhpNoise
- * @param {number} fim    offset exclusivo — `codigo[fim-1]` é o candidato a `]`
- * @return {number} offset do `#` que abre o atributo, ou `fim` inalterado
+ * @param {number} i      offset do `#` que abre o atributo
+ * @return {number} offset após o `]` de fechamento, ou `i` se não fecha
  */
-function pularAtributoQueTermina( codigo, fim ) {
-	if ( codigo[ fim - 1 ] !== ']' ) {
-		return fim;
-	}
+function fimDoAtributo( codigo, i ) {
 	let profundidade = 0;
-	for ( let j = fim - 1; j >= 0; j-- ) {
-		if ( codigo[ j ] === ']' ) {
+	for ( let j = i + 1; j < codigo.length; j++ ) {
+		if ( codigo[ j ] === '[' ) {
 			profundidade++;
-		} else if ( codigo[ j ] === '[' ) {
+		} else if ( codigo[ j ] === ']' ) {
 			profundidade--;
 			if ( profundidade === 0 ) {
-				return j > 0 && codigo[ j - 1 ] === '#' ? j - 1 : fim;
+				return j + 1;
 			}
 		}
 	}
-	return fim; // colchete sem par — não é atributo, não pula nada
+	return i;
 }
 
 /**
- * Quando a linha que termina em `fim` (sem contar espaço em branco à
- * direita, já removido por quem chama) é um comentário de linha inteira —
- * `//...` ou `#...` que não seja `#[` (isso é atributo, não comentário) —
- * devolve o início dessa linha. Senão devolve `fim` inalterado.
+ * Varre o arquivo UMA VEZ, da esquerda para a direita, e devolve as classes
+ * em escopo com o docblock que o PHP anexaria a cada uma.
  *
- * Lida sobre o arquivo CRU: em `codigo` (qualquer um dos dois strippers) o
- * comentário já é espaço em branco, e não dá para diferenciar "era um
- * comentário de linha inteira" de "era espaço de verdade" — o que não
- * importa para o valor de retorno (os dois são pulados), mas importa para
- * achar o INÍCIO da linha corretamente quando o comentário tem texto.
+ * Por que uma varredura para a frente, e não a busca para trás que as rodadas
+ * 1-3 tinham: a pergunta que a regra faz — "qual docblock o PHP associa a esta
+ * classe?" — é respondida pelo lexer do PHP, que caminha para a frente
+ * guardando o último docblock visto e o entrega à próxima declaração. Toda
+ * tentativa de responder isso andando para trás a partir da classe vira uma
+ * lista de "o que pode separar os dois", e cada rodada de correção descobriu
+ * mais um item que faltava (comentário de bloco, modificador em linha própria,
+ * `]` dentro de string). Andando para a frente não existe lista: cada coisa
+ * que aparece é classificada uma vez, e o docblock em vigor sobrevive ou não.
+ *
+ * O modelo, verificado caso a caso contra `getDocComment()` do PHP 8.2.32
+ * (ver `tools/covers-oracle-diff.js`):
+ *
+ * - um DOCBLOCK passa a ser o docblock em vigor (o mais próximo vence,
+ *   porque o seguinte simplesmente sobrescreve o anterior);
+ * - espaço em branco, comentário comum (`/* *\/`, `//`, `#`), atributo do
+ *   PHP 8 e os modificadores `final`/`readonly`/`abstract` preservam o
+ *   docblock em vigor — o PHP também anexa através de todos eles;
+ * - QUALQUER outro token o descarta;
+ * - uma declaração de classe CONSOME o docblock em vigor, mesmo quando a
+ *   classe está fora de escopo — é assim que o `@covers` de uma classe não
+ *   vaza para a seguinte, e é o que o PHP faz.
+ *
+ * A terceira regra é deliberadamente mais estrita que o PHP: `$x = 1;` entre
+ * o docblock e a classe não impede o PHP de anexar, e aqui quebra a
+ * adjacência. É a divergência ratificada do brief da rodada 2 ("uma linha de
+ * código entre o docblock e a classe quebra a adjacência"), e ela é
+ * conservadora: erra acusando, nunca absolvendo. O conjunto de separadores
+ * que ESTA função aceita é subconjunto estrito do que o PHP aceita, então
+ * nenhuma classe é absolvida por um docblock que o PHPUnit não veria.
+ *
+ * Fontes, e por que são três:
+ * - `codigo` (stripPhpNoise) responde ESTRUTURA: o que é código de verdade,
+ *   já sem corpo de string e sem comentário;
+ * - `semComentarios` (stripPhpComments) separa as duas coisas que ficam em
+ *   branco em `codigo`: onde ele também está em branco era COMENTÁRIO, onde
+ *   ele preserva o texto era CORPO DE STRING;
+ * - o cru responde CONTEÚDO: o texto do docblock só existe nele.
+ * Os três têm o mesmo comprimento em bytes (os strippers apagam PARA ESPAÇO),
+ * então um offset vale nos três. Os dois strippers rodam sobre o cru, em
+ * passadas independentes — compô-los é proibido, ver `context.js`.
+ *
+ * Classe abstrata é pulada aqui, na descoberta — não filtrada depois nem
+ * absolvida por uma anotação de escape. PHPUnit não instancia uma classe
+ * abstrata; ela não é "classe de teste PHPUnit" no sentido do `## Contexto`
+ * da ADR-0013 (não gera número de cobertura nenhum para atribuir mal), é
+ * infraestrutura.
+ *
+ * "Não estende nada" também é pulada: sob `phpunit/phpunit: ^9.6` (9.6.36 no
+ * lock) uma classe só é coletada como teste se estende `TestCase` — não
+ * existe coleta por atributo antes do PHPUnit 10 (mesma razão do comentário
+ * perto de `COVERS_RE`). Sem esse pulo, uma classe concreta auxiliar (um
+ * stub, um builder de dados) ficaria em escopo sem NENHUMA saída. As 10
+ * classes reais do repo estendem `WP_UnitTestCase`.
  *
  * @param {string} raw arquivo cru
- * @param {number} fim offset exclusivo, já sem espaço em branco à direita
- * @return {number} início da linha de comentário, ou `fim` inalterado
+ * @return {{nome:string, line:number, docblock:(string|null)}[]} uma por classe em escopo
  */
-function pularComentarioDeLinhaQueTermina( raw, fim ) {
-	const inicioLinha = raw.lastIndexOf( '\n', fim - 1 ) + 1;
-	const linha = raw.slice( inicioLinha, fim ).replace( /^[ \t]*/, '' );
-	const ehComentarioDeLinha =
-		linha.startsWith( '//' ) ||
-		( linha.startsWith( '#' ) && ! linha.startsWith( '#[' ) );
-	return ehComentarioDeLinha ? inicioLinha : fim;
-}
-
-// `]` (fecha atributo) ou `*/` (fecha docblock ou comentário de bloco comum)
-// seguido, na mesma linha, de espaço opcional e então um comentário de linha
-// (`//` ou `#` que não seja `#[`). Ancorar em `]`/`*/` — e não procurar
-// `//`/`#` soltos em qualquer ponto da linha — é o que impede isto de
-// confundir um `//` que apareça DENTRO do próprio texto de um docblock
-// (`/** ver http://x */`) com um comentário de verdade: esse `//` nunca vem
-// logo depois de `]` ou `*/`. `g` para achar TODAS as ocorrências na linha —
-// só a ÚLTIMA interessa (ver `pularComentarioGrudadoQueTermina`).
-const COMENTARIO_GRUDADO_RE = /(\]|\*\/)([ \t]*)(?:\/\/|#(?!\[))/g;
-
-/**
- * Um comentário de linha GRUDADO depois de código de verdade na MESMA linha
- * — `#[Group('a')] // nota`, ou um docblock de uma linha só seguido de
- * `// nota` na mesma linha — em vez de sozinho na linha inteira (isso é
- * `pularComentarioDeLinhaQueTermina`).
- *
- * Sem isto, `pularAtributoQueTermina` exige `]` no fim do trecho e recusa
- * quando o que sobra é o espaço que o comentário deixou; e
- * `pularComentarioDeLinhaQueTermina` exige a linha inteira ser comentário e
- * recusa uma linha que comece com `#[` (atributo). Os dois se recusam, e a
- * adjacência quebrava onde o PHP prende o docblock normalmente.
- *
- * @param {string} raw arquivo cru
- * @param {number} fim offset exclusivo, já sem espaço em branco à direita
- * @return {number} offset logo após o `]` ou o fecha-comentário mais próximo
- *                   de `fim` que abre um comentário de linha, ou `fim`
- *                   inalterado
- */
-function pularComentarioGrudadoQueTermina( raw, fim ) {
-	const inicioLinha = raw.lastIndexOf( '\n', fim - 1 ) + 1;
-	const linha = raw.slice( inicioLinha, fim );
-	COMENTARIO_GRUDADO_RE.lastIndex = 0;
-	let ultimo = null;
-	let m;
-	while ( ( m = COMENTARIO_GRUDADO_RE.exec( linha ) ) !== null ) {
-		ultimo = m;
-	}
-	return ultimo === null
-		? fim
-		: inicioLinha + ultimo.index + ultimo[ 1 ].length;
-}
-
-/**
- * O offset, no arquivo CRU, de onde termina o que pode legitimamente separar
- * um docblock do início da linha de declaração da classe sem quebrar a
- * adjacência entre os dois: espaço em branco, um atributo do PHP 8, um
- * comentário de linha inteira, ou um comentário de linha grudado depois de
- * um atributo/docblock na mesma linha. Todos podem se repetir e se
- * intercalar — por isso o laço insiste até uma volta não mudar nada.
- *
- * Deliberadamente NÃO pula: um comentário de bloco comum, que não abre com
- * o segundo `*` de um docblock, nem qualquer código de verdade
- * (`declare(...)`, `use Trait;`, uma constante). Nenhum dos dois foi pedido,
- * e alargar demais aqui troca o falso positivo que este laço resolve por um
- * falso negativo — um `@covers` distante passando a contar — que é a
- * direção pior.
- *
- * @param {string} raw       arquivo cru
- * @param {string} codigo    o mesmo arquivo com stripPhpNoise (mesmo comprimento)
- * @param {number} declStart offset de início da linha de declaração da classe
- * @return {number} offset após o último ruído reconhecido, andando para trás
- */
-function limiteAntesDoDocblock( raw, codigo, declStart ) {
-	let fim = declStart;
-	let mudou = true;
-	while ( mudou ) {
-		mudou = false;
-		while ( fim > 0 && /\s/.test( raw[ fim - 1 ] ) ) {
-			fim--;
-			mudou = true;
-		}
-		const semGrudado = pularComentarioGrudadoQueTermina( raw, fim );
-		if ( semGrudado !== fim ) {
-			fim = semGrudado;
-			mudou = true;
+function varrerClasses( raw ) {
+	const codigo = stripPhpNoise( raw );
+	const semComentarios = stripPhpComments( raw );
+	const encontradas = [];
+	let i = 0;
+	let docblock = null;
+	let abstrata = false;
+	let palavraAnterior = null;
+	// Os dois últimos caracteres de ESTRUTURA vistos, para distinguir a
+	// declaração `class X` de `Foo::class` e `$obj->class`, que são busca de
+	// constante. `\b` não serviria: ele não separa `::` nem `->` do nome que
+	// os segue.
+	let doisAnteriores = '';
+	while ( i < raw.length ) {
+		if ( ehBranco( codigo[ i ] ) ) {
+			// Em branco em `codigo` é uma de três coisas. Comentário: em
+			// branco também em `semComentarios`, com texto no cru. Corpo de
+			// string: `semComentarios` preservou o texto. Espaço de verdade:
+			// o cru já é branco. Só a primeira precisa de tratamento — as
+			// outras duas são atravessadas, e as aspas que delimitam a string
+			// são estrutura, então elas mesmas já descartam o docblock.
+			if ( ! ehBranco( raw[ i ] ) && ehBranco( semComentarios[ i ] ) ) {
+				const fim = fimDoComentario( raw, i );
+				const texto = raw.slice( i, fim );
+				if ( ABRE_DOCBLOCK_RE.test( texto ) ) {
+					docblock = texto;
+				}
+				i = fim;
+				continue;
+			}
+			i += 1;
 			continue;
 		}
-		const semComentario = pularComentarioDeLinhaQueTermina( raw, fim );
-		if ( semComentario !== fim ) {
-			fim = semComentario;
-			mudou = true;
+
+		if ( codigo[ i ] === '#' && codigo[ i + 1 ] === '[' ) {
+			const fim = fimDoAtributo( codigo, i );
+			if ( fim !== i ) {
+				// Atributo inteiro pulado sem tocar no docblock em vigor —
+				// o PHP anexa através dele.
+				i = fim;
+				continue;
+			}
+		}
+
+		IDENTIFICADOR_RE.lastIndex = i;
+		const ident = IDENTIFICADOR_RE.exec( codigo );
+		if ( ident === null ) {
+			// Pontuação, aspa, tag `<?php`/`?>`, dígito: token de verdade.
+			doisAnteriores = ( doisAnteriores + codigo[ i ] ).slice( -2 );
+			docblock = null;
+			abstrata = false;
+			palavraAnterior = null;
+			i += 1;
 			continue;
 		}
-		const semAtributo = pularAtributoQueTermina( codigo, fim );
-		if ( semAtributo !== fim ) {
-			fim = semAtributo;
-			mudou = true;
+
+		const palavra = ident[ 0 ].toLowerCase();
+		let fim = i + ident[ 0 ].length;
+		if ( palavra === 'class' ) {
+			NOME_DA_CLASSE_RE.lastIndex = fim;
+			const nome = NOME_DA_CLASSE_RE.exec( codigo );
+			const declaracao =
+				nome !== null &&
+				palavraAnterior !== 'new' &&
+				doisAnteriores !== '::' &&
+				doisAnteriores !== '->';
+			if ( declaracao ) {
+				fim = NOME_DA_CLASSE_RE.lastIndex;
+				EXTENDS_RE.lastIndex = fim;
+				const estende = EXTENDS_RE.exec( codigo ) !== null;
+				if ( ! abstrata && estende ) {
+					encontradas.push( {
+						nome: nome[ 1 ],
+						line: raw.slice( 0, i ).split( '\n' ).length,
+						docblock,
+					} );
+				}
+			}
+			// Consumido pela declaração — inclusive quando a classe está fora
+			// de escopo, e inclusive quando isto era `Foo::class` (aí o
+			// docblock já tinha sido descartado pelo `::`).
+			docblock = null;
+			abstrata = false;
+			palavraAnterior = 'class';
+			doisAnteriores = codigo.slice( fim - 2, fim );
+			i = fim;
+			continue;
 		}
+
+		if ( MODIFICADORES_DE_CLASSE.has( palavra ) ) {
+			abstrata = abstrata || palavra === 'abstract';
+		} else {
+			docblock = null;
+			abstrata = false;
+		}
+		palavraAnterior = palavra;
+		doisAnteriores = ident[ 0 ].slice( -2 );
+		i = fim;
 	}
-	return fim;
+	return encontradas;
 }
 
 /**
- * O docblock imediatamente antes da declaração da classe — tolerando, entre
- * os dois, o ruído que `limiteAntesDoDocblock` reconhece.
+ * Toda classe de teste PHPUnit em escopo — uma entrada por classe, não por
+ * arquivo, porque a ADR fala em classe ("toda classe de teste PHPUnit...") e
+ * um arquivo pode declarar mais de uma. Um arquivo que não declara nenhuma
+ * classe elegível (os dois traits auxiliares, `bootstrap.php`,
+ * `wp-tests-config.php`) não contribui entrada nenhuma.
  *
- * Lido do arquivo CRU — não de `stripPhpNoise` nem de `stripPhpComments`,
- * porque `strip()` em `context.js` apaga comentário incondicionalmente (o
- * parâmetro `strings` decide só se o corpo de string TAMBÉM é apagado); os
- * dois strippers apagariam o próprio docblock que esta função lê. O cru é a
- * única fonte onde ele sobrevive.
- *
- * Não basta achar UM `/**` antes de um fecha-comentário: tem de ser o
- * `/**` QUE ABRE esse fecha-comentário especificamente — senão um
- * comentário de bloco comum solto entre duas classes (um separador
- * visual) deixa a busca atravessar código arbitrário até um docblock
- * alheio, herdando o `@covers` de uma classe vizinha (e, pior, confundindo
- * a IDENTIDADE do defeito quando esse alheio é `@coversNothing` — o achado
- * sairia com a chave errada). A checagem é: a partir do `/**` achado, o
- * primeiro fecha-comentário que aparece tem de ser exatamente o que fecha
- * `antes` — não pode haver nenhum outro fecha-comentário mais cedo no
- * meio; isso significaria que o `/**` achado não é o dono do fechamento
- * final.
- *
- * A barreira de adjacência (mais esta checagem de par) resolve, de graça,
- * dois problemas:
- *   - por classe, não por arquivo (ADR-0013 fala em classe): o docblock de UM
- *     método, de uma classe vizinha, ou de um comentário de bloco solto no
- *     meio, nunca é lido como o desta classe;
- *   - `@covers` dentro de uma string, heredoc ou HTML antes de `<?php`: esse
- *     texto nunca é o que precede imediatamente uma linha `class ...`,
- *     então nunca chega a ser candidato.
- *
- * @param {string} raw       arquivo cru
- * @param {string} codigo    o mesmo arquivo com stripPhpNoise
- * @param {number} declStart offset (igual em raw e em stripPhpNoise) do
- *                           início da linha de declaração da classe
- * @return {string|null} o texto do docblock completo, delimitadores incluídos, ou null
+ * @param {Object} ctx
+ * @return {{file:string, nome:string, line:number, docblock:(string|null)}[]} uma por classe em escopo
  */
-function docblockDaClasse( raw, codigo, declStart ) {
-	const antes = raw.slice(
-		0,
-		limiteAntesDoDocblock( raw, codigo, declStart )
-	);
-	if ( ! antes.endsWith( '*/' ) ) {
-		return null;
+function classesDeTeste( ctx ) {
+	const out = [];
+	for ( const file of ctx.files.filter( emPastaDeTeste ) ) {
+		for ( const c of varrerClasses( ctx.read( file ) ) ) {
+			out.push( { file, ...c } );
+		}
 	}
-	const inicio = antes.lastIndexOf( '/**' );
-	if ( inicio === -1 ) {
-		return null;
-	}
-	// O primeiro `*/` depois de `/**` tem de ser exatamente o que fecha
-	// `antes` — ver o JSDoc acima. `indexOf` (não `lastIndexOf`) porque um
-	// comentário de verdade não pode conter `*/` no meio do próprio corpo
-	// sem terminar ali (não há aninhamento de comentário em PHP).
-	if ( antes.indexOf( '*/', inicio + 3 ) !== antes.length - 2 ) {
-		return null;
-	}
-	return antes.slice( inicio );
+	return out;
 }
 
 function check( ctx ) {
 	const achados = [];
-	for ( const { file, nome, line, declStart } of classesDeTeste( ctx ) ) {
-		const raw = ctx.read( file );
-		const docblock = docblockDaClasse(
-			raw,
-			stripPhpNoise( raw ),
-			declStart
-		);
-
+	for ( const { file, nome, line, docblock } of classesDeTeste( ctx ) ) {
 		if ( docblock && COVERS_NOTHING_RE.test( docblock ) ) {
 			achados.push( {
 				key: `${ file } → covers-nothing:${ nome }`,
@@ -405,4 +339,5 @@ module.exports = {
 	adr: '0013',
 	check,
 	classesDeTeste,
+	varrerClasses,
 };
