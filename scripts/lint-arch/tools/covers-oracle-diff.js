@@ -142,12 +142,33 @@ const DECLARACOES = [
 	{ id: 'sem-extends', texto: 'class NOME {}', foraDeEscopo: true },
 ];
 
+// A metade fácil do oráculo — com um asterisco, e o asterisco importa. O PHP
+// responde QUAL docblock a classe recebe (é a pergunta difícil, a que três
+// rodadas erraram); O QUE esse docblock significa é decidido aqui por uma
+// CÓPIA das regexes da regra. Se `COVERS_RE` tiver defeito, `esperadoDoOraculo`
+// se move junto e o harness não enxerga nada — por construção, não por
+// descuido: o PHP não tem opinião sobre `@covers`, quem tem é o PHPUnit, e
+// carregar o PHPUnit aqui trocaria um harness de 20 s por um de minutos.
+// Essa segunda metade é fixada por FIXTURE, não pelo oráculo: o fixture
+// M-P em `tests/rule-covers.test.js` (`#[CoversClass( ... )]` dentro de um
+// docblock continua sendo acusado) mata o mutante `COVERS_RE` que aceitaria
+// `CoversClass`. Ao ler "o esperado não é escrito por ninguém" no cabeçalho,
+// leia "para qual docblock a classe recebe".
 const COVERS_RE = /@covers(?:DefaultClass)?\b/;
 const COVERS_NOTHING_RE = /@coversNothing\b/;
-const MARCA_RE = /\x01([A-Za-z_0-9]+)\x02([\s\S]*?)\x03/g;
+const MARCA_RE = /\x01([A-Za-z_0-9]+)\x02([a-z-]+)\x04([\s\S]*?)\x03/g;
+
+// O que o PHP respondeu sobre um nome. `ausente` é o terceiro estado, e ele é
+// verdade de campo tanto quanto os outros dois: uma classe que a regra
+// "descobriu" em texto que o PHP nunca compilou (HTML, prosa depois de `?>`)
+// simplesmente NÃO EXISTE, e acusá-la é falso positivo.
+const AUSENTE = 'ausente';
+const SEM_DOC = 'sem-doc';
+const COM_DOC = 'doc';
 
 /**
- * O programa PHP que responde, para cada nome, o que `getDocComment()` dá.
+ * O programa PHP que responde, para cada nome, se a classe existe e o que
+ * `getDocComment()` dá.
  *
  * @param {string}   arquivo caminho absoluto do .php a carregar
  * @param {string[]} nomes   classes a consultar
@@ -158,18 +179,23 @@ function programaDoOraculo( arquivo, nomes ) {
 	return `error_reporting( 0 );
 require ${ JSON.stringify( arquivo ) };
 foreach ( json_decode( ${ lista } ) as $nome ) {
+	if ( ! class_exists( $nome, false ) ) {
+		echo "\\x01", $nome, "\\x02${ AUSENTE }\\x04\\x03";
+		continue;
+	}
 	$d = ( new ReflectionClass( $nome ) )->getDocComment();
-	echo "\\x01", $nome, "\\x02", $d === false ? "" : $d, "\\x03";
+	echo "\\x01", $nome, "\\x02", $d === false ? "${ SEM_DOC }\\x04" : "${ COM_DOC }\\x04$d", "\\x03";
 }`;
 }
 
 /**
- * Roda o PHP sobre um arquivo e devolve o docblock que ele associa a cada
- * classe pedida. Mapa vazio quando o arquivo não compila.
+ * Roda o PHP sobre um arquivo e devolve, para cada classe pedida, o que ele
+ * respondeu. Mapa vazio quando o arquivo não compila (ou quando o `php` não
+ * roda — mas esse caso é barrado antes, em `exigirPhp`).
  *
  * @param {string}   arquivo caminho absoluto do .php
  * @param {string[]} nomes   classes a consultar
- * @return {Map<string, (string|null)>} nome → docblock (null = nenhum)
+ * @return {Map<string, {existe:boolean, doc:(string|null)}>} nome → resposta
  */
 function oraculo( arquivo, nomes ) {
 	const fora = new Map();
@@ -190,9 +216,36 @@ function oraculo( arquivo, nomes ) {
 	MARCA_RE.lastIndex = 0;
 	let m;
 	while ( ( m = MARCA_RE.exec( saida ) ) !== null ) {
-		fora.set( m[ 1 ], m[ 2 ] === '' ? null : m[ 2 ] );
+		fora.set( m[ 1 ], {
+			existe: m[ 2 ] !== AUSENTE,
+			doc: m[ 2 ] === COM_DOC ? m[ 3 ] : null,
+		} );
 	}
 	return fora;
+}
+
+/**
+ * Falha duro se o `php` não roda. Sem isto, "o oráculo nunca rodou" e "o PHP
+ * concorda com a regra em tudo" produzem a mesma saída verde — que é
+ * exatamente a forma de falha que este harness existe para eliminar.
+ *
+ * @return {void} sai do processo com código 2 quando o `php` não responde
+ */
+function exigirPhp() {
+	try {
+		execFileSync( 'php', [ '-r', 'echo "ok";' ], {
+			encoding: 'utf8',
+			stdio: [ 'ignore', 'pipe', 'ignore' ],
+		} );
+	} catch ( e ) {
+		process.stderr.write(
+			`o binário \`php\` não executou (${ e.code || e.message }).\n` +
+				'Este harness NÃO tem valor sem ele: o esperado de cada caso é ' +
+				'o que o PHP responde.\n' +
+				'Instale o PHP 8.2+ e ponha no PATH.\n'
+		);
+		process.exit( 2 );
+	}
 }
 
 /**
@@ -222,12 +275,32 @@ function conclusaoDaRegra( fonte, nome ) {
 }
 
 /**
+ * A resposta do PHP em uma linha, para o relatório de divergência.
+ *
+ * @param {{existe:boolean, doc:(string|null)}} resposta o que o PHP disse
+ * @return {string} texto
+ */
+function descreverResposta( resposta ) {
+	if ( ! resposta.existe ) {
+		return 'a classe NÃO EXISTE (o PHP nunca a compilou)';
+	}
+	return JSON.stringify( resposta.doc );
+}
+
+/**
  * O que a regra DEVERIA concluir, derivado só do que o PHP respondeu.
  *
- * @param {string|null} docblock o que `getDocComment()` devolveu
+ * @param {{existe:boolean, doc:(string|null)}} resposta o que o PHP disse
  * @return {string} 'limpo', 'sem-covers' ou 'covers-nothing'
  */
-function esperadoDoOraculo( docblock ) {
+function esperadoDoOraculo( resposta ) {
+	// Classe que o PHP não conhece não é classe de teste nenhuma: a regra tem
+	// de ficar calada. `limpo` aqui significa "não acuse", e qualquer acusação
+	// vira falso positivo pelo caminho normal.
+	if ( ! resposta.existe ) {
+		return 'limpo';
+	}
+	const docblock = resposta.doc;
 	if ( docblock !== null && COVERS_NOTHING_RE.test( docblock ) ) {
 		// Ratificado desde a rodada 1: recusado, com chave própria.
 		return 'covers-nothing';
@@ -308,6 +381,7 @@ function medirLote( lote, dir ) {
 
 function main() {
 	const verbose = process.argv.includes( '--verbose' );
+	exigirPhp();
 	const dir = fs.mkdtempSync( path.join( os.tmpdir(), 'covers-oracle-' ) );
 	const casos = gerarCasos();
 	const contagem = {
@@ -317,7 +391,7 @@ function main() {
 		falsoNegativo: 0,
 		chaveDivergente: 0,
 		divergenciaRatificada: 0,
-		phpNaoCarregou: 0,
+		semVerdadeDeCampo: 0,
 	};
 	const linhas = [];
 	for ( let i = 0; i < casos.length; i += TAMANHO_DO_LOTE ) {
@@ -325,9 +399,14 @@ function main() {
 		const medido = medirLote( lote, dir );
 		for ( const caso of lote ) {
 			if ( ! medido.has( caso.nome ) ) {
-				// PHP inválido: não há verdade de campo a comparar.
-				contagem.phpNaoCarregou += 1;
-				linhas.push( `?     ${ caso.id } (PHP não carregou)` );
+				// Sem verdade de campo: ou o arquivo não compilou, ou o
+				// `php` parou de responder no meio da corrida. Não é
+				// "concordam com o PHP", e não pode sair 0.
+				contagem.semVerdadeDeCampo += 1;
+				linhas.push(
+					`?     ${ caso.id } (o PHP não respondeu: o arquivo não compilou, ou o php falhou)\n` +
+						`      fonte: ${ JSON.stringify( caso.fonte ) }`
+				);
 				continue;
 			}
 			const doPhp = medido.get( caso.nome );
@@ -374,7 +453,7 @@ function main() {
 			contagem[ tipo ] += 1;
 			linhas.push(
 				`${ sigla }   ${ caso.id }\n` +
-					`      PHP: ${ JSON.stringify( doPhp ) }\n` +
+					`      PHP: ${ descreverResposta( doPhp ) }\n` +
 					`      esperado: ${ esperado } · regra: ${ obtido }\n` +
 					`      fonte: ${ JSON.stringify( caso.fonte ) }`
 			);
@@ -392,7 +471,7 @@ function main() {
 	process.stdout.write(
 		[
 			`casos gerados            ${ contagem.total }`,
-			`  PHP não carregou       ${ contagem.phpNaoCarregou } (combinação inválida, sem verdade de campo)`,
+			`  SEM VERDADE DE CAMPO   ${ contagem.semVerdadeDeCampo } (o arquivo não compilou, ou o php falhou)`,
 			`  concordam com o PHP    ${ contagem.ok }`,
 			`  divergência ratificada ${ contagem.divergenciaRatificada } (token de código entre docblock e classe)`,
 			`  FALSO POSITIVO         ${ contagem.falsoPositivo }`,
@@ -401,10 +480,18 @@ function main() {
 			'',
 		].join( '\n' )
 	);
+	// `semVerdadeDeCampo` entra na soma. Antes ficava de fora, e com isso o
+	// harness saía 0 num estado em que o oráculo não tinha rodado para caso
+	// nenhum (`php` fora do PATH: todos os casos sem verdade de campo,
+	// FP/FN/CHAVE em 0, exit 0). Um verde que pode significar "não medi nada"
+	// é a forma de falha que este harness existe para eliminar. `exigirPhp` já
+	// barra o binário ausente; esta soma cobre o resto — um php que morre no
+	// meio da corrida, e um gerador que passe a emitir PHP que não compila.
 	process.exitCode =
 		contagem.falsoPositivo +
 			contagem.falsoNegativo +
-			contagem.chaveDivergente ===
+			contagem.chaveDivergente +
+			contagem.semVerdadeDeCampo ===
 		0
 			? 0
 			: 1;
