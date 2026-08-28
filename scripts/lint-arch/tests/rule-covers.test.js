@@ -663,12 +663,37 @@ describe( 'covers-annotation', () => {
 			} );
 
 			it( 'um comentário de linha que termina numa tag `?>` também quebra', () => {
-				// O `?>` fecha o comentário e volta a ser sintaxe: ele não pode
-				// ser engolido junto com o texto do comentário, senão o
-				// `<?php` seguinte também seria, e a varredura perderia o
-				// pedaço do arquivo entre os dois.
+				// Com a tag e o `<?php` em linhas próprias, este fixture fixa
+				// só a direção ratificada — ele NÃO discrimina a parada do
+				// comentário na tag, porque o `<?php` da linha seguinte
+				// descarta o docblock sozinho de qualquer jeito. Quem fixa o
+				// mecanismo é o `it` seguinte; medido neutralizando o `if` de
+				// `fimDoComentario` e vendo este aqui continuar verde.
 				const src =
 					'<?php\n/** @covers Post_Voice_Assets */\n// nota ?>\n<?php\nclass X extends A {}\n';
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+			} );
+
+			it( 'o `?>` que fecha um comentário de linha volta a ser sintaxe: a classe depois dele continua descoberta', () => {
+				// Input discriminante do mecanismo de `fimDoComentario`: aqui a
+				// tag, o `<?php` e a classe estão todos na MESMA linha do
+				// comentário. Se o comentário fosse engolido até a quebra de
+				// linha, o `<?php class X extends A {}` iria junto e a classe
+				// sumiria da checagem inteira — falso NEGATIVO, a direção pior.
+				//
+				// O esperado vem do PHP 8.2.32, não de expectativa: neste
+				// arquivo `class_exists( 'X' )` é `true` e `getDocComment()`
+				// devolve `/** @covers Post_Voice_Assets */` — o PHP anexa.
+				// A regra acusa mesmo assim, porque o `?>` é um token de código
+				// entre o docblock e a classe: é a divergência ratificada, na
+				// direção conservadora.
+				const src =
+					'<?php\n/** @covers Post_Voice_Assets */\n// nota ?> <?php class X extends A {}\n';
+				expect( regra.classesDeTeste( ctxCom( src ) ) ).toHaveLength(
+					1
+				);
 				const a = regra.check( ctxCom( src ) );
 				expect( a ).toHaveLength( 1 );
 				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
