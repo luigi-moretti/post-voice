@@ -20,7 +20,8 @@
 		"refresh:php": "./scripts/refresh-php.sh",
 		"prepare": "husky",
 		"i18n:check": "./scripts/check-pot.sh",
-		"test:php:coverage": "./scripts/run-php-coverage.sh"
+		"test:php:coverage": "./scripts/run-php-coverage.sh",
+		"doctor": "node scripts/doctor.mjs"
 	},
 	"devDependencies": {
 		"@axe-core/playwright": "^4.10.0",
