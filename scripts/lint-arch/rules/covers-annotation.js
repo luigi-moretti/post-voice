@@ -89,11 +89,124 @@ function classesDeTeste( ctx ) {
 // (depois de "@covers" vem "N", caractere de palavra, então não há fronteira
 // de palavra ali) — é por isso que a rejeição de `@coversNothing` precisa da
 // sua própria regex, não de mais um ramo desta.
+//
+// `#[CoversClass( Foo::class )]` (o atributo do PHPUnit 10 equivalente a
+// `@covers`) não entra nem aqui nem em `COVERS_NOTHING_RE`, de propósito:
+// `composer.json` fixa `phpunit/phpunit: ^9.6` (9.6.36 travado no lock), e a
+// série 9.6 lê anotação de docblock e ignora atributo — cobertura por
+// atributo só existe a partir do PHPUnit 10. Uma classe cujo único "covers"
+// é um atributo não tem cobertura declarada de fato hoje, e é corretamente
+// acusada. Migrar para PHPUnit 10+ é o que reabriria esta decisão.
 const COVERS_RE = /@covers(?:DefaultClass)?\b/;
 const COVERS_NOTHING_RE = /@coversNothing\b/;
 
 /**
- * O docblock imediatamente antes do início da linha de declaração da classe.
+ * Tenta ler `codigo[ fim - 1 ]` como o `]` de fechamento de um atributo do
+ * PHP 8 (`#[ ... ]`) e devolve o offset do `#` que o abre, ou `fim` sem
+ * mudança quando não é um atributo.
+ *
+ * Roda sobre `codigo` (stripPhpNoise), não sobre o cru: uma string dentro do
+ * atributo — `#[Group('lento')]` — teria colchetes de verdade se o corpo da
+ * string sobrevivesse, e um `]` dentro dela contaria errado na contagem de
+ * profundidade. stripPhpNoise apaga o corpo da string para espaço, então os
+ * únicos `[`/`]` que sobram em `codigo` são estrutura de código de verdade.
+ *
+ * @param {string} codigo arquivo com stripPhpNoise
+ * @param {number} fim    offset exclusivo — `codigo[fim-1]` é o candidato a `]`
+ * @return {number} offset do `#` que abre o atributo, ou `fim` inalterado
+ */
+function pularAtributoQueTermina( codigo, fim ) {
+	if ( codigo[ fim - 1 ] !== ']' ) {
+		return fim;
+	}
+	let profundidade = 0;
+	for ( let j = fim - 1; j >= 0; j-- ) {
+		if ( codigo[ j ] === ']' ) {
+			profundidade++;
+		} else if ( codigo[ j ] === '[' ) {
+			profundidade--;
+			if ( profundidade === 0 ) {
+				return j > 0 && codigo[ j - 1 ] === '#' ? j - 1 : fim;
+			}
+		}
+	}
+	return fim; // colchete sem par — não é atributo, não pula nada
+}
+
+/**
+ * Quando a linha que termina em `fim` (sem contar espaço em branco à
+ * direita, já removido por quem chama) é um comentário de linha inteira —
+ * `//...` ou `#...` que não seja `#[` (isso é atributo, não comentário) —
+ * devolve o início dessa linha. Senão devolve `fim` inalterado.
+ *
+ * Lida sobre o arquivo CRU: em `codigo` (qualquer um dos dois strippers) o
+ * comentário já é espaço em branco, e não dá para diferenciar "era um
+ * comentário de linha inteira" de "era espaço de verdade" — o que não
+ * importa para o valor de retorno (os dois são pulados), mas importa para
+ * achar o INÍCIO da linha corretamente quando o comentário tem texto.
+ *
+ * @param {string} raw arquivo cru
+ * @param {number} fim offset exclusivo, já sem espaço em branco à direita
+ * @return {number} início da linha de comentário, ou `fim` inalterado
+ */
+function pularComentarioDeLinhaQueTermina( raw, fim ) {
+	const inicioLinha = raw.lastIndexOf( '\n', fim - 1 ) + 1;
+	const linha = raw.slice( inicioLinha, fim ).replace( /^[ \t]*/, '' );
+	const ehComentarioDeLinha =
+		linha.startsWith( '//' ) ||
+		( linha.startsWith( '#' ) && ! linha.startsWith( '#[' ) );
+	return ehComentarioDeLinha ? inicioLinha : fim;
+}
+
+/**
+ * O offset, no arquivo CRU, de onde termina o que pode legitimamente separar
+ * um docblock do início da linha de declaração da classe sem quebrar a
+ * adjacência entre os dois: espaço em branco, um atributo do PHP 8 (código
+ * de verdade, mas não é o que `docblockDaClasse` está procurando), ou um
+ * comentário de linha inteira. Os três podem se repetir e se intercalar —
+ * dois atributos empilhados, um comentário entre eles — por isso o laço
+ * insiste até uma volta não mudar nada.
+ *
+ * Deliberadamente NÃO pula: um comentário de bloco comum, que não abre com
+ * o segundo `*` de um docblock, nem qualquer código de verdade
+ * (`declare(...)`, `use Trait;`, uma constante). Nenhum dos dois foi pedido,
+ * e alargar demais aqui troca o falso positivo que este laço resolve por um
+ * falso negativo — um `@covers` distante passando a contar — que é a
+ * direção pior.
+ *
+ * @param {string} raw       arquivo cru
+ * @param {string} codigo    o mesmo arquivo com stripPhpNoise (mesmo comprimento)
+ * @param {number} declStart offset de início da linha de declaração da classe
+ * @return {number} offset após o último ruído reconhecido, andando para trás
+ */
+function limiteAntesDoDocblock( raw, codigo, declStart ) {
+	let fim = declStart;
+	let mudou = true;
+	while ( mudou ) {
+		mudou = false;
+		while ( fim > 0 && /\s/.test( raw[ fim - 1 ] ) ) {
+			fim--;
+			mudou = true;
+		}
+		const semAtributo = pularAtributoQueTermina( codigo, fim );
+		if ( semAtributo !== fim ) {
+			fim = semAtributo;
+			mudou = true;
+			continue;
+		}
+		const semComentario = pularComentarioDeLinhaQueTermina( raw, fim );
+		if ( semComentario !== fim ) {
+			fim = semComentario;
+			mudou = true;
+		}
+	}
+	return fim;
+}
+
+/**
+ * O docblock imediatamente antes da declaração da classe — tolerando, entre
+ * os dois, o ruído que `limiteAntesDoDocblock` reconhece (espaço em branco,
+ * atributo do PHP 8, comentário de linha).
  *
  * Lido do arquivo CRU — não de `stripPhpNoise` nem de `stripPhpComments`,
  * porque `strip()` em `context.js` apaga comentário incondicionalmente (o
@@ -101,24 +214,29 @@ const COVERS_NOTHING_RE = /@coversNothing\b/;
  * dois strippers apagariam o próprio docblock que esta função lê. O cru é a
  * única fonte onde ele sobrevive.
  *
- * "Imediatamente antes" é a barreira que resolve, de graça, dois problemas:
+ * A barreira de adjacência resolve, de graça, dois problemas:
  *   - por classe, não por arquivo (ADR-0013 fala em classe): o docblock de UM
  *     método, ou o de uma classe vizinha no mesmo arquivo, nunca é o que
- *     precede esta linha de declaração, então nunca é lido aqui;
+ *     precede esta linha de declaração (com ou sem ruído tolerado no meio),
+ *     então nunca é lido aqui;
  *   - `@covers` dentro de uma string, heredoc ou HTML antes de `<?php`: esse
  *     texto também nunca é o que precede imediatamente uma linha `class ...`,
  *     então nunca chega a ser candidato.
- * Só espaço em branco pode separar o fim do docblock do início da linha da
- * classe — uma linha de código no meio (um `use Trait;`, uma constante)
- * quebra a adjacência e a classe conta como sem docblock.
+ * Uma linha de código de verdade no meio (um `use Trait;`, uma constante)
+ * ainda quebra a adjacência e a classe conta como sem docblock — ver o JSDoc
+ * de `limiteAntesDoDocblock`.
  *
  * @param {string} raw       arquivo cru
+ * @param {string} codigo    o mesmo arquivo com stripPhpNoise
  * @param {number} declStart offset (igual em raw e em stripPhpNoise) do
  *                           início da linha de declaração da classe
  * @return {string|null} o texto do docblock completo, delimitadores incluídos, ou null
  */
-function docblockDaClasse( raw, declStart ) {
-	const antes = raw.slice( 0, declStart ).replace( /[ \t\r\n]+$/, '' );
+function docblockDaClasse( raw, codigo, declStart ) {
+	const antes = raw.slice(
+		0,
+		limiteAntesDoDocblock( raw, codigo, declStart )
+	);
 	if ( ! antes.endsWith( '*/' ) ) {
 		return null;
 	}
@@ -129,7 +247,12 @@ function docblockDaClasse( raw, declStart ) {
 function check( ctx ) {
 	const achados = [];
 	for ( const { file, nome, line, declStart } of classesDeTeste( ctx ) ) {
-		const docblock = docblockDaClasse( ctx.read( file ), declStart );
+		const raw = ctx.read( file );
+		const docblock = docblockDaClasse(
+			raw,
+			stripPhpNoise( raw ),
+			declStart
+		);
 
 		if ( docblock && COVERS_NOTHING_RE.test( docblock ) ) {
 			achados.push( {

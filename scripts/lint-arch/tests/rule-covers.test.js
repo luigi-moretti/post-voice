@@ -179,6 +179,58 @@ describe( 'covers-annotation', () => {
 		} );
 	} );
 
+	describe( 'FIX round 2 — atributo e comentário de linha entre docblock e classe', () => {
+		it( 'um atributo do PHP 8 não quebra a adjacência', () => {
+			const src =
+				"<?php\n/**\n * @covers Post_Voice_Assets\n */\n#[Group( 'lento' )]\nclass X extends A {}\n";
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+
+		it( 'um comentário de linha inteira não quebra a adjacência', () => {
+			const src =
+				'<?php\n/**\n * @covers Post_Voice_Assets\n */\n// nota\nclass X extends A {}\n';
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+
+		it( 'comentário de linha com # (não #[) também não quebra a adjacência', () => {
+			const src =
+				'<?php\n/**\n * @covers Post_Voice_Assets\n */\n# nota\nclass X extends A {}\n';
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+
+		it( 'atributo e comentário intercalados, empilhados, ainda não quebram', () => {
+			const src =
+				"<?php\n/**\n * @covers Post_Voice_Assets\n */\n// nota\n#[Group( 'lento' )]\n#[Isolated]\nclass X extends A {}\n";
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+
+		it( 'código de verdade entre o docblock e a classe ainda quebra a adjacência', () => {
+			const src =
+				'<?php\n/**\n * @covers Post_Voice_Assets\n */\nconst PREAMBULO = 1;\nclass X extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+		} );
+
+		it( 'um atributo sozinho, sem docblock nenhum, não satisfaz a regra (PHPUnit 9.6 ignora atributo)', () => {
+			// `#[CoversClass(...)]` só vale a partir do PHPUnit 10; este repo fixa
+			// ^9.6 (ver comentário perto de COVERS_RE). Continua acusada.
+			const src =
+				'<?php\n#[CoversClass( Post_Voice_Assets::class )]\nclass X extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+		} );
+
+		it( 'dois docblocks em sequência: vale o mais próximo, mesmo sem @covers', () => {
+			const src =
+				'<?php\n/**\n * @covers Post_Voice_Assets\n */\n/**\n * sem covers aqui\n */\nclass X extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+		} );
+	} );
+
 	describe( 'FIX 6 — buracos de teste fechados', () => {
 		it( 'não aceita uma anotação parecida mas errada (mata regex frouxa)', () => {
 			const src =
