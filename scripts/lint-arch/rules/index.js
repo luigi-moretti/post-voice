@@ -9,4 +9,5 @@ module.exports = {
 	'php-class-naming': require( './php-class-naming' ),
 	'rest-namespace': require( './rest-namespace' ),
 	'i18n-text-domain': require( './i18n-text-domain' ),
+	'covers-annotation': require( './covers-annotation' ),
 };
