@@ -10,4 +10,6 @@ module.exports = {
 	'rest-namespace': require( './rest-namespace' ),
 	'i18n-text-domain': require( './i18n-text-domain' ),
 	'covers-annotation': require( './covers-annotation' ),
+	'feature-layout': require( './feature-layout' ),
+	'shared-two-consumers': require( './shared-two-consumers' ),
 };
