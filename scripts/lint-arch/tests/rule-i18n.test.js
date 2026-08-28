@@ -402,6 +402,14 @@ describe( 'i18n-text-domain', () => {
 			expect( a[ 0 ].key ).toBe(
 				'features/x/php/class-a.php → __-dominio-errado'
 			);
+			// `contarChamadas` é a terceira peça do FIX D, e a única sem rede
+			// própria: `check` já prova, com o mesmo vetor, que a chamada é
+			// vista. Se `contarChamadas` voltasse a passar o texto já
+			// strippado a `gettextCalls` (em vez do cru), o corpo sintético do
+			// heredoc engoliria a chamada e a contagem cairia para 0 em
+			// silêncio — falso negativo na mesma direção do teste acima, só
+			// que sem nenhum teste vermelho até agora.
+			expect( regra.contarChamadas( ctxCom( src ) ) ).toBe( 1 );
 		} );
 
 		it( 'e um heredoc de verdade continua opaco, com a chamada depois dele visível', () => {
