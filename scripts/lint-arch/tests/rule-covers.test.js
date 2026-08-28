@@ -31,7 +31,7 @@ describe( 'covers-annotation', () => {
 		expect(
 			regra.check(
 				ctxCom(
-					'<?php\n/**\n * @coversDefaultClass Post_Voice_Assets\n */\nclass X {}\n'
+					'<?php\n/**\n * @coversDefaultClass Post_Voice_Assets\n */\nclass X extends A {}\n'
 				)
 			)
 		).toEqual( [] );
@@ -235,6 +235,189 @@ describe( 'covers-annotation', () => {
 		it( 'não aceita uma anotação parecida mas errada (mata regex frouxa)', () => {
 			const src =
 				'<?php\n/**\n * @coversBogus Post_Voice_Assets\n */\nclass X extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+		} );
+	} );
+
+	describe( 'FIX 1 — o docblock encontrado tem de ser o dono do fecha-comentário', () => {
+		it( 'um comentário de bloco comum entre duas classes não empresta o @covers da vizinha (C5)', () => {
+			const src =
+				'<?php\n/**\n * @covers Post_Voice_Assets\n */\nclass A_Test extends A {}\n/* separador */\nclass B_Test extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			const chaves = a.map( ( x ) => x.key ).sort();
+			expect( chaves ).toEqual( [ `${ ARQ } → sem-covers:B_Test` ] );
+		} );
+
+		it( 'um comentário de bloco de várias linhas entre duas classes também não empresta (D3)', () => {
+			const src =
+				'<?php\n/**\n * @covers Post_Voice_Assets\n */\nclass A_Test extends A {}\n/*\n// nota\n*/\nclass B_Test extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			const chaves = a.map( ( x ) => x.key ).sort();
+			expect( chaves ).toEqual( [ `${ ARQ } → sem-covers:B_Test` ] );
+		} );
+
+		it( 'um comentário de bloco comum solto antes da classe não conta como docblock, mesmo citando @covers no texto (D1)', () => {
+			const src =
+				'<?php\n/**\n * doc sem covers\n */\n/* @covers Foo */\nclass X extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
+		} );
+
+		it( '"*/" dentro do TEXTO de um comentário de linha não é confundido com o fim de um comentário de bloco (C7)', () => {
+			const src =
+				'<?php\n/**\n * @covers Post_Voice_Assets\n */\nclass A_Test extends A {}\n$x = 1; // fim */\nclass B_Test extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			const chaves = a.map( ( x ) => x.key ).sort();
+			expect( chaves ).toEqual( [ `${ ARQ } → sem-covers:B_Test` ] );
+		} );
+
+		it( '@covers dentro de uma string de um método não empresta para a classe seguinte, mesmo atravessando um separador (D2)', () => {
+			const src =
+				"<?php\n/**\n * doc sem covers\n */\nclass A_Test extends A {\n\tfunction t() { $m = 'use @covers aqui'; }\n}\n/* sep */\nclass B_Test extends A {}\n";
+			const a = regra.check( ctxCom( src ) );
+			const chaves = a.map( ( x ) => x.key ).sort();
+			expect( chaves ).toEqual(
+				[
+					`${ ARQ } → sem-covers:A_Test`,
+					`${ ARQ } → sem-covers:B_Test`,
+				].sort()
+			);
+		} );
+
+		it( '@coversNothing de uma classe não vaza como a chave de outra classe sem anotação nenhuma', () => {
+			const src =
+				'<?php\n/**\n * @coversNothing\n */\nclass A_Test extends A {}\n/* sep */\nclass B_Test extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			const porClasse = Object.fromEntries(
+				a.map( ( x ) => [ x.key.split( ':' )[ 1 ], x.key ] )
+			);
+			expect( porClasse.A_Test ).toBe(
+				`${ ARQ } → covers-nothing:A_Test`
+			);
+			expect( porClasse.B_Test ).toBe( `${ ARQ } → sem-covers:B_Test` );
+		} );
+	} );
+
+	describe( 'FIX 2 — descoberta sem âncora de início de linha (regressão contra 92fb2c0)', () => {
+		it( 'descobre e acusa uma classe declarada inteira numa linha só', () => {
+			const arq = 'features/narration/tests/php/test-x.php';
+			const a = regra.check(
+				ctxArquivos( {
+					[ arq ]: '<?php class X_Test extends A {}\n',
+				} )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ arq } → sem-covers:X_Test` );
+		} );
+
+		it( 'descobre e acusa uma classe com atributo na mesma linha', () => {
+			const arq = 'features/narration/tests/php/test-x.php';
+			const a = regra.check(
+				ctxArquivos( {
+					[ arq ]:
+						"<?php\n#[Group( 'a' )] class X_Test extends A {}\n",
+				} )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ arq } → sem-covers:X_Test` );
+		} );
+
+		it( 'descobre e acusa uma classe "readonly" (PHP 8.2)', () => {
+			const arq = 'features/narration/tests/php/test-x.php';
+			const a = regra.check(
+				ctxArquivos( {
+					[ arq ]: '<?php\nreadonly class X_Test extends A {}\n',
+				} )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ arq } → sem-covers:X_Test` );
+		} );
+
+		it( 'um docblock antes de uma classe com atributo na mesma linha ainda é encontrado', () => {
+			const src =
+				"<?php\n/**\n * @covers Post_Voice_Assets\n */\n#[Group( 'a' )] class X extends A {}\n";
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+	} );
+
+	describe( 'FIX 3 — classe concreta que não estende nada é pulada (falso positivo fechado)', () => {
+		it( 'uma classe concreta sem "extends" nenhum não é descoberta, mesmo sem @covers', () => {
+			const arq = 'features/narration/tests/php/fixtures/x.php';
+			const ctx = ctxArquivos( {
+				[ arq ]: '<?php\nclass Stub_Helper {}\n',
+			} );
+			expect( regra.classesDeTeste( ctx ) ).toEqual( [] );
+			expect( regra.check( ctx ) ).toEqual( [] );
+		} );
+
+		it( 'uma classe que estende algo continua em escopo mesmo sem ser TestCase', () => {
+			const arq = 'features/narration/tests/php/fixtures/x.php';
+			const a = regra.check(
+				ctxArquivos( { [ arq ]: '<?php\nclass X extends A {}\n' } )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ arq } → sem-covers:X` );
+		} );
+	} );
+
+	describe( 'FIX 4 — atributo seguido de comentário na mesma linha não quebra a adjacência', () => {
+		it( 'atributo de uma linha só seguido de // na mesma linha', () => {
+			const src =
+				"<?php\n/**\n * @covers Post_Voice_Assets\n */\n#[Group( 'a' )] // nota\nclass X extends A {}\n";
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+
+		it( 'atributo de várias linhas seguido de // na linha em que fecha', () => {
+			const src =
+				"<?php\n/**\n * @covers Post_Voice_Assets\n */\n#[Group(\n 'a'\n)] // nota\nclass X extends A {}\n";
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+
+		it( 'docblock de uma linha só seguido de // na mesma linha', () => {
+			const src =
+				'<?php\n/** @covers Post_Voice_Assets */ // nota\nclass X extends A {}\n';
+			expect( regra.check( ctxCom( src ) ) ).toEqual( [] );
+		} );
+	} );
+
+	describe( 'FIX 5 — a descoberta usa o glob da ADR, não quatro pastas copiadas', () => {
+		it( 'uma quinta feature (fora das quatro do phpunit.xml.dist de hoje) é verificada', () => {
+			const arq = 'features/nova-feature/tests/php/test-x.php';
+			const a = regra.check(
+				ctxArquivos( { [ arq ]: '<?php\nclass Test_X extends A {}\n' } )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toBe( `${ arq } → sem-covers:Test_X` );
+		} );
+	} );
+
+	describe( 'Buracos de teste fechados nesta rodada', () => {
+		it( 'o achado de @coversNothing fixa a line inteira, não só a key', () => {
+			const src =
+				'<?php\ndeclare(strict_types=1);\n\n/**\n * @coversNothing\n */\nclass X extends A {}\n';
+			const a = regra.check( ctxCom( src ) );
+			expect( a ).toEqual( [
+				{
+					key: `${ ARQ } → covers-nothing:X`,
+					file: ARQ,
+					line: 7,
+					message: expect.stringMatching( /@coversNothing/ ),
+				},
+			] );
+		} );
+
+		it( '#[CoversClass] sozinho é recusado porque o docblock adjacente genuinamente não tem @covers — não porque falta docblock', () => {
+			// Fixture antigo desta suíte provava a coisa errada: a classe não
+			// tinha docblock ALGUM, então passava mesmo que COVERS_RE fosse
+			// laxo o bastante para aceitar sintaxe de atributo por engano.
+			// Este aqui tem um docblock de verdade, adjacente, sem @covers —
+			// só o atributo (fora do docblock, nunca lido por COVERS_RE)
+			// menciona `CoversClass`.
+			const src =
+				'<?php\n#[CoversClass( Post_Voice_Assets::class )]\n/**\n * sem covers aqui\n */\nclass X extends A {}\n';
 			const a = regra.check( ctxCom( src ) );
 			expect( a ).toHaveLength( 1 );
 			expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:X` );
