@@ -28,7 +28,10 @@ function check( ctx ) {
 			file,
 			line: 1,
 			message:
-				'JavaScript sem tipos em diretório de editor/admin/frontend; esse código é TypeScript (ADR-0011)',
+				'JavaScript sem tipos em diretório de editor/admin/frontend; esse código é ' +
+				'TypeScript (ADR-0011). Converta o arquivo para .ts/.tsx, ou — se for código ' +
+				'de terceiros vendorizado — acrescente o caminho a desvios: em ' +
+				'docs/adr/0011-editor-em-typescript.md com a razão',
 		} ) );
 }
 

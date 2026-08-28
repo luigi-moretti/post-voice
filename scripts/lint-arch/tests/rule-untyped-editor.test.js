@@ -80,6 +80,27 @@ describe( 'no-untyped-editor-code', () => {
 		expect( a[ 0 ].key ).toBe( 'features/x/frontend/legacy.cjs' );
 	} );
 
+	it.each( [
+		'shared/editor/x.js',
+		'scripts/editor/x.js',
+		'e2e/frontend/x.js',
+		'editor/x.js',
+	] )( 'a âncora `features/` importa: %s fica de fora', ( file ) => {
+		// Sem o `^features/` a expressão casaria qualquer `editor/`, `admin/`
+		// ou `frontend/` do repo — inclusive fora de `features/`, onde a
+		// ADR-0011 não manda nada. Falso positivo, e num diretório que a ADR
+		// nem menciona.
+		expect( regra.check( com( [ file ] ) ) ).toEqual( [] );
+	} );
+
+	it( 'um .js na raiz da feature fica de fora: a ADR fala dos três diretórios', () => {
+		// `features/<f>/x.js` é assunto da ADR-0004 (layout), não da 0011.
+		// Cada regra acusa o seu, senão duas ADRs disputam o mesmo achado.
+		expect( regra.check( com( [ 'features/x/legacy.js' ] ) ) ).toEqual(
+			[]
+		);
+	} );
+
 	it( 'o repo de hoje acusa os dois vendorizados, e eles batem com a ADR-0011', () => {
 		const achadas = regra
 			.check( createContext() )
