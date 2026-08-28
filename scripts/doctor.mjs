@@ -22,6 +22,22 @@ const ler = ( rel ) => {
 	}
 };
 
+// Este relatório existe justamente para os momentos em que algo está quebrado,
+// e é nesses momentos que ele mais tem de rodar. Qualquer leitura que possa
+// estourar passa por aqui: o problema vira UMA LINHA do relatório, nomeando o
+// que falhou, e o resto das seções continua sendo impressa. Reportar "não
+// consegui ler as ADRs" é honesto; morrer com exit 1 transforma o relatório em
+// gate, que é exatamente o que ele promete não ser na última linha da saída.
+const avarias = [];
+const tolerante = ( oQue, fn, padrao ) => {
+	try {
+		return fn();
+	} catch ( e ) {
+		avarias.push( `${ oQue }: ${ e.message }` );
+		return padrao;
+	}
+};
+
 const secao = ( titulo, linhas ) => {
 	process.stdout.write(
 		`\n── ${ titulo } ${ '─'.repeat(
@@ -37,13 +53,30 @@ const secao = ( titulo, linhas ) => {
 	}
 };
 
-const adrs = loadAdrs( path.join( root, 'docs/adr' ) );
-const ctx = createContext( { root } );
+const adrs = tolerante(
+	'não consegui ler docs/adr/',
+	() => loadAdrs( path.join( root, 'docs/adr' ) ),
+	[]
+);
+// `createContext` chama `git ls-files`: fora de um repositório git ele estoura.
+// Vale a mesma regra — vira avaria, não morte.
+const ctx = tolerante(
+	'não consegui listar os arquivos versionados',
+	() => createContext( { root } ),
+	{ root, files: [], read: () => '' }
+);
 const adrIds = new Set( adrs.map( ( a ) => a.id ) );
 
 // 1. lint:arch em modo relatório: os desvios listados aparecem como dívida.
-const lint = run( { adrs, registry: regras, ctx } );
-secao( 'lint:arch', format( lint ).split( '\n' ) );
+const lint = tolerante(
+	'lint:arch não rodou',
+	() => run( { adrs, registry: regras, ctx } ),
+	null
+);
+secao(
+	'lint:arch',
+	lint ? format( lint ).split( '\n' ) : [ 'não rodou — ver "avarias"' ]
+);
 
 const dividas = adrs.flatMap( ( a ) =>
 	a.desvios.map( ( d ) => `ADR-${ a.id }: ${ d }` )
@@ -69,19 +102,10 @@ secao(
 
 // 3. revisar_quando: condição em prosa, impressa junto dos números estruturais
 //    que ela costuma mencionar. Quem julga é o humano.
-const features = new Set(
-	ctx.files
-		.filter( ( f ) => f.startsWith( 'features/' ) )
-		.map( ( f ) => f.split( '/' )[ 1 ] )
-);
-const sharedModulos = ctx.files.filter( ( f ) =>
-	/^shared\/php\/class-.*\.php$/.test( f )
-).length;
+const { features, sharedModules } = health.reviewTriggerCounts( ctx );
 secao( 'gatilhos de revisão', [
-	`features hoje: ${ features.size } (${ [ ...features ]
-		.sort()
-		.join( ', ' ) })`,
-	`módulos em shared/: ${ sharedModulos }`,
+	`features hoje: ${ features.length } (${ features.join( ', ' ) })`,
+	`módulos em shared/: ${ sharedModules }`,
 	'',
 	...adrs
 		.filter( ( a ) => a.revisarQuando )
@@ -108,16 +132,11 @@ const rules = fs.existsSync( rulesDir )
 secao(
 	'CLAUDE.md e rules',
 	[
-		// Teto de 95, não os 80 que o plano estimou: a estimativa foi feita
-		// antes de o arquivo existir, e chegar a 80 exigiria cortar os Gotchas,
-		// que não são path-scopáveis e custaram uma sessão cada. 95 continua bem
-		// abaixo das ~200 linhas onde a aderência cai.
-		...health.checkClaudeMdSize( claudeMd, 95 ),
-		// Só `## Conventions`. `## Never` fica de fora de propósito: "não
-		// commite em master" é processo, não decisão de arquitetura, e não há
-		// ADR por trás para citar. Exigir citação ali produziria três achados
-		// que ninguém consegue fechar sem inventar uma ADR.
-		...health.checkAdrCitations( claudeMd, [ 'Conventions' ], adrIds ),
+		...health.checkClaudeMdSize( claudeMd ),
+		// O teto e a lista de seções vêm de health.js, onde teste os fixa —
+		// aqui um comentário era tudo que impedia alguém de voltar para 80 ou
+		// de reintroduzir `## Never`.
+		...health.checkAdrCitations( claudeMd, health.CITED_SECTIONS, adrIds ),
 		...rules.flatMap( ( r ) =>
 			health.checkAdrCitations( r.source, [], adrIds )
 		),
@@ -126,21 +145,11 @@ secao(
 );
 
 // 5. Tamanho de arquivo acima do p95: sinal relativo de "faz coisa demais",
-//    sem limiar arbitrário.
-const tamanhos = ctx.files
-	.filter(
-		( f ) =>
-			/\.(?:php|ts|tsx|js)$/.test( f ) &&
-			! f.startsWith( 'features/narration/editor/engine/' )
-	)
-	.map( ( f ) => ( { f, n: ler( f ).split( '\n' ).length } ) )
-	.sort( ( a, b ) => a.n - b.n );
-const p95 = tamanhos.length
-	? tamanhos[ Math.floor( tamanhos.length * 0.95 ) ].n
-	: 0;
+//    sem limiar arbitrário. A conta vive em health.js, que é medido.
+const { p95, files: grandes } = health.filesAboveP95( ctx, ler );
 secao(
 	`arquivos acima do p95 (${ p95 } linhas)`,
-	tamanhos.filter( ( t ) => t.n > p95 ).map( ( t ) => `${ t.n }\t${ t.f }` )
+	grandes.map( ( t ) => `${ t.lines }\t${ t.file }` )
 );
 
 // 6. Dívida declarada e cobertura, quando houver relatório no disco.
@@ -149,12 +158,21 @@ const followUps = ( ler( 'docs/FOLLOW-UPS.md' ).match( /^##\s+/gm ) || [] )
 const cobertura = fs.existsSync(
 	path.join( root, 'coverage/coverage-summary.json' )
 )
-	? `linhas (JS): ${
-			JSON.parse( ler( 'coverage/coverage-summary.json' ) ).total.lines
-				.pct
-	  }%`
+	? tolerante(
+			'coverage/coverage-summary.json ilegível',
+			() =>
+				`linhas (JS): ${
+					JSON.parse( ler( 'coverage/coverage-summary.json' ) ).total
+						.lines.pct
+				}%`,
+			'relatório de cobertura no disco, mas ilegível — rode `npm run test:unit -- --coverage` de novo'
+	  )
 	: 'sem relatório recente no disco — rode `npm run test:unit -- --coverage`';
 secao( 'outros', [ `FOLLOW-UPS.md: ${ followUps } item(ns)`, cobertura ] );
+
+if ( avarias.length ) {
+	secao( 'avarias na própria coleta', avarias );
+}
 
 process.stdout.write(
 	'\ndoctor: relatório, não gate. Nada aqui reprova um PR.\n'

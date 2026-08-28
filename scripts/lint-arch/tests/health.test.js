@@ -6,6 +6,10 @@ const {
 	checkAdrHygiene,
 	globToRegExp,
 	parseRulePaths,
+	reviewTriggerCounts,
+	filesAboveP95,
+	CLAUDE_MD_LINE_CEILING,
+	CITED_SECTIONS,
 } = require( '../health' );
 
 describe( 'checkClaudeMdSize', () => {
@@ -225,5 +229,136 @@ describe( 'checkAdrHygiene', () => {
 			[ 'docs/superpowers/specs/outro.md' ]
 		);
 		expect( a.some( ( p ) => /origem/.test( p.message ) ) ).toBe( true );
+	} );
+} );
+
+describe( 'a fiação dos rulings mora aqui, não no ponto de chamada', () => {
+	// Antes, o teto e a lista de seções eram argumentos literais no
+	// `doctor.mjs`, que está fora do `collectCoverageFrom` — um comentário era
+	// tudo que impedia alguém de voltar para 80 ou de reintroduzir `## Never`.
+	it( 'o teto do CLAUDE.md é 95 (R5)', () => {
+		expect( CLAUDE_MD_LINE_CEILING ).toBe( 95 );
+	} );
+
+	it( 'a citação de ADR cobre Conventions e não Never (R6)', () => {
+		// "não commite em master" é processo, não decisão de arquitetura: não
+		// há ADR por trás, e exigir citação ali produz achado impossível de
+		// fechar sem inventar uma.
+		expect( CITED_SECTIONS ).toEqual( [ 'Conventions' ] );
+	} );
+} );
+
+describe( 'checkClaudeMdSize com o arquivo ausente', () => {
+	it( 'diz que não achou, em vez de "nada a relatar"', () => {
+		// Arquivo ausente chega como '' e caberia folgado no teto. Silêncio
+		// que se lê como saúde é o pior resultado possível num relatório.
+		for ( const vazio of [ '', '   \n\n' ] ) {
+			const a = checkClaudeMdSize( vazio );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].message ).toMatch(
+				/não foi encontrado ou está vazio/
+			);
+		}
+	} );
+} );
+
+describe( 'reviewTriggerCounts', () => {
+	const com = ( files ) => ( { files } );
+
+	it( 'conta features distintas e devolve os nomes ordenados', () => {
+		const r = reviewTriggerCounts(
+			com( [
+				'features/zebra/php/a.php',
+				'features/alfa/editor/b.ts',
+				'features/alfa/tests/js/c.test.ts',
+				'shared/php/class-x.php',
+				'scripts/doctor.mjs',
+			] )
+		);
+		expect( r.features ).toEqual( [ 'alfa', 'zebra' ] );
+	} );
+
+	it( 'só conta como módulo de shared/ o que é class-*.php em shared/php/', () => {
+		// O gatilho da ADR-0004 é "shared/ passar de três MÓDULOS". Teste e
+		// arquivo de outro tipo não são módulo, e contá-los dispararia a
+		// revisão de uma decisão cedo demais.
+		const r = reviewTriggerCounts(
+			com( [
+				'shared/php/class-settings-page.php',
+				'shared/php/class-outra.php',
+				'shared/tests/php/test-settings-page.php',
+				'shared/php/helpers.php',
+				'shared/editor/x.ts',
+			] )
+		);
+		expect( r.sharedModules ).toBe( 2 );
+	} );
+
+	it( 'repo vazio dá zero e lista vazia, sem estourar', () => {
+		expect( reviewTriggerCounts( com( [] ) ) ).toEqual( {
+			features: [],
+			sharedModules: 0,
+		} );
+	} );
+} );
+
+describe( 'filesAboveP95', () => {
+	const linhas = ( n ) => 'x\n'.repeat( n - 1 );
+
+	it( 'reporta só o que passa do corte, do menor para o maior', () => {
+		// Vinte pequenos, um médio e um gigante: `floor( 22 * 0.95 )` é 20, o
+		// corte é o vigésimo primeiro menor, e sobram os dois maiores.
+		const files = [
+			...Array.from( { length: 20 }, ( _, i ) => `p${ i }.ts` ),
+			'medio.ts',
+			'gigante.ts',
+		];
+		const tamanho = ( f ) => {
+			if ( f === 'gigante.ts' ) {
+				return 4000;
+			}
+			return f === 'medio.ts' ? 300 : 10;
+		};
+		const r = filesAboveP95( { files }, ( f ) => linhas( tamanho( f ) ) );
+		expect( r.files.map( ( x ) => x.lines ) ).toEqual( [ 4000 ] );
+		expect( r.files.map( ( x ) => x.file ) ).toEqual( [ 'gigante.ts' ] );
+	} );
+
+	it( 'em conjunto pequeno o corte cai no maior, e nada é reportado', () => {
+		// Não é defeito: com quatro arquivos, `floor( 4 * 0.95 )` é 3, o índice
+		// do maior. Percentil sobre punhado de arquivos não tem o que dizer, e
+		// a alternativa — inventar um limiar fixo — é justamente o que este
+		// sinal relativo existe para evitar.
+		const tamanhos = { 'a.ts': 10, 'b.ts': 20, 'c.ts': 30, 'd.ts': 4000 };
+		const r = filesAboveP95( { files: Object.keys( tamanhos ) }, ( f ) =>
+			linhas( tamanhos[ f ] )
+		);
+		expect( r.p95 ).toBe( 4000 );
+		expect( r.files ).toEqual( [] );
+	} );
+
+	it( 'ignora extensão que não é código', () => {
+		const r = filesAboveP95(
+			{ files: [ 'a.ts', 'b.md', 'c.scss', 'd.json' ] },
+			( f ) => ( f === 'a.ts' ? linhas( 5 ) : linhas( 9000 ) )
+		);
+		expect( r.files ).toEqual( [] );
+	} );
+
+	it( 'ignora o bundle vendorizado, que é grande por não ser nosso', () => {
+		// Mantê-lo dentro empurraria o p95 para cima e esconderia os nossos.
+		const grande = 'features/narration/editor/engine/sentencepiece.js';
+		const r = filesAboveP95(
+			{ files: [ grande, 'a.ts', 'b.ts' ] },
+			( f ) => ( f === grande ? linhas( 90000 ) : linhas( 10 ) )
+		);
+		expect( r.files.map( ( x ) => x.file ) ).not.toContain( grande );
+	} );
+
+	it( 'lista vazia não estoura no cálculo do percentil', () => {
+		expect( filesAboveP95( { files: [] }, () => '' ) ).toEqual( {
+			p95: 0,
+			files: [],
+		} );
 	} );
 } );

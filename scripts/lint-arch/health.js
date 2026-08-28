@@ -20,7 +20,19 @@ function secoes( source ) {
 	return out;
 }
 
-function checkClaudeMdSize( source, teto = 95 ) {
+function checkClaudeMdSize( source, teto = CLAUDE_MD_LINE_CEILING ) {
+	// Arquivo ausente ou vazio chega aqui como '' e caberia folgado no teto —
+	// o relatório diria "nada a relatar" sobre o arquivo que ancora metade
+	// destas checagens. Silêncio que se lê como saúde é o pior resultado
+	// possível para um relatório.
+	if ( ! source.trim() ) {
+		return [
+			{
+				message:
+					'CLAUDE.md não foi encontrado ou está vazio. Metade das checagens desta seção depende dele.',
+			},
+		];
+	}
 	const linhas = source.split( '\n' ).length;
 	if ( linhas <= teto ) {
 		return [];
@@ -200,6 +212,70 @@ function checkAdrHygiene( adrs, files ) {
 	return problemas;
 }
 
+// A fiação que os rulings R5 e R6 decidiram mora AQUI, não no ponto de chamada,
+// porque aqui é medido por teste e o `doctor.mjs` não é. Antes, um comentário
+// era tudo que impedia alguém de voltar o teto para 80 ou de reintroduzir
+// `## Never` na checagem de citação.
+const CLAUDE_MD_LINE_CEILING = 95;
+
+// Só `## Conventions`. `## Never` fica de fora de propósito: "não commite em
+// master" é processo, não decisão de arquitetura, e não há ADR por trás para
+// citar — exigir citação ali produz achado que ninguém consegue fechar.
+const CITED_SECTIONS = [ 'Conventions' ];
+
+/**
+ * Os dois números que alimentam o `revisar_quando` das ADR-0004 e 0005.
+ *
+ * Vive aqui, e não no `doctor.mjs`, porque tem lógica de verdade e alimenta um
+ * julgamento humano — "já é hora de reabrir aquela decisão?". O `doctor.mjs`
+ * está fora do `collectCoverageFrom`, então lógica lá dentro não é medida por
+ * nada.
+ *
+ * @param {Object} ctx
+ * @return {{ features: string[], sharedModules: number }} nomes das features,
+ *   ordenados, e a contagem de módulos de produção em shared/
+ */
+function reviewTriggerCounts( ctx ) {
+	const features = [
+		...new Set(
+			ctx.files
+				.filter( ( f ) => f.startsWith( 'features/' ) )
+				.map( ( f ) => f.split( '/' )[ 1 ] )
+		),
+	].sort();
+	const sharedModules = ctx.files.filter( ( f ) =>
+		/^shared\/php\/class-.*\.php$/.test( f )
+	).length;
+	return { features, sharedModules };
+}
+
+/**
+ * Arquivos acima do percentil 95 de tamanho — sinal RELATIVO de "faz coisa
+ * demais", sem limiar arbitrário que envelhece.
+ *
+ * O bundle vendorizado sob `editor/engine/` fica fora: ele é grande por não ser
+ * nosso, e mantê-lo dentro empurraria o p95 para cima e esconderia os nossos.
+ *
+ * @param {Object}   ctx
+ * @param {Function} read `( file ) => string`
+ * @return {{ p95: number, files: { file: string, lines: number }[] }} o corte e
+ *   os arquivos acima dele, do menor para o maior
+ */
+function filesAboveP95( ctx, read ) {
+	const tamanhos = ctx.files
+		.filter(
+			( f ) =>
+				/\.(?:php|ts|tsx|js)$/.test( f ) &&
+				! f.startsWith( 'features/narration/editor/engine/' )
+		)
+		.map( ( f ) => ( { file: f, lines: read( f ).split( '\n' ).length } ) )
+		.sort( ( a, b ) => a.lines - b.lines );
+	const p95 = tamanhos.length
+		? tamanhos[ Math.floor( tamanhos.length * 0.95 ) ].lines
+		: 0;
+	return { p95, files: tamanhos.filter( ( t ) => t.lines > p95 ) };
+}
+
 module.exports = {
 	checkClaudeMdSize,
 	checkAdrCitations,
@@ -208,4 +284,8 @@ module.exports = {
 	checkAdrHygiene,
 	globToRegExp,
 	parseRulePaths,
+	reviewTriggerCounts,
+	filesAboveP95,
+	CLAUDE_MD_LINE_CEILING,
+	CITED_SECTIONS,
 };
