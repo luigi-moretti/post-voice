@@ -2,7 +2,12 @@
 // Verificações heurísticas do `doctor`. Puras, para serem testáveis; o
 // doctor.mjs é só a casca que lê o disco e imprime. Nada aqui bloqueia.
 
-const CITACAO_RE = /\(ADR-(\d{4})\)/g;
+// Aceita `(ADR-0004)` e `(ADR-0004, ADR-0005)`. A segunda forma é a que se
+// escreve sem pensar quando um bullet responde a duas decisões, e um checker
+// que a recusa não ensina a citar melhor — ensina a lutar com o checker. O id
+// é extraído de dentro do grupo, então as duas grafias dão a mesma lista.
+const CITACAO_RE = /\(ADR-\d{4}(?:\s*,\s*ADR-\d{4})*\)/g;
+const ID_NA_CITACAO_RE = /ADR-(\d{4})/g;
 const LIMITE_ABRANGENCIA = 0.6;
 
 function secoes( source ) {
@@ -70,8 +75,10 @@ function checkAdrCitations( source, nomes, adrIds ) {
 				continue;
 			}
 			CITACAO_RE.lastIndex = 0;
-			const citadas = [ ...line.matchAll( CITACAO_RE ) ].map(
-				( m ) => m[ 1 ]
+			const citadas = [ ...line.matchAll( CITACAO_RE ) ].flatMap( ( m ) =>
+				[ ...m[ 0 ].matchAll( ID_NA_CITACAO_RE ) ].map(
+					( x ) => x[ 1 ]
+				)
 			);
 			if ( ! citadas.length ) {
 				problemas.push( {

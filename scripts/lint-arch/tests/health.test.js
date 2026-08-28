@@ -42,6 +42,31 @@ describe( 'checkClaudeMdSize', () => {
 	} );
 } );
 
+describe( 'checkAdrCitations aceita as duas grafias de citação', () => {
+	const ids = new Set( [ '0004', '0005' ] );
+
+	it.each( [
+		[ 'uma ADR', '- convenção (ADR-0004)' ],
+		[ 'duas em parênteses separados', '- convenção (ADR-0004) (ADR-0005)' ],
+		[ 'duas na mesma citação', '- convenção (ADR-0004, ADR-0005)' ],
+		[ 'duas sem espaço', '- convenção (ADR-0004,ADR-0005)' ],
+	] )( 'aceita %s', ( _forma, linha ) => {
+		// A forma com vírgula é a que se escreve sem pensar quando um bullet
+		// responde a duas decisões. Um checker que a recusa não ensina a citar
+		// melhor — ensina a lutar com o checker, e foi o que aconteceu: a
+		// primeira versão destas rules teve de escrever `(A) (B)` para passar.
+		expect( checkAdrCitations( linha, [], ids ) ).toEqual( [] );
+	} );
+
+	it( 'um id inexistente DENTRO de uma citação múltipla ainda é pego', () => {
+		// O afrouxamento não pode custar a checagem: a lista de ids é extraída
+		// de dentro do grupo, então cada um é validado separadamente.
+		const a = checkAdrCitations( '- x (ADR-0004, ADR-9999)', [], ids );
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].message ).toMatch( /ADR-9999, que não existe/ );
+	} );
+} );
+
 describe( 'checkAdrCitations', () => {
 	const ids = new Set( [ '0004', '0005' ] );
 
