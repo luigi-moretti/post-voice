@@ -31,9 +31,12 @@ Não repita o teste de memória: releia a ADR-0001 a cada vez, porque é o
 
 ## 2. A restrição, nunca o valor
 
-Antes de escrever, pergunte: "se eu trocar só o número, o que é possível
-escrever muda?". Se a resposta é não, o que você tem é um valor, não uma
-restrição, e é edição de spec — não ADR nova. O exemplo canônico está na
+Antes de escrever, pergunte: "se eu trocar só o literal, o que é possível
+escrever muda?" — o número, mas também a string, o booleano, o valor de enum.
+Se a resposta é não, o que você tem é um valor, não uma restrição, e é edição
+de spec, não ADR nova. E se não houver literal nenhum para trocar, o teste
+não se aplica: volte à formulação da ADR-0001, "se a alteração proposta não
+muda o que é possível escrever, não é ADR". O exemplo canônico está na
 ADR-0001: "MP3 64 kbps" é valor (mudar para 80 kbps é spec); "o áudio é
 comprimido no cliente antes do upload" é a restrição (é isso que uma ADR
 registra).
@@ -59,7 +62,10 @@ frase curta em `CLAUDE.md` **e** a ADR que a sustenta — ver seção 9).
    `docs/adr/README.md`).
 2. Alvo de 40 a 80 linhas, teto de 120 — acima disso é spec disfarçada e o
    `doctor` avisa.
-3. `origem` é um caminho **relativo a `docs/`**, não um atalho:
+3. `origem` tem de apontar para um arquivo que **já existe**: se a decisão
+   ainda não tem spec ou documento sob `docs/`, escreva-o primeiro — é o
+   único passo deste procedimento que trava quem chega nele sem saber.
+   O caminho é **relativo a `docs/`**, não um atalho:
    `superpowers/specs/2026-08-25-nome.md`, não `specs/2026-08-25-nome.md`.
    O teste é `cat docs/<origem sem a âncora #...>` funcionar — e
    `lint:arch` reprova a ADR se o arquivo não existir exatamente nesse
@@ -139,9 +145,10 @@ Passo a passo ao ver uma reprovação:
      front-matter.
 3. Se a lista de `desvios:` de uma ADR chega a zero porque tudo foi
    corrigido, volte `status` para `aceita`. O `lint:arch` recusa
-   `aceita-com-desvio` sem nenhum desvio listado, e o `doctor` avisa quando
-   uma entrada de `desvios:` parou de ser violada ("dívida quitada") —
-   remova a entrada em vez de deixá-la fossilizada.
+   `aceita-com-desvio` sem nenhum desvio listado, e é o próprio `lint:arch`
+   que avisa quando uma entrada de `desvios:` parou de ser violada ("dívida
+   quitada") — o `doctor` só reimprime essa saída na primeira seção. Remova
+   a entrada em vez de deixá-la fossilizada.
 
 ## 7. Checklist de code review
 
@@ -163,6 +170,9 @@ Antes de aprovar ou abrir um PR que mexe em código sob governança de ADR:
       referência de classe direta, que a regra não enxerga).
 
 ## 8. Como uma ADR muda depois de existir
+
+Repetido aqui de propósito, porque é o que se consulta no meio de um review;
+a fonte é a ADR-0001, e se as duas divergirem, ela vence.
 
 | Campo | Quem pode mudar, e como |
 |---|---|
@@ -197,7 +207,11 @@ como gate:
   bem formado; `enforced_by` aponta para regra existente e regra existente
   está declarada por alguma ADR; toda regra concreta listada em
   `enforced_by` (as que não são `review-manual`/`doctor`) roda de fato contra
-  o repo; `desvios:` cobre exatamente os achados atuais, nem mais nem menos.
+  o repo. Sobre `desvios:`, os dois sentidos NÃO pesam igual, e vale saber
+  qual é qual: um achado real que falta na lista vira `problems` e **sai 1**;
+  uma entrada que parou de ser violada vira só `warnings` e **sai 0**. Ou
+  seja, o gate impede que uma violação nova passe despercebida, mas não
+  impede dívida fossilizada — essa depende de alguém ler o aviso.
 - **`npm run doctor` (relatório, nunca sai 1)**: teto de 120 linhas por ADR;
   `origem` aponta para arquivo existente; ADR ausente do índice do `README`;
   `revisar_quando` impresso ao lado dos números que costuma citar, para
