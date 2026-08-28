@@ -178,9 +178,15 @@ function fimDoAtributo( codigo, i ) {
  *   branco em `codigo`: onde ele também está em branco era COMENTÁRIO, onde
  *   ele preserva o texto era CORPO DE STRING;
  * - o cru responde CONTEÚDO: o texto do docblock só existe nele.
- * Os três têm o mesmo comprimento em bytes (os strippers apagam PARA ESPAÇO),
- * então um offset vale nos três. Os dois strippers rodam sobre o cru, em
- * passadas independentes — compô-los é proibido, ver `context.js`.
+ * Os três têm o mesmo comprimento em UNIDADES DE CÓDIGO UTF-16 — que é o que
+ * os offsets do JavaScript indexam, e o que `String.prototype.length` conta —,
+ * porque `blank()` troca `[^\n]` por espaço unidade a unidade. NÃO é o mesmo
+ * que comprimento em bytes, e a diferença é medível: um emoji apagado vira
+ * dois espaços, as mesmas duas unidades de código e dois bytes a menos. É a
+ * contagem de unidades que faz um offset valer nos três.
+ *
+ * Os dois strippers rodam sobre o cru, em passadas independentes — compô-los é
+ * proibido, ver `context.js`.
  *
  * Classe abstrata é pulada aqui, na descoberta — não filtrada depois nem
  * absolvida por uma anotação de escape. PHPUnit não instancia uma classe

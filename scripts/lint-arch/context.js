@@ -49,9 +49,12 @@ function blank( text ) {
 // negativo por um falso positivo em heredoc legal. A saída é não compor: cada
 // regra roda os dois strippers sobre o arquivo CRU, em passadas independentes
 // (ver o JSDoc de `gettextCalls`). O invariante de que as regras dependem é
-// outro, e esse vale sempre: os dois strippers apagam para espaço, portanto
-// preservam comprimento em bytes e número de linhas, e um offset em um vale no
-// outro.
+// outro, e esse vale sempre: `blank()` troca `[^\n]` por espaço UNIDADE A
+// UNIDADE, portanto os dois strippers preservam o número de linhas e o
+// comprimento em UNIDADES DE CÓDIGO UTF-16 — que é o que os offsets do
+// JavaScript indexam. Não é o mesmo que bytes: um emoji apagado vira dois
+// espaços, as mesmas duas unidades de código e dois bytes a menos. Um offset
+// em um vale no outro.
 const HEREDOC_CABECALHO_RE = /^<<<[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\r?\n/;
 
 /**
