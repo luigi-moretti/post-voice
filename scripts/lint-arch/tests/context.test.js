@@ -303,6 +303,22 @@ describe( 'tags PHP (fora vs. dentro do código)', () => {
 		expect( stripPhpComments( '<?php' ) ).toBe( '<?php' );
 	} );
 
+	it( '`<?=` abre código como `<?php` — é a tag de echo curto', () => {
+		// `<?=` é a única tag curta que o PHP habilita sempre (não depende de
+		// `short_open_tag`), e `phpOpenTagAt` tem um ramo só para ela. Sem
+		// esse ramo, um arquivo que abre com `<?=` fica inteiro do lado de
+		// "fora" e comentário nenhum é apagado — e a varredura de
+		// `covers-annotation`, que usa a MESMA função, passa a ler o resto do
+		// arquivo como prosa.
+		//
+		// Esperado do PHP 8.2.32: `php -l` aceita `<?= /* c */ 1;` e a
+		// execução imprime `1`, então o `/* c */` ali é comentário de
+		// verdade, não texto de saída.
+		const src = '<?= /* c */ 1;\n';
+		expect( stripPhpComments( src ) ).toBe( '<?=         1;\n' );
+		expect( stripPhpComments( src ) ).toHaveLength( src.length );
+	} );
+
 	it( 'preserva comprimento e quebras de linha com HTML fora do PHP', () => {
 		const src =
 			'<div class="<?php echo esc_attr( $c ); // c\n?>">\n' +

@@ -802,6 +802,36 @@ describe( 'covers-annotation', () => {
 			expect( a ).toHaveLength( 1 );
 			expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:Tres` );
 		} );
+
+		it.each( [
+			[ 'aspas duplas', '$d = "a ?> b";', 'StrD' ],
+			[ 'aspas simples', "$s = 'a ?> b';", 'StrS' ],
+			[ 'heredoc', '$h = <<<T\na ?> b\nT;', 'Here' ],
+			[ 'nowdoc', "$n = <<<'N'\na ?> b\nN;", 'Now' ],
+		] )(
+			'um `?>` em %s não sai do código: a classe depois dele continua descoberta',
+			( _forma, literal, nome ) => {
+				// O ramo que faz `?>` sair do modo código lê de `codigo`
+				// (`stripPhpNoise`), onde corpo de string, de heredoc e de
+				// `/* */` já é espaço — então um `?>` ali dentro nunca chega
+				// nele. Ler do CRU em vez de `codigo` deixa a suíte inteira
+				// verde e o harness em 0/0/0, e mesmo assim some com estas
+				// quatro classes: falso NEGATIVO, a direção que este arquivo
+				// declara em três lugares que não vai tomar.
+				//
+				// Esperado do PHP 8.2.32, não de expectativa: nos quatro
+				// arquivos `class_exists( <nome> )` é `true` e
+				// `getDocComment()` é `false` — sem docblock, a acusação é a
+				// resposta certa, não uma divergência ratificada.
+				const src = `<?php\n${ literal }\nclass ${ nome } extends A {}\n`;
+				expect(
+					regra.classesDeTeste( ctxCom( src ) ).map( ( c ) => c.nome )
+				).toEqual( [ nome ] );
+				const a = regra.check( ctxCom( src ) );
+				expect( a ).toHaveLength( 1 );
+				expect( a[ 0 ].key ).toBe( `${ ARQ } → sem-covers:${ nome }` );
+			}
+		);
 	} );
 
 	it( 'o repo de hoje tem 10 classes de teste, todas cobertas', () => {
