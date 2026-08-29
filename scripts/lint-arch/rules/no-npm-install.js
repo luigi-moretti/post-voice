@@ -49,8 +49,16 @@ function check( ctx ) {
 		NPM_INSTALL_RE.lastIndex = 0;
 		let m;
 		while ( ( m = NPM_INSTALL_RE.exec( source ) ) !== null ) {
+			// A chave carrega o comando casado, não a categoria — mesmo motivo
+			// que `forbidden-php.js` documenta: `npm install`, `npm i` e
+			// `npm add` são três violações diferentes, e com a categoria na
+			// chave uma única linha de `desvios:` absolveria as três, deixando
+			// duas passarem despercebidas. O espaço em branco é normalizado
+			// para que reformatar o arquivo não mude a chave e faça a dívida
+			// congelada deixar de casar.
+			const comando = m[ 0 ].replace( /\s+/g, ' ' );
 			achados.push( {
-				key: `${ file } → npm-install`,
+				key: `${ file } → ${ comando }`,
 				file,
 				line: source.slice( 0, m.index ).split( '\n' ).length,
 				message:

@@ -48,6 +48,8 @@ const MIRROR_PREFIX =
  *   de commit de 40 hexadígitos — nunca para o upstream, nem para outro host,
  *   nem para uma ref móvel como `resolve/main`
  */
+const MENSAGEM_PIN = `MODEL_BASE_URL tem de apontar para o mirror próprio do plugin (${ MIRROR_PREFIX }) fixado num SHA de commit de 40 hexadígitos — nunca para o repositório upstream, nem para outro host, nem para uma ref móvel como resolve/main (ADR-0014)`;
+
 function apontaParaOMirrorFixado( url ) {
 	if ( ! url || ! url.startsWith( MIRROR_PREFIX ) ) {
 		return false;
@@ -112,6 +114,62 @@ function concordam( ctx, fontes, rotulo ) {
 	];
 }
 
+/**
+ * Lê a declaração inteira de `MODEL_BASE_URL` — do nome até o `;` que a fecha
+ * FORA de string — e devolve todos os literais de texto que ela contém.
+ *
+ * Existe porque a versão anterior usava
+ * `MODEL_BASE_URL\s*=\s*[\s\S]*?'([^']+)'`, e o `*?` preguiçoso casa a
+ * PRIMEIRA string depois do `=`. Num ternário cujo primeiro ramo é o mirror
+ * fixado, o segundo ramo nunca era olhado: dava para apontar o fallback para
+ * qualquer host com o gate verde. Um pin de contrato que passa violado é pior
+ * que não ter pin, porque a ADR-0014 promete uma proteção que não existe.
+ *
+ * Varre caractere a caractere em vez de usar regex porque é preciso saber se
+ * um `;` está dentro ou fora de string: `'https://x/;y/'` não fecha nada.
+ *
+ * @param {string} source conteúdo do arquivo
+ * @return {?Object[]} literais `{ valor, interpolado, index }`, ou `null` se
+ *   a declaração não existe no arquivo
+ */
+function literaisDaDeclaracao( source ) {
+	const inicio = source.indexOf( 'MODEL_BASE_URL' );
+	if ( inicio === -1 ) {
+		return null;
+	}
+
+	const literais = [];
+	let i = inicio + 'MODEL_BASE_URL'.length;
+	while ( i < source.length ) {
+		const c = source[ i ];
+		if ( c === ';' ) {
+			break;
+		}
+		if ( c === "'" || c === '"' || c === '`' ) {
+			const abre = c;
+			const comeco = i;
+			let valor = '';
+			let interpolado = false;
+			i += 1;
+			while ( i < source.length && source[ i ] !== abre ) {
+				if ( source[ i ] === '\\' ) {
+					valor += source[ i + 1 ] || '';
+					i += 2;
+					continue;
+				}
+				if ( abre === '`' && source.startsWith( '${', i ) ) {
+					interpolado = true;
+				}
+				valor += source[ i ];
+				i += 1;
+			}
+			literais.push( { valor, interpolado, index: comeco } );
+		}
+		i += 1;
+	}
+	return literais;
+}
+
 function check( ctx ) {
 	const achados = [
 		...concordam( ctx, FONTES_WP, 'WordPress' ),
@@ -119,16 +177,43 @@ function check( ctx ) {
 	];
 
 	if ( ctx.files.includes( MODEL_SOURCE ) ) {
-		const url = ( ctx
-			.read( MODEL_SOURCE )
-			.match( /MODEL_BASE_URL\s*=\s*[\s\S]*?'([^']+)'/ ) || [] )[ 1 ];
-		if ( ! apontaParaOMirrorFixado( url ) ) {
+		const source = ctx.read( MODEL_SOURCE );
+		const literais = literaisDaDeclaracao( source );
+		const linhaDe = ( idx ) => source.slice( 0, idx ).split( '\n' ).length;
+
+		// Declaração ausente, ou presente sem literal nenhum: a regra não
+		// consegue provar que o pin está certo, e silenciar seria afirmar que
+		// está. Mantém a chave sem valor observado — não há valor a observar.
+		if ( ! literais || ! literais.length ) {
 			achados.push( {
 				key: `${ MODEL_SOURCE } → model-base-url`,
 				file: MODEL_SOURCE,
 				line: 1,
-				message: `MODEL_BASE_URL tem de apontar para o mirror próprio do plugin (${ MIRROR_PREFIX }) fixado num SHA de commit de 40 hexadígitos — nunca para o repositório upstream, nem para outro host, nem para uma ref móvel como resolve/main (ADR-0014)`,
+				message: MENSAGEM_PIN,
 			} );
+		} else {
+			// TODOS os literais da declaração, não só o primeiro. Cada um
+			// carrega o valor observado na chave, para que dois ramos ruins
+			// não colapsem numa entrada de `desvios:` que absolve os dois.
+			for ( const lit of literais ) {
+				if ( lit.interpolado ) {
+					achados.push( {
+						key: `${ MODEL_SOURCE } → model-base-url:interpolado`,
+						file: MODEL_SOURCE,
+						line: linhaDe( lit.index ),
+						message: `MODEL_BASE_URL montado por interpolação não é verificável por leitura, e a regra não pode afirmar que o pin está certo — deixe a URL literal. ${ MENSAGEM_PIN }`,
+					} );
+					continue;
+				}
+				if ( ! apontaParaOMirrorFixado( lit.valor ) ) {
+					achados.push( {
+						key: `${ MODEL_SOURCE } → model-base-url:${ lit.valor }`,
+						file: MODEL_SOURCE,
+						line: linhaDe( lit.index ),
+						message: MENSAGEM_PIN,
+					} );
+				}
+			}
 		}
 	}
 

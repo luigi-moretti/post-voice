@@ -87,6 +87,64 @@ describe( 'contract-pins', () => {
 		expect( a[ 0 ].message ).toMatch( /mirror/ );
 	} );
 
+	// Achado ALTO da revisão final da branch. O regex antigo era
+	// `MODEL_BASE_URL\s*=\s*[\s\S]*?'([^']+)'`, e o `*?` preguiçoso casa a
+	// PRIMEIRA string entre aspas depois do `=`. Num ternário cujo primeiro
+	// ramo é o mirror fixado, a regra lia só esse ramo e devolvia zero
+	// achados — o segundo ramo podia apontar para qualquer host. Pin de
+	// contrato violado com o gate verde, que é o pior resultado possível
+	// para a ADR-0014.
+	it( 'acusa o ramo ruim de um ternário cujo primeiro ramo é o mirror fixado', () => {
+		const a = pins.check(
+			com( {
+				'features/narration/editor/model-source.ts': `export const MODEL_BASE_URL = navigator.onLine\n\t? '${ MIRROR_URL }'\n\t: 'https://cdn.exemplo.invalido/pocket-tts/latest/';\n`,
+			} )
+		);
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toContain( 'cdn.exemplo.invalido' );
+	} );
+
+	it( 'acusa TODAS as strings da declaração, e com chaves distintas', () => {
+		const a = pins.check(
+			com( {
+				'features/narration/editor/model-source.ts':
+					"export const MODEL_BASE_URL = f\n\t? 'https://a.invalido/x/'\n\t: 'https://b.invalido/y/';\n",
+			} )
+		);
+		expect( a ).toHaveLength( 2 );
+		expect( new Set( a.map( ( x ) => x.key ) ).size ).toBe( 2 );
+	} );
+
+	it( 'acusa aspas duplas, que o regex antigo não olhava', () => {
+		const a = pins.check(
+			com( {
+				'features/narration/editor/model-source.ts':
+					'export const MODEL_BASE_URL = "https://c.invalido/z/";\n',
+			} )
+		);
+		expect( a ).toHaveLength( 1 );
+	} );
+
+	// Um template literal com interpolação não é provável por leitura: a regra
+	// não pode afirmar que o pin está certo, então acusa em vez de silenciar.
+	// Mesma postura que `rest-namespace` toma com namespace dinâmico.
+	it( 'acusa template literal interpolado em vez de silenciar', () => {
+		const a = pins.check(
+			com( {
+				'features/narration/editor/model-source.ts':
+					'export const MODEL_BASE_URL = `https://huggingface.co/${ dono }/resolve/${ sha }/`;\n',
+			} )
+		);
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toMatch( /interpolad/ );
+	} );
+
+	// Guarda de regressão do caso legítimo: a declaração real do repositório,
+	// que tem `;` só no fim e uma única string.
+	it( 'aceita a declaração legítima de uma linha só', () => {
+		expect( pins.check( com( {} ) ) ).toEqual( [] );
+	} );
+
 	it( 'não fixa o SHA em si: qualquer SHA de 40 hexadígitos no mirror certo passa', () => {
 		expect(
 			pins.check(
@@ -279,6 +337,41 @@ describe( 'no-npm-install', () => {
 				} )
 			)
 		).toEqual( [] );
+	} );
+
+	// Achado da revisão final da branch (ALTO/MÉDIO): `npm install`, `npm i` e
+	// `npm add` são três violações DIFERENTES, e colapsavam numa chave só
+	// (`<file> → npm-install`). Uma única linha de `desvios:` absolvia as três,
+	// e as duas não descritas passavam despercebidas. É o defeito exato que o
+	// R19 já tinha corrigido em `forbidden-php.js`, onde a chave carrega o
+	// termo casado — este arquivo só não tinha recebido o mesmo tratamento.
+	it( 'dá chave DISTINTA para cada forma do comando no mesmo arquivo', () => {
+		const a = npmci.check(
+			createContext( {
+				files: [ 'scripts/setup.sh' ],
+				read: () => 'npm install foo\nnpm add bar\nnpm i baz\n',
+			} )
+		);
+		expect( a ).toHaveLength( 3 );
+		expect( new Set( a.map( ( x ) => x.key ) ).size ).toBe( 3 );
+		expect( a.map( ( x ) => x.key ).sort() ).toEqual( [
+			'scripts/setup.sh → npm add',
+			'scripts/setup.sh → npm i',
+			'scripts/setup.sh → npm install',
+		] );
+	} );
+
+	// A chave não pode depender de espaçamento: `npm  install` e `npm install`
+	// são a mesma violação, e duas chaves para ela fariam a dívida congelada
+	// deixar de casar ao reformatar o arquivo.
+	it( 'normaliza espaços em branco na chave', () => {
+		const a = npmci.check(
+			createContext( {
+				files: [ 'scripts/setup.sh' ],
+				read: () => 'npm   install foo\n',
+			} )
+		);
+		expect( a[ 0 ].key ).toBe( 'scripts/setup.sh → npm install' );
 	} );
 
 	it( 'não acusa `npx playwright install --with-deps` — a agulha é "npm install", não "install"', () => {
