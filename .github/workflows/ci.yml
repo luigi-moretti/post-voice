@@ -38,6 +38,12 @@ jobs:
       # Node puro, sem Docker e sem WordPress: as regras leem o repo versionado.
       # As ADRs em docs/adr/ são a configuração — ver docs/adr/README.md.
       - run: npm run lint:arch
+
+      # Fica no job de lint porque só precisa de `npm ci`: nem Docker, nem
+      # WordPress, nem modelo. Antes disso o `tsc` só rodava na máquina de quem
+      # abria o PR, e o CLAUDE.md afirmava que a CI rodava a mesma lista — erro
+      # de tipo podia chegar ao master sem nada acusar. Ver ADR-0011.
+      - run: npx tsc --noEmit
       - uses: shivammathur/setup-php@v2
         with: { php-version: '8.2', tools: composer }
       - run: composer install
