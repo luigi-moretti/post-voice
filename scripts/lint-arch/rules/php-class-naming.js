@@ -17,6 +17,22 @@ const classFiles = ( ctx ) =>
 			) && ! isTestPath( f )
 	);
 
+// TODO o PHP de produção da árvore, não só o que JÁ se chama `class-*.php`.
+// `classFiles` sozinho tinha um buraco que a revisão final da branch mediu:
+// quem punha uma classe em `helpers.php` escapava desta regra E de
+// `feature-layout`, ou seja, a ADR-0006 inteira escapava pelo próprio ato que
+// ela proíbe — nomear o arquivo fora do padrão. A regra que confere o padrão
+// de nome não podia depender do padrão de nome para achar o que conferir.
+const phpProducao = ( ctx ) =>
+	ctx.files.filter(
+		( f ) =>
+			/^(?:features\/[^/]+|shared)\/php\/.*\.php$/.test( f ) &&
+			! isTestPath( f )
+	);
+
+const FORMATO_CLASSE_RE =
+	/^(?:features\/[^/]+|shared)\/php\/class-[a-z0-9-]+\.php$/;
+
 /**
  * `Post_Voice_Rest_Api` → `class-rest-api.php`
  *
@@ -135,6 +151,32 @@ function check( ctx ) {
 				file,
 				line,
 				message: `a classe "${ nome }" deveria morar em ${ esperado }, não em ${ base } (ADR-0006)`,
+			} );
+		}
+	}
+
+	// Arquivos de produção que declaram classe sem serem `class-*.php`.
+	// Fora do laço acima de propósito: `classFiles` não os enxerga, e é
+	// justamente essa cegueira que esta varredura fecha.
+	for ( const file of phpProducao( ctx ) ) {
+		if ( FORMATO_CLASSE_RE.test( file ) ) {
+			continue;
+		}
+		const base = file.split( '/' ).pop();
+		for ( const { nome, line } of declaradas( ctx, file ) ) {
+			// O nome da classe entra na chave: duas classes no mesmo arquivo
+			// são dois defeitos, e uma linha de `desvios:` não pode absolver
+			// as duas.
+			const key = `${ file } → classe-fora-de-arquivo-de-classe:${ nome }`;
+			achados.push( {
+				key,
+				file,
+				line,
+				message: nome.startsWith( PREFIXO )
+					? `a classe "${ nome }" deveria morar em ${ esperadoParaClasse(
+							nome
+					  ) }, não em ${ base }: sem autoloader, o nome do arquivo é como a classe é encontrada (ADR-0006)`
+					: `a classe "${ nome }" não usa o prefixo ${ PREFIXO } e não está num arquivo "class-*.php" (ADR-0006)`,
 			} );
 		}
 	}

@@ -50,6 +50,70 @@ describe( 'php-class-naming', () => {
 		expect( a[ 0 ].message ).toMatch( /class-rest-api\.php/ );
 	} );
 
+	// Achado ALTO da revisão final da branch: `classFiles` só inspecionava
+	// arquivos JÁ chamados `class-<slug>.php`, então uma classe posta em
+	// qualquer outro nome de arquivo saía com zero achados AQUI e zero em
+	// `feature-layout` — a ADR-0006 inteira escapava pelo próprio ato que ela
+	// proíbe. Quem quebra o padrão de nome ficava invisível justamente para a
+	// regra que confere o padrão de nome.
+	describe( 'classe em arquivo fora do padrão class-*.php', () => {
+		it( 'acusa, mesmo sem o prefixo', () => {
+			const a = naming.check(
+				ctxCom(
+					'features/narration/php/helpers.php',
+					'<?php\nclass minhaClasseSemPrefixo {}\n'
+				)
+			);
+			expect( a.length ).toBeGreaterThan( 0 );
+			expect( a[ 0 ].file ).toBe( 'features/narration/php/helpers.php' );
+		} );
+
+		it( 'acusa mesmo com o prefixo certo: o arquivo é que está errado', () => {
+			const a = naming.check(
+				ctxCom(
+					'features/narration/php/helpers.php',
+					'<?php\nclass Post_Voice_Helpers {}\n'
+				)
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].message ).toMatch( /class-helpers\.php/ );
+		} );
+
+		it( 'dá chave distinta por classe, para uma linha de desvio não absolver duas', () => {
+			const a = naming.check(
+				ctxCom(
+					'features/narration/php/helpers.php',
+					'<?php\nclass Post_Voice_A {}\nclass Post_Voice_B {}\n'
+				)
+			);
+			expect( a ).toHaveLength( 2 );
+			expect( new Set( a.map( ( x ) => x.key ) ).size ).toBe( 2 );
+		} );
+
+		it( 'não acusa arquivo sem classe nenhuma', () => {
+			expect(
+				naming.check(
+					ctxCom(
+						'features/narration/php/helpers.php',
+						'<?php\nfunction pv_ajuda() {}\n'
+					)
+				)
+			).toEqual( [] );
+		} );
+
+		it( 'não acusa arquivo de teste', () => {
+			expect(
+				naming.check(
+					ctxArquivos( {
+						'features/narration/tests/php/test-x.php':
+							'<?php\nclass Test_X {}\n',
+						'post-voice.php': '<?php\n',
+					} )
+				)
+			).toEqual( [] );
+		} );
+	} );
+
 	it( 'acusa classe sem o prefixo', () => {
 		const a = naming.check(
 			ctxCom( 'features/x/php/class-api.php', '<?php\nclass Api {}\n' )
