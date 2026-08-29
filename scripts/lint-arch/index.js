@@ -11,16 +11,31 @@ const path = require( 'node:path' );
 
 // Valores de `enforced_by` que não nomeiam uma regra: dizem que a decisão é
 // defendida por leitura humana ou por relatório, não por gate determinístico.
+// `review-manual` e `doctor` não nomeiam regra, então a busca no registro de
+// regras pula os dois. Mas os dois NÃO são iguais: `review-manual` é enforçado
+// por gente, e não há o que verificar automaticamente; `doctor` afirma que um
+// RELATÓRIO cobre a decisão, e isso é verificável — ver `DOCTOR` abaixo.
 const LITERAIS = new Set( [ 'review-manual', 'doctor' ] );
+
+// A ADR-0012 afirmava que "o doctor reporta a contagem de cenários E2E e o
+// tempo da última execução". O doctor não tinha nenhuma das duas linhas, e
+// como este runner pulava os literais, nada conseguia detectar que aquele
+// `enforced_by` não enforçava coisa alguma: uma ADR podia afirmar qualquer
+// coisa sobre o relatório e continuar verde. `doctor` passa a exigir entrada
+// em `doctorChecks`, espelhada nas duas direções — a mesma disciplina que já
+// vale entre as ADRs e o registro de regras.
+const DOCTOR = 'doctor';
 
 /**
  * @param {Object}   entrada
  * @param {Object[]} entrada.adrs
- * @param {Object}   entrada.registry mapa id → Rule
+ * @param {Object}   entrada.registry       mapa id → Rule
  * @param {Object}   entrada.ctx
+ * @param {Object}   [entrada.doctorChecks] mapa id da ADR → seção do doctor
+ *                                          que cobre a decisão. O CLI passa o registro real de `health.js`.
  * @return {{ problems: Object[], warnings: Object[] }} achados
  */
-function run( { adrs, registry, ctx } ) {
+function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 	const problems = [];
 	const warnings = [];
 	const declaradas = new Set();
@@ -52,6 +67,31 @@ function run( { adrs, registry, ctx } ) {
 					message: `ADR-${ adr.id } declara enforced_by: ${ id }, mas a regra declara adr: ${ registry[ id ].adr }. Uma das duas está errada.`,
 				} );
 			}
+		}
+	}
+
+	// Espelho do `doctor` nas duas direções, como o das regras logo abaixo.
+	const pedemDoctor = new Set(
+		adrs
+			.filter( ( a ) => a.enforcedBy.includes( DOCTOR ) )
+			.map( ( a ) => a.id )
+	);
+	for ( const adrId of pedemDoctor ) {
+		if ( ! doctorChecks[ adrId ] ) {
+			problems.push( {
+				adr: adrId,
+				rule: DOCTOR,
+				message: `ADR-${ adrId } declara enforced_by: doctor, mas nenhuma seção do relatório declara cobrir essa decisão. Implemente a seção em scripts/lint-arch/health.js e registre-a em DOCTOR_CHECKS, ou corrija o front-matter.`,
+			} );
+		}
+	}
+	for ( const adrId of Object.keys( doctorChecks ) ) {
+		if ( ! pedemDoctor.has( adrId ) ) {
+			problems.push( {
+				adr: adrId,
+				rule: DOCTOR,
+				message: `seção órfã do doctor: DOCTOR_CHECKS declara cobrir a ADR-${ adrId }, mas essa ADR não declara enforced_by: doctor. Sem ADR ninguém sabe por que a seção existe.`,
+			} );
 		}
 	}
 
@@ -152,7 +192,13 @@ if ( require.main === module ) {
 	// --report: não sai não-zero. É como `npm run doctor` consome o linter.
 	const reportOnly = process.argv.includes( '--report' );
 	const adrs = loadAdrs( path.join( root, 'docs/adr' ) );
-	const resultado = run( { adrs, registry, ctx: createContext( { root } ) } );
+	const { DOCTOR_CHECKS } = require( './health' );
+	const resultado = run( {
+		adrs,
+		registry,
+		ctx: createContext( { root } ),
+		doctorChecks: DOCTOR_CHECKS,
+	} );
 	process.stdout.write( format( resultado ) + '\n' );
 	process.exit( ! reportOnly && resultado.problems.length ? 1 : 0 );
 }

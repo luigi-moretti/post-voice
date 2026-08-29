@@ -57,13 +57,56 @@ describe( 'run', () => {
 		expect( out.problems[ 0 ].message ).toMatch( /órfã/ );
 	} );
 
-	it( 'aceita os literais review-manual e doctor sem procurar regra', () => {
+	it( 'aceita o literal review-manual sem procurar regra', () => {
 		const out = run( {
-			adrs: [ adr( { enforcedBy: [ 'review-manual', 'doctor' ] } ) ],
+			adrs: [ adr( { enforcedBy: [ 'review-manual' ] } ) ],
 			registry: {},
 			ctx,
 		} );
 		expect( out.problems ).toEqual( [] );
+	} );
+
+	// Achado ALTO da revisão final da branch. `doctor` era literal cego: a
+	// ADR-0012 afirmava que "o doctor reporta a contagem de cenários E2E e o
+	// tempo da última execução", o doctor não tinha nenhuma das duas linhas, e
+	// como o runner PULAVA os literais, nada no mecanismo conseguia detectar
+	// que aquele `enforced_by` não enforçava coisa alguma. Uma ADR podia
+	// afirmar qualquer coisa sobre o relatório.
+	// `doctor` passa a exigir entrada num registro de seções, espelhado nas
+	// duas direções, exatamente como já vale para as regras. `review-manual`
+	// segue literal de verdade: quem enforça é gente.
+	describe( 'doctor como enforced_by verificável', () => {
+		it( 'acusa ADR que declara doctor sem seção declarada', () => {
+			const out = run( {
+				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
+				registry: {},
+				ctx,
+				doctorChecks: {},
+			} );
+			expect( out.problems ).toHaveLength( 1 );
+			expect( out.problems[ 0 ].message ).toMatch( /doctor/ );
+		} );
+
+		it( 'aceita quando a seção está declarada', () => {
+			const out = run( {
+				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
+				registry: {},
+				ctx,
+				doctorChecks: { '0005': 'contagem de X' },
+			} );
+			expect( out.problems ).toEqual( [] );
+		} );
+
+		it( 'acusa seção órfã: declarada e nenhuma ADR a pede', () => {
+			const out = run( {
+				adrs: [ adr( { enforcedBy: [ 'review-manual' ] } ) ],
+				registry: {},
+				ctx,
+				doctorChecks: { '0099': 'seção de ninguém' },
+			} );
+			expect( out.problems ).toHaveLength( 1 );
+			expect( out.problems[ 0 ].message ).toMatch( /órfã|órfão/ );
+		} );
 	} );
 
 	it( 'acusa violação não listada, citando a ADR', () => {

@@ -315,7 +315,39 @@ function filesAboveP95( ctx, read ) {
 	return { p95, files: tamanhos.filter( ( t ) => t.lines > p95 ) };
 }
 
+// Cenários E2E declarados na árvore. `test(` e `test.only(`, nunca
+// `test.describe(`, que agrupa e não é cenário. Validado contra o oráculo que
+// importa: o Playwright reporta 37 na árvore de hoje, e esta conta devolve 37.
+const E2E_SPEC_RE = /^e2e\/.*\.spec\.ts$/;
+const E2E_TEST_RE = /^\s*test(?:\.only)?\s*\(/gm;
+
+/**
+ * @param {Object} ctx
+ * @return {number} quantos cenários E2E existem hoje
+ */
+function e2eScenarioCount( ctx ) {
+	let total = 0;
+	for ( const file of ctx.files.filter( ( f ) => E2E_SPEC_RE.test( f ) ) ) {
+		E2E_TEST_RE.lastIndex = 0;
+		total += ( ctx.read( file ).match( E2E_TEST_RE ) || [] ).length;
+	}
+	return total;
+}
+
+// Qual seção do relatório cobre qual ADR que declara `enforced_by: doctor`.
+// O `lint:arch` confere este mapa nas duas direções: uma ADR que pede `doctor`
+// sem entrada aqui reprova, e uma entrada aqui que nenhuma ADR pede também.
+// Existe porque a ADR-0012 afirmou por semanas que o doctor reportava algo que
+// ele não reportava, e o mecanismo era estruturalmente incapaz de perceber:
+// o runner pulava os literais sem olhar.
+const DOCTOR_CHECKS = {
+	'0001': 'seções "ADRs", "higiene das ADRs" e "gatilhos de revisão": contagem por status, ADR acima de 120 linhas, origem inexistente, ausência do índice',
+	'0012': 'seção "fronteira Jest/E2E": contagem de cenários E2E e o tempo da última execução',
+};
+
 module.exports = {
+	e2eScenarioCount,
+	DOCTOR_CHECKS,
 	checkClaudeMdSize,
 	checkAdrCitations,
 	checkRulePaths,

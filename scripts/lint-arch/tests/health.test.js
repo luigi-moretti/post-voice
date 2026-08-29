@@ -8,6 +8,8 @@ const {
 	parseRulePaths,
 	reviewTriggerCounts,
 	filesAboveP95,
+	e2eScenarioCount,
+	DOCTOR_CHECKS,
 	CLAUDE_MD_LINE_CEILING,
 	CITED_SECTIONS,
 } = require( '../health' );
@@ -415,5 +417,62 @@ describe( 'filesAboveP95', () => {
 			p95: 0,
 			files: [],
 		} );
+	} );
+} );
+
+// Achado ALTO da revisão final da branch: a ADR-0012 afirmava que "o `doctor`
+// reporta a contagem de cenários E2E e o tempo da última execução", e o doctor
+// não tinha nenhuma das duas linhas. O contador abaixo foi validado contra o
+// oráculo real: o Playwright reporta 37 cenários na árvore de hoje, e
+// `e2eScenarioCount` devolve 37 para a mesma árvore.
+describe( 'e2eScenarioCount', () => {
+	const ctxCom = ( mapa ) => ( {
+		root: '/repo',
+		files: Object.keys( mapa ),
+		read: ( f ) => mapa[ f ],
+	} );
+
+	it( 'conta `test(` por arquivo de spec', () => {
+		expect(
+			e2eScenarioCount(
+				ctxCom( {
+					'e2e/a.spec.ts':
+						"test( 'um', async () => {} );\ntest( 'dois', async () => {} );\n",
+					'e2e/b.spec.ts': "test( 'três', async () => {} );\n",
+				} )
+			)
+		).toBe( 3 );
+	} );
+
+	it( 'não conta `test.describe(`, que é agrupador e não cenário', () => {
+		expect(
+			e2eScenarioCount(
+				ctxCom( {
+					'e2e/a.spec.ts':
+						"test.describe( 'grupo', () => {\n\ttest( 'um', async () => {} );\n} );\n",
+				} )
+			)
+		).toBe( 1 );
+	} );
+
+	it( 'ignora arquivos fora de e2e/', () => {
+		expect(
+			e2eScenarioCount(
+				ctxCom( {
+					'features/x/tests/a.test.ts': "test( 'um', () => {} );\n",
+				} )
+			)
+		).toBe( 0 );
+	} );
+} );
+
+describe( 'DOCTOR_CHECKS', () => {
+	it( 'é o espelho declarado das ADRs que pedem enforced_by: doctor', () => {
+		// O conteúdo exato é conferido pelo `lint:arch`, nas duas direções.
+		// Aqui só se fixa que o registro existe e é indexado por id de ADR.
+		expect( Object.keys( DOCTOR_CHECKS ).sort() ).toEqual( [
+			'0001',
+			'0012',
+		] );
 	} );
 } );

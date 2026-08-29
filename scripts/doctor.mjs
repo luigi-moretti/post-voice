@@ -152,6 +152,53 @@ secao(
 	grandes.map( ( t ) => `${ t.lines }\t${ t.file }` )
 );
 
+// 5b. Fronteira Jest/E2E (ADR-0012). A ADR promete estas duas linhas, e por
+//     semanas elas não existiam — o `revisar_quando` dela é "a suíte E2E passar
+//     de 15 minutos", e sem duração no relatório ninguém conseguia avaliar o
+//     gatilho lendo o doctor. É o que deixou a ADR e o TESTING.md divergirem
+//     sem ninguém notar. O `lint:arch` agora confere que esta seção existe.
+const REPORT_E2E = 'artifacts/test-results/report.json';
+const linhasE2e = [ `cenários E2E: ${ health.e2eScenarioCount( ctx ) }` ];
+if ( fs.existsSync( path.join( root, REPORT_E2E ) ) ) {
+	linhasE2e.push(
+		tolerante(
+			`${ REPORT_E2E } ilegível`,
+			() => {
+				const st = JSON.parse( ler( REPORT_E2E ) ).stats || {};
+				// Segundos abaixo de um minuto: "0.0 min" não informa nada,
+				// e execução de um spec só é justamente o caso comum de quem
+				// está investigando.
+				const ms = st.duration || 0;
+				const dur =
+					ms >= 60000
+						? `${ ( ms / 60000 ).toFixed( 1 ) } min`
+						: `${ Math.round( ms / 1000 ) } s`;
+				const quando = st.startTime
+					? new Date( st.startTime )
+							.toLocaleString( 'sv-SE' )
+							.slice( 0, 16 )
+					: 'sem data';
+				const falhas = ( st.unexpected || 0 ) + ( st.flaky || 0 );
+				return `última execução: ${ dur }, ${
+					st.expected || 0
+				} passaram, ${ falhas } não (${ quando })`;
+			},
+			'última execução: relatório no disco, mas ilegível'
+		)
+	);
+	// Só a execução COMPLETA responde ao gatilho: rodar um spec sozinho
+	// produz um `report.json` legítimo de poucos segundos, e tratá-lo como
+	// medida da suíte seria afirmar mais do que o arquivo diz.
+	linhasE2e.push(
+		'o gatilho da ADR-0012 (15 min) só é avaliável por uma execução completa'
+	);
+} else {
+	linhasE2e.push(
+		'última execução: sem registro no disco — rode `npm run test:e2e`'
+	);
+}
+secao( 'fronteira Jest/E2E', linhasE2e );
+
 // 6. Dívida declarada e cobertura, quando houver relatório no disco.
 // Conta seções, e diz "seções": o documento usa duas convenções de item —
 // `###` em algumas seções, bullets em negrito em outras — e não há regra única
