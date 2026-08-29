@@ -37,10 +37,10 @@ npm run audit:npm:production && npm run audit:npm && npm run audit:composer
 npm run build && npm run test:e2e    # downloads the model on first run
 ```
 
-This is the same set `.github/workflows/ci.yml` runs; `TESTING.md` has the
-thresholds and the timings. Running it locally first is not politeness — CI here
-needs Docker, a WordPress install and a ~190MB model download, so a red job
-costs far more than a red terminal.
+`.github/workflows/ci.yml` runs all of this except `tsc --noEmit`, which runs
+only here; `TESTING.md` has the thresholds and the timings. Running it locally
+first is not politeness — CI here needs Docker, a WordPress install and a ~190MB
+model download, so a red job costs far more than a red terminal.
 
 **If anything fails, stop and present correction plans.** Do not open the PR, do
 not disable the check, do not lower a threshold to make it pass. Report what
