@@ -61,6 +61,34 @@ function checkClaudeMdSize( source, teto = CLAUDE_MD_LINE_CEILING ) {
  * @param {Set}      adrIds ids existentes
  * @return {Object[]} problemas
  */
+/**
+ * Junta cada bullet com as linhas de continuação dele.
+ *
+ * O checker olhava linha a linha, então um bullet quebrado em duas linhas com a
+ * citação na segunda era reportado como "sem citação". O efeito prático não era
+ * o autor citar melhor: era o autor escrever linhas de 400 caracteres para não
+ * ser reprovado, e foi o que aconteceu — em `.claude/rules/php.md` e na primeira
+ * versão do `CLAUDE.md` reescrito. Um checker que decide a largura das linhas
+ * do documento está cobrando um imposto que não tem nada a ver com o que ele
+ * quer verificar.
+ *
+ * @param {string} bloco
+ * @return {string[]} um item por bullet, com as continuações concatenadas
+ */
+function bulletsCompletos( bloco ) {
+	const saida = [];
+	for ( const line of bloco.split( '\n' ) ) {
+		const abreBullet = /^\s*-\s+\S/.test( line );
+		const continua = saida.length && ! abreBullet && /^\s+\S/.test( line );
+		if ( continua ) {
+			saida[ saida.length - 1 ] += ' ' + line.trim();
+			continue;
+		}
+		saida.push( line );
+	}
+	return saida;
+}
+
 function checkAdrCitations( source, nomes, adrIds ) {
 	// Sem lista de seções, o alvo é o arquivo inteiro — mas sem o front-matter:
 	// cada item de `paths:` começa com "- " e seria lido como bullet de convenção.
@@ -70,7 +98,7 @@ function checkAdrCitations( source, nomes, adrIds ) {
 		: [ corpo ];
 	const problemas = [];
 	for ( const bloco of blocos ) {
-		for ( const line of bloco.split( '\n' ) ) {
+		for ( const line of bulletsCompletos( bloco ) ) {
 			if ( ! /^\s*-\s+\S/.test( line ) ) {
 				continue;
 			}

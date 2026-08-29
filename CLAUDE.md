@@ -59,12 +59,18 @@ an outward-facing action; it is never done unprompted.
 
 ## Conventions
 
-- Layout is feature-based, `features/<feature>/{php,editor,frontend,tests}/`; code moves to `shared/` only at the second real consumer (ADR-0004, ADR-0005).
-- The server never synthesizes speech, transcodes audio, or recomputes what the client already computed (ADR-0002, ADR-0008, ADR-0009).
-- PHP classes: prefix `Post_Voice_`, one per file, `class-*.php` — there is no autoloader, so the name is how the file is found (ADR-0006).
-- REST is namespaced `post-voice/v1`, and every value an endpoint accepts is validated server-side even when the UI already constrains it (ADR-0007).
+- Layout is feature-based, `features/<feature>/{php,editor,frontend,tests}/`;
+  code moves to `shared/` only at the second real consumer (ADR-0004,
+  ADR-0005).
+- The server never synthesizes speech, transcodes audio, or recomputes what the
+  client already computed (ADR-0002, ADR-0008, ADR-0009).
+- PHP classes: prefix `Post_Voice_`, one per file, `class-*.php` — there is no
+  autoloader, so the name is how the file is found (ADR-0006).
+- REST is namespaced `post-voice/v1`, and every value an endpoint accepts is
+  validated server-side even when the UI already constrains it (ADR-0007).
 - Every user-facing string goes through gettext with the domain `post-voice` (ADR-0010).
-- Worker, ONNX or a real browser means an E2E scenario, never a mock; pure TypeScript means Jest (ADR-0012).
+- Worker, ONNX or a real browser means an E2E scenario, never a mock; pure
+  TypeScript means Jest (ADR-0012).
 - A new ADR never touches this file (ADR-0001).
 
 ## Gotchas that have already cost a session each

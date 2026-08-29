@@ -42,6 +42,32 @@ describe( 'checkClaudeMdSize', () => {
 	} );
 } );
 
+describe( 'checkAdrCitations junta as linhas de continuação do bullet', () => {
+	const ids = new Set( [ '0004' ] );
+
+	it( 'a citação vale mesmo quebrada para a linha de baixo', () => {
+		// O checker olhava linha a linha, então um bullet quebrado com a
+		// citação na segunda linha era "sem citação". O efeito não era citar
+		// melhor: era escrever linhas de 400 caracteres para não ser
+		// reprovado — e foi o que aconteceu, em `.claude/rules/php.md` e na
+		// primeira versão do CLAUDE.md reescrito.
+		const linha =
+			'- Uma convenção comprida que\n  continua na linha de baixo (ADR-0004).';
+		expect( checkAdrCitations( linha, [], ids ) ).toEqual( [] );
+	} );
+
+	it( 'mas um bullet quebrado que não cita nada continua sendo pego', () => {
+		const linha =
+			'- Uma convenção comprida que\n  continua e não cita ADR nenhuma.';
+		expect( checkAdrCitations( linha, [], ids ) ).toHaveLength( 1 );
+	} );
+
+	it( 'parágrafo depois de linha em branco não é continuação de bullet', () => {
+		const src = '- cita (ADR-0004).\n\nParágrafo solto.';
+		expect( checkAdrCitations( src, [], ids ) ).toEqual( [] );
+	} );
+} );
+
 describe( 'checkAdrCitations aceita as duas grafias de citação', () => {
 	const ids = new Set( [ '0004', '0005' ] );
 
