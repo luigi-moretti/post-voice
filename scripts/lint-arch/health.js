@@ -38,7 +38,11 @@ function checkClaudeMdSize( source, teto = CLAUDE_MD_LINE_CEILING ) {
 			},
 		];
 	}
-	const linhas = source.split( '\n' ).length;
+	// Conta como `wc -l` e como o editor de quem vai ler o relatório: o `\n`
+	// final termina a última linha, não abre uma nova. `split` sozinho devolvia
+	// um a mais, e um relatório que diz 97 sobre um arquivo que o editor mostra
+	// com 96 gasta a confiança de quem confere.
+	const linhas = source.replace( /\n$/, '' ).split( '\n' ).length;
 	if ( linhas <= teto ) {
 		return [];
 	}

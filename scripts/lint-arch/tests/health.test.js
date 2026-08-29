@@ -23,10 +23,14 @@ describe( 'checkClaudeMdSize', () => {
 		// Gotchas — que não são path-scopáveis, então não têm para onde ir.
 		// Com o teto vindo por parâmetro em todos os outros casos, o padrão
 		// nunca era exercido: trocar 80 por 95 não deixava nada vermelho.
-		// `split( '\n' )` conta a linha vazia depois do último `\n`, então
-		// `repeat( n )` vale n+1 linhas — 94 repetições são as 95 do teto.
-		expect( checkClaudeMdSize( 'a\n'.repeat( 94 ) ) ).toEqual( [] );
-		const acima = checkClaudeMdSize( 'a\n'.repeat( 95 ) );
+		// A contagem é a do `wc -l` e a do editor de quem lê o relatório: o
+		// `\n` final termina a última linha, não abre uma nova. Antes o
+		// `split` devolvia um a mais, e o relatório dizia 97 sobre um arquivo
+		// que o editor mostrava com 96 — um número que não bate com a
+		// ferramenta do leitor gasta a confiança dele nos outros números.
+		expect( checkClaudeMdSize( 'a\n'.repeat( 95 ) ) ).toEqual( [] );
+		expect( checkClaudeMdSize( 'a\n'.repeat( 94 ) + 'a' ) ).toEqual( [] );
+		const acima = checkClaudeMdSize( 'a\n'.repeat( 96 ) );
 		expect( acima ).toHaveLength( 1 );
 		expect( acima[ 0 ].message ).toMatch(
 			/96 linhas, acima do teto de 95/
