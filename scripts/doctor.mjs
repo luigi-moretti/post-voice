@@ -153,22 +153,44 @@ secao(
 );
 
 // 6. Dívida declarada e cobertura, quando houver relatório no disco.
-const followUps = ( ler( 'docs/FOLLOW-UPS.md' ).match( /^##\s+/gm ) || [] )
+// Conta seções, e diz "seções": o documento usa duas convenções de item —
+// `###` em algumas seções, bullets em negrito em outras — e não há regra única
+// que conte item honestamente. Melhor um número verdadeiro sobre o que se conta
+// do que um número inventado sobre o que se gostaria de contar.
+const secoesFollowUp = ( ler( 'docs/FOLLOW-UPS.md' ).match( /^##\s+/gm ) || [] )
 	.length;
 const cobertura = fs.existsSync(
 	path.join( root, 'coverage/coverage-summary.json' )
 )
 	? tolerante(
 			'coverage/coverage-summary.json ilegível',
-			() =>
-				`linhas (JS): ${
-					JSON.parse( ler( 'coverage/coverage-summary.json' ) ).total
-						.lines.pct
-				}%`,
+			() => {
+				// A data vai junto porque `existsSync` responde se o arquivo
+				// existe, não se ele é de agora. Sem ela, um relatório de duas
+				// semanas atrás sairia com a mesma cara de um recém-gerado, e um
+				// número que não corresponde à árvore gasta a confiança do leitor
+				// em todos os outros números deste relatório.
+				const arquivo = 'coverage/coverage-summary.json';
+				const pct = JSON.parse( ler( arquivo ) ).total.lines.pct;
+				// Hora LOCAL, montada à mão: `toISOString` devolve UTC, e o
+				// leitor confere contra o relógio dele. Uma linha dizendo
+				// "20:59" às 17:59 faz duvidar justamente do número que o
+				// carimbo existe para autenticar.
+				const d = fs.statSync( path.join( root, arquivo ) ).mtime;
+				const dd = ( n ) => String( n ).padStart( 2, '0' );
+				const quando =
+					`${ d.getFullYear() }-${ dd( d.getMonth() + 1 ) }-` +
+					`${ dd( d.getDate() ) } ${ dd( d.getHours() ) }:` +
+					`${ dd( d.getMinutes() ) }`;
+				return `linhas (JS): ${ pct }% (relatório de ${ quando })`;
+			},
 			'relatório de cobertura no disco, mas ilegível — rode `npm run test:unit -- --coverage` de novo'
 	  )
-	: 'sem relatório recente no disco — rode `npm run test:unit -- --coverage`';
-secao( 'outros', [ `FOLLOW-UPS.md: ${ followUps } item(ns)`, cobertura ] );
+	: 'sem relatório no disco — rode `npm run test:unit -- --coverage`';
+secao( 'outros', [
+	`FOLLOW-UPS.md: ${ secoesFollowUp } seção(ões)`,
+	cobertura,
+] );
 
 if ( avarias.length ) {
 	secao( 'avarias na própria coleta', avarias );

@@ -57,6 +57,14 @@ module.exports = {
 		// que, por desenho, não tem suíte.
 		'!scripts/lint-arch/tools/**',
 	],
+	// O default do Jest (`json`, `text`, `lcov`, `clover`) não escreve
+	// `coverage-summary.json`, que é do reporter `json-summary` — e é esse o
+	// arquivo que o `npm run doctor` lê para relatar a cobertura. Sem ele o
+	// doctor dizia "sem relatório recente no disco" e mandava rodar justamente
+	// o comando que acabara de rodar. Os quatro default seguem listados porque
+	// declarar a chave substitui a lista inteira, e `text` é a tabela impressa
+	// no terminal.
+	coverageReporters: [ 'json', 'text', 'lcov', 'clover', 'json-summary' ],
 	coverageThreshold: {
 		global: { lines: 80 },
 	},
