@@ -59,7 +59,7 @@ an outward-facing action; it is never done unprompted.
 
 ## Conventions
 
-- Layout is feature-based, `features/<feature>/{php,editor,frontend,tests}/`;
+- Layout is feature-based, `features/<f>/{php,editor,frontend,admin,tests}/`;
   code moves to `shared/` at the second real consumer (ADR-0004, ADR-0005).
 - The server never synthesizes speech, transcodes audio, or recomputes what the
   client already computed (ADR-0002, ADR-0008, ADR-0009).
