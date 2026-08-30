@@ -4,6 +4,7 @@ const {
 	stripPhpComments,
 	stripPhpNoise,
 } = require( '../context' );
+const { phpClassOwners } = require( './php-class-naming' );
 
 // O glob que a ADR-0013 usa literalmente ("toda classe de teste PHPUnit sob
 // `features/*/tests/php/` e `shared/tests/php/`"), não uma cópia das pastas
@@ -68,6 +69,15 @@ const ABRE_DOCBLOCK_RE = /^\/\*\*[ \t\r\n]/;
 // proteções são independentes de propósito, e as duas têm teste.
 const COVERS_RE = /@covers(?:DefaultClass)?\b/;
 const COVERS_NOTHING_RE = /@coversNothing\b/;
+
+// `COVERS_RE` responde "tem a anotação?"; esta responde "a anotação aponta
+// para alguma coisa?". Medido contra o PHPUnit real: `@covers` sem alvo é
+// registrado como [""] e `getLinesToBeCovered` lança
+// InvalidCoversTargetException. Não é falha silenciosa — mas quem paga é o
+// job de cobertura, o mais caro da CI, com `"@covers " is invalid`, que não
+// diz o que fazer. Pegar aqui custa segundos e cita a ADR-0013.
+const COVERS_ALVO_RE = /@covers(?:DefaultClass)?[ \t]*([^\s*]*)/g;
+const PREFIXO_PLUGIN = 'Post_Voice_';
 
 const ehBranco = ( ch ) => ch === undefined || /\s/.test( ch );
 
@@ -382,6 +392,10 @@ function classesDeTeste( ctx ) {
 
 function check( ctx ) {
 	const achados = [];
+	// As classes de produção da árvore, para saber se um alvo `Post_Voice_*`
+	// existe de fato. Vem de `php-class-naming` para não haver duas noções de
+	// "quais classes existem" no mesmo linter.
+	const donos = phpClassOwners( ctx );
 	for ( const { file, nome, line, docblock } of classesDeTeste( ctx ) ) {
 		if ( docblock && COVERS_NOTHING_RE.test( docblock ) ) {
 			achados.push( {
@@ -391,6 +405,41 @@ function check( ctx ) {
 				message: `a classe "${ nome }" está anotada com @coversNothing; a ADR-0013 exige @covers apontando para a classe que o teste de fato exercita — troque por "@covers <Classe>" (ou "@coversDefaultClass <Classe>") apontando para a classe sob teste (ADR-0013)`,
 			} );
 			continue;
+		}
+
+		if ( docblock && COVERS_RE.test( docblock ) ) {
+			COVERS_ALVO_RE.lastIndex = 0;
+			let m;
+			while ( ( m = COVERS_ALVO_RE.exec( docblock ) ) !== null ) {
+				const alvo = m[ 1 ].replace( /^\\/, '' );
+				if ( ! alvo ) {
+					achados.push( {
+						key: `${ file } → covers-sem-alvo:${ nome }`,
+						file,
+						line,
+						message: `a classe "${ nome }" tem @covers sem alvo; o PHPUnit registra a anotação vazia e reprova o job de cobertura com "@covers  is invalid" — escreva "@covers <Classe>" apontando para a classe que este teste exercita (ADR-0013)`,
+					} );
+					continue;
+				}
+				// Só se opina sobre o que é seguramente nosso: o oráculo aqui
+				// (as classes da árvore) é mais fraco que o do PHPUnit (o
+				// autoload), e marcar todo alvo desconhecido criaria falso
+				// positivo em classe de dependência ou trait.
+				const classe = alvo.split( '::' )[ 0 ];
+				if (
+					classe.startsWith( PREFIXO_PLUGIN ) &&
+					! donos.has( classe )
+				) {
+					achados.push( {
+						// O alvo entra na chave: dois @covers errados na mesma
+						// classe de teste são dois defeitos.
+						key: `${ file } → covers-alvo-inexistente:${ classe }`,
+						file,
+						line,
+						message: `a classe "${ nome }" declara @covers ${ classe }, que não existe em nenhum arquivo de classe versionado; o job de cobertura reprova com "@covers ${ classe }" is invalid (ADR-0013)`,
+					} );
+				}
+			}
 		}
 
 		if ( ! docblock || ! COVERS_RE.test( docblock ) ) {

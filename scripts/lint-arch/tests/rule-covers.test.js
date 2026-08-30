@@ -2,7 +2,18 @@ const { createContext } = require( '../context' );
 const regra = require( '../rules/covers-annotation' );
 
 const ARQ = 'features/narration/tests/php/test-assets.php';
-const ctxCom = ( src ) => createContext( { files: [ ARQ ], read: () => src } );
+
+// A classe de produção entra no ctx porque a regra agora confere se um alvo
+// `Post_Voice_*` existe de fato na árvore. Sem ela, todo `@covers
+// Post_Voice_Assets` dos cenários abaixo seria "alvo inexistente" — e o que
+// falharia seria o fixture, não o comportamento sob teste.
+const CLASSE_PROD = 'features/narration/php/class-assets.php';
+const FONTE_PROD = '<?php\nclass Post_Voice_Assets {}\n';
+const ctxCom = ( src ) =>
+	createContext( {
+		files: [ ARQ, CLASSE_PROD ],
+		read: ( f ) => ( f === CLASSE_PROD ? FONTE_PROD : src ),
+	} );
 
 // Para cenários com mais de um arquivo, onde cada `read` precisa devolver
 // algo diferente por caminho.
@@ -25,6 +36,76 @@ describe( 'covers-annotation', () => {
 				)
 			)
 		).toEqual( [] );
+	} );
+
+	// Achado da revisão final da branch. `COVERS_RE` conferia só a PRESENÇA do
+	// token, então `@covers` sem alvo passava. Medido contra o PHPUnit real
+	// (o parser de anotação dele, em vendor/): a anotação é registrada como
+	// [""], e `getLinesToBeCovered` lança InvalidCoversTargetException com
+	// `"@covers " is invalid`. Ou seja, não é falha silenciosa — mas quem paga
+	// é o job de cobertura, o mais caro da CI, com uma mensagem que não diz o
+	// que fazer. `npm run test:php` sem cobertura passa verde (medido).
+	describe( 'o @covers precisa de alvo', () => {
+		it( 'acusa @covers sem alvo nenhum', () => {
+			const a = regra.check(
+				ctxCom( '<?php\n/**\n * @covers\n */\nclass X extends A {}\n' )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].message ).toMatch( /alvo/ );
+		} );
+
+		it( 'acusa @coversDefaultClass sem alvo', () => {
+			const a = regra.check(
+				ctxCom(
+					'<?php\n/**\n * @coversDefaultClass\n */\nclass X extends A {}\n'
+				)
+			);
+			expect( a ).toHaveLength( 1 );
+		} );
+
+		// O oráculo do linter (as classes da árvore) é MAIS FRACO que o do
+		// PHPUnit (autoload de verdade): marcar todo alvo desconhecido criaria
+		// falso positivo em classe de dependência ou trait. Então só se opina
+		// sobre o que é seguramente nosso e seguramente errado — prefixo
+		// Post_Voice_ que não existe na árvore, que é o erro de digitação.
+		it( 'acusa alvo Post_Voice_ que não existe na árvore', () => {
+			const a = regra.check(
+				ctxArquivos( {
+					'features/narration/php/class-assets.php':
+						'<?php\nclass Post_Voice_Assets {}\n',
+					[ ARQ ]:
+						'<?php\n/**\n * @covers Post_Voice_Reset_Api\n */\nclass X extends A {}\n',
+				} )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toContain( 'Post_Voice_Reset_Api' );
+		} );
+
+		it( 'não opina sobre alvo sem o prefixo do plugin', () => {
+			expect(
+				regra.check(
+					ctxArquivos( {
+						'features/narration/php/class-assets.php':
+							'<?php\nclass Post_Voice_Assets {}\n',
+						[ ARQ ]:
+							'<?php\n/**\n * @covers WP_REST_Request\n */\nclass X extends A {}\n',
+					} )
+				)
+			).toEqual( [] );
+		} );
+
+		it( 'aceita alvo Post_Voice_ que existe', () => {
+			expect(
+				regra.check(
+					ctxArquivos( {
+						'features/narration/php/class-assets.php':
+							'<?php\nclass Post_Voice_Assets {}\n',
+						[ ARQ ]:
+							'<?php\n/**\n * @covers Post_Voice_Assets\n */\nclass X extends A {}\n',
+					} )
+				)
+			).toEqual( [] );
+		} );
 	} );
 
 	it( 'aceita @coversDefaultClass', () => {
