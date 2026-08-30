@@ -4,7 +4,7 @@ titulo: i18n desde o primeiro commit, com o domínio post-voice
 status: aceita
 data: 2026-08-27
 origem: superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md#decisões-já-fechadas-não-reabrir-sem-motivo-novo
-enforced_by: [ i18n-text-domain ]
+enforced_by: [ i18n-text-domain, review-manual ]
 revisar_quando: o plugin passar a ter string de UI gerada dinamicamente no servidor
 desvios: []
 ---
@@ -45,9 +45,31 @@ isso adicionando `__()` ali mais tarde.
 
 ## Como verificar
 
-`i18n-text-domain` — sobre PHP: toda chamada a `__`, `_x`, `_n`, `_ex`,
-`_nx`, `esc_html__`, `esc_html_e`, `esc_attr__` ou `esc_attr_e` em
-`features/**/php/` ou `shared/php/` carrega `'post-voice'` como domínio.
+A "## Decisão" acima afirma duas coisas, e só uma delas tem gate. Isto está
+escrito porque uma ADR que promete verificação inexistente é pior que uma sem
+verificação nenhuma: ensina a confiar num silêncio que não significa nada.
+
+`i18n-text-domain` — **a metade mecânica**: toda chamada a função gettext em
+`features/**/php/` ou `shared/php/` carrega `'post-voice'` como domínio. A
+lista de funções reconhecidas vive em `CALL_RE`, na própria regra, e não é
+repetida aqui de propósito — duplicá-la criaria duas versões da mesma verdade,
+e a cópia desta ADR já esteve desatualizada (listava nove funções quando a
+regra reconhecia dezesseis).
+
+`review-manual` — **a metade de julgamento**: que toda string visível ao
+usuário de fato passe por gettext. Nenhum gate cobre isso, e não é descuido.
+A regra varre chamadas de gettext, então só enxerga código que já decidiu
+traduzir: `echo '<p>Save narration</p>'` não tem chamada nenhuma para
+inspecionar, e passa. O `i18n:check` também não pega — ele compara o `.pot`
+com o que está em gettext, e string crua nunca entra no `.pot`.
+
+Cobrir essa metade por script exigiria decidir se uma string é visível ao
+usuário, e o PHP não distingue `'Save narration'` de `'utf-8'`, de
+`'post-voice/v1'` ou de `'display: none'`. A diferença é semântica, não
+sintática. Uma heurística por conteúdo acusaria as duas coisas juntas, e um
+gate que acusa errado é desligado — o que deixaria o projeto pior do que
+está, porque a autoridade do `desvios:` depende de o linter não acusar
+bobagem. Fica com o revisor humano, declarado, em vez de fingido.
 
 ## Alternativas rejeitadas
 

@@ -22,7 +22,7 @@ O que está decidido, por quê, e o que impede de ser desfeito por acidente.
 | [0007](0007-rest-namespace-e-validacao-no-servidor.md) | Namespace REST fixo e validação sempre no servidor | aceita | `rest-namespace`, `review-manual` |
 | [0008](0008-source-hash-e-calculado-no-cliente.md) | O `source_hash` é calculado no cliente; o PHP só guarda e compara | aceita | `no-narration-logic-in-php` |
 | [0009](0009-audio-comprimido-no-cliente.md) | O áudio é comprimido no cliente; o servidor nunca transcodifica | aceita | `no-server-side-audio-processing` |
-| [0010](0010-i18n-desde-o-primeiro-commit.md) | i18n desde o primeiro commit, com o domínio `post-voice` | aceita | `i18n-text-domain` |
+| [0010](0010-i18n-desde-o-primeiro-commit.md) | i18n desde o primeiro commit, com o domínio `post-voice` | aceita | `i18n-text-domain`, `review-manual` |
 | [0011](0011-editor-em-typescript.md) | O editor é TypeScript | aceita-com-desvio | `no-untyped-editor-code` |
 | [0012](0012-fronteira-jest-e2e.md) | Fronteira entre Jest e E2E — Worker e ONNX não se mockam | aceita | `review-manual`, `doctor` |
 | [0013](0013-covers-por-classe-e-gates-de-cobertura.md) | `@covers` por classe, e gates de cobertura que não descem | aceita | `covers-annotation` |
