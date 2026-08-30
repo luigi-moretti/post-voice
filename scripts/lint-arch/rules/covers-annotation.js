@@ -76,7 +76,7 @@ const COVERS_NOTHING_RE = /@coversNothing\b/;
 // InvalidCoversTargetException. Não é falha silenciosa — mas quem paga é o
 // job de cobertura, o mais caro da CI, com `"@covers " is invalid`, que não
 // diz o que fazer. Pegar aqui custa segundos e cita a ADR-0013.
-const COVERS_ALVO_RE = /@covers(?:DefaultClass)?[ \t]*([^\s*]*)/g;
+const COVERS_ALVO_RE = /@covers(?:DefaultClass)?(?![A-Za-z])[ \t]*([^\s*]*)/g;
 const PREFIXO_PLUGIN = 'Post_Voice_';
 
 const ehBranco = ( ch ) => ch === undefined || /\s/.test( ch );
@@ -421,13 +421,23 @@ function check( ctx ) {
 					} );
 					continue;
 				}
-				// Só se opina sobre o que é seguramente nosso: o oráculo aqui
-				// (as classes da árvore) é mais fraco que o do PHPUnit (o
-				// autoload), e marcar todo alvo desconhecido criaria falso
-				// positivo em classe de dependência ou trait.
+				// O alvo tem de ser uma classe DESTE plugin, e existir. A
+				// ADR-0013 diz "apontando para a classe que de fato
+				// exercita": um teste daqui exercita classe daqui, e cobrir
+				// uma classe de fora creditaria cobertura a código que gate
+				// nenhum mede.
+				//
+				// É também o que fecha o `@covers` citado em prosa, sem
+				// precisar de critério separado: o parser do PHPUnit não
+				// ancora a anotação no início da linha (DocBlock.php:512),
+				// então para ele `... declara @covers porque exercita ...` É
+				// um @covers de valor "porque" — ele pega a primeira palavra
+				// (`explode(' ')[0]`) e lança no job de cobertura. Exigir o
+				// prefixo pega o mesmo caso no gate barato, sem divergir do
+				// parser dele.
 				const classe = alvo.split( '::' )[ 0 ];
 				if (
-					classe.startsWith( PREFIXO_PLUGIN ) &&
+					! classe.startsWith( PREFIXO_PLUGIN ) ||
 					! donos.has( classe )
 				) {
 					achados.push( {
@@ -436,7 +446,7 @@ function check( ctx ) {
 						key: `${ file } → covers-alvo-inexistente:${ classe }`,
 						file,
 						line,
-						message: `a classe "${ nome }" declara @covers ${ classe }, que não existe em nenhum arquivo de classe versionado; o job de cobertura reprova com "@covers ${ classe }" is invalid (ADR-0013)`,
+						message: `a classe "${ nome }" declara @covers ${ classe }, que não é uma classe deste plugin versionada em arquivo de classe; a ADR-0013 pede o @covers apontando para a classe que o teste de fato exercita, e o job de cobertura reprova com "@covers ${ classe }" is invalid (ADR-0013)`,
 					} );
 				}
 			}

@@ -81,17 +81,48 @@ describe( 'covers-annotation', () => {
 			expect( a[ 0 ].key ).toContain( 'Post_Voice_Reset_Api' );
 		} );
 
-		it( 'não opina sobre alvo sem o prefixo do plugin', () => {
-			expect(
-				regra.check(
-					ctxArquivos( {
-						'features/narration/php/class-assets.php':
-							'<?php\nclass Post_Voice_Assets {}\n',
-						[ ARQ ]:
-							'<?php\n/**\n * @covers WP_REST_Request\n */\nclass X extends A {}\n',
-					} )
+		// Reversão de um critério que eu mesmo escrevi na primeira rodada:
+		// "não opinar sobre alvo sem o prefixo". Estava errado. A ADR-0013 diz
+		// "apontando para a classe que de fato exercita", e um teste deste
+		// plugin exercita classe deste plugin — cobrir `WP_REST_Request`
+		// creditaria cobertura ao WP core, que não é medido por gate nenhum.
+		// Com o prefixo obrigatório, o caso de prosa (`@covers porque ...`)
+		// fecha pela mesma regra, sem critério separado.
+		it( 'acusa alvo que não é classe do plugin', () => {
+			const a = regra.check(
+				ctxArquivos( {
+					'features/narration/php/class-assets.php':
+						'<?php\nclass Post_Voice_Assets {}\n',
+					[ ARQ ]:
+						'<?php\n/**\n * @covers WP_REST_Request\n */\nclass X extends A {}\n',
+				} )
+			);
+			expect( a ).toHaveLength( 1 );
+		} );
+
+		// O caso que eu tinha deixado aberto: o token citado em prosa. O
+		// PHPUnit não ancora a anotação no início da linha (DocBlock.php:512),
+		// então para ele isto É um @covers, de valor "porque"; ele pega a
+		// primeira palavra e lança no job de cobertura. Aqui fecha pelo
+		// prefixo, sem precisar divergir do parser dele.
+		it( 'acusa @covers citado em prosa', () => {
+			const a = regra.check(
+				ctxCom(
+					'<?php\n/**\n * Este teste nao declara @covers porque exercita varias classes.\n */\nclass X extends A {}\n'
 				)
-			).toEqual( [] );
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toContain( 'covers-alvo-inexistente:porque' );
+		} );
+
+		it( '@coversNothing não é lido como alvo "Nothing"', () => {
+			const a = regra.check(
+				ctxCom(
+					'<?php\n/**\n * @coversNothing\n */\nclass X extends A {}\n'
+				)
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toContain( 'covers-nothing' );
 		} );
 
 		it( 'aceita alvo Post_Voice_ que existe', () => {
