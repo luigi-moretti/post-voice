@@ -75,6 +75,120 @@ describe( 'run', () => {
 	// `doctor` passa a exigir entrada num registro de seções, espelhado nas
 	// duas direções, exatamente como já vale para as regras. `review-manual`
 	// segue literal de verdade: quem enforça é gente.
+	// Achado da revisão final da branch: `status` nunca era lido, então
+	// `proposta`, `aceita`, `revogada` e `superada-por-0016` bloqueavam
+	// identicamente. Medido: marcar a ADR-0011 como revogada e zerar os
+	// desvios dela deixava 2 problemas de pé — a decisão estava formalmente
+	// aposentada e o gate não tomava conhecimento. A única saída era apagar o
+	// `enforced_by` ou a regra, e as duas apagam o rastro histórico que a
+	// ADR-0001 existe para preservar.
+	describe( 'status decide se a ADR enforça', () => {
+		const comRegra = ( status ) => ( {
+			adrs: [ adr( { status } ) ],
+			registry: {
+				'feature-deps': regra( 'feature-deps', '0005', [
+					acharam( 'features/a/x.ts → b/y' ),
+				] ),
+			},
+			ctx,
+		} );
+
+		it( 'aceita bloqueia', () => {
+			const out = run( comRegra( 'aceita' ) );
+			expect( out.problems ).toHaveLength( 1 );
+		} );
+
+		it( 'aceita-com-desvio bloqueia', () => {
+			const out = run( comRegra( 'aceita-com-desvio' ) );
+			expect( out.problems ).toHaveLength( 1 );
+		} );
+
+		it( 'proposta não bloqueia: a decisão ainda está em discussão', () => {
+			const out = run( comRegra( 'proposta' ) );
+			expect( out.problems ).toEqual( [] );
+		} );
+
+		// A violação achada pela regra não é reportada. A regra em si vira
+		// órfã, que é outro problema e tem teste próprio logo abaixo — por
+		// isso a asserção filtra em vez de exigir zero.
+		const violacoes = ( out ) =>
+			out.problems.filter( ( p ) => ! /órfã/.test( p.message ) );
+
+		it( 'revogada não bloqueia', () => {
+			expect( violacoes( run( comRegra( 'revogada' ) ) ) ).toEqual( [] );
+		} );
+
+		it( 'superada-por-NNNN não bloqueia', () => {
+			expect(
+				violacoes( run( comRegra( 'superada-por-0016' ) ) )
+			).toEqual( [] );
+		} );
+
+		// Uma `proposta` pode ser escrita antes da regra existir. Isso é aviso,
+		// não reprovação: reprovar forçaria a decisão pela porta dos fundos.
+		it( 'proposta que nomeia regra inexistente avisa, não reprova', () => {
+			const out = run( {
+				adrs: [ adr( { status: 'proposta' } ) ],
+				registry: {},
+				ctx,
+			} );
+			expect( out.problems ).toEqual( [] );
+			expect( out.warnings.length ).toBeGreaterThan( 0 );
+		} );
+
+		// A regra de uma proposta em voo não é órfã: ela existe porque a ADR
+		// que está sendo escrita a pede.
+		it( 'a regra de uma proposta não é órfã', () => {
+			const out = run( {
+				adrs: [ adr( { status: 'proposta' } ) ],
+				registry: { 'feature-deps': regra( 'feature-deps', '0005' ) },
+				ctx,
+			} );
+			expect( out.problems ).toEqual( [] );
+		} );
+
+		// Já a de uma revogada é: ninguém a executa mais, e mantê-la é código
+		// morto. Apagar a regra é o passo seguinte da supersessão; o porquê
+		// histórico fica no texto da ADR, que não se reescreve.
+		it( 'a regra de uma revogada aparece como órfã, para ser apagada', () => {
+			const out = run( {
+				adrs: [ adr( { status: 'revogada' } ) ],
+				registry: { 'feature-deps': regra( 'feature-deps', '0005' ) },
+				ctx,
+			} );
+			expect( out.problems ).toHaveLength( 1 );
+			expect( out.problems[ 0 ].message ).toMatch( /órfã/ );
+		} );
+
+		// Uma revogada pode ter a regra já apagada: exigir que exista forçaria
+		// a manter código morto para sempre.
+		it( 'revogada não exige que a regra ainda exista', () => {
+			const out = run( {
+				adrs: [ adr( { status: 'revogada' } ) ],
+				registry: {},
+				ctx,
+			} );
+			expect( out.problems ).toEqual( [] );
+		} );
+
+		it( 'desvios numa ADR que não enforça são inertes, e o aviso diz isso', () => {
+			const out = run( {
+				adrs: [
+					adr( {
+						status: 'revogada',
+						desvios: [ 'features/a/x.ts → b/y' ],
+					} ),
+				],
+				registry: {},
+				ctx,
+			} );
+			expect( out.problems ).toEqual( [] );
+			expect(
+				out.warnings.some( ( w ) => /inerte/.test( w.message ) )
+			).toBe( true );
+		} );
+	} );
+
 	describe( 'doctor como enforced_by verificável', () => {
 		it( 'acusa ADR que declara doctor sem seção declarada', () => {
 			const out = run( {

@@ -179,6 +179,14 @@ a fonte é a ADR-0001, e se as duas divergirem, ela vence.
 | `Contexto`, `Decisão`, `Consequências`, `Alternativas rejeitadas` | Ninguém, nunca. Mudou de ideia → escreva uma ADR **nova**, e mude o `status` da antiga para `superada-por-NNNN` (o `NNNN` da nova). |
 | `status`, `desvios` | Qualquer PR — são campos vivos, e existem justamente para refletir a realidade sem reescrever a decisão (ver seção 6). |
 
+Ao mudar o status para `revogada` ou `superada-por-NNNN`, a ADR para de
+enforçar: as violações dela deixam de reprovar, e o `desvios:` dela vira
+inerte (o `lint:arch` avisa se sobrou algum listado). A regra que ela nomeava
+passa a aparecer como **órfã** — esse é o sinal de que o passo seguinte é
+apagar a regra, ou apontá-la para a ADR nova mudando o `adr:` dela. O porquê
+histórico não se perde: fica no texto da ADR antiga, que continua versionado e
+não se reescreve.
+
 Reescrever o corpo de uma ADR existente para "atualizar" uma decisão é o
 próprio problema que este sistema existe para evitar — apaga o porquê
 histórico. Se a dúvida é "isto é uma correção de erro de digitação ou uma

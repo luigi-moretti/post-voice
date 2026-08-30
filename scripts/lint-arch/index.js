@@ -26,6 +26,25 @@ const LITERAIS = new Set( [ 'review-manual', 'doctor' ] );
 // vale entre as ADRs e o registro de regras.
 const DOCTOR = 'doctor';
 
+// `status` decide se a ADR enforça. Antes o campo não era lido em lugar
+// nenhum: `proposta`, `aceita`, `revogada` e `superada-por-0016` bloqueavam
+// identicamente, e a ADR-0001 afirmava — falsamente — que "o lint:arch já
+// exige que reflita a realidade". Medido: marcar uma ADR como revogada e
+// zerar os desvios dela deixava os problemas dela de pé.
+//
+// A consequência prática era não existir caminho para aposentar uma regra. A
+// supersessão descrita na ADR-0001 e na skill manda mudar o status e escrever
+// uma ADR nova; com o status inerte, a única saída era apagar o `enforced_by`
+// ou a regra — e as duas apagam o rastro histórico que este sistema existe
+// para preservar.
+const ENFORCAM = new Set( [ 'aceita', 'aceita-com-desvio' ] );
+const enforca = ( adr ) => ENFORCAM.has( adr.status );
+
+// `proposta` é decisão ainda em discussão: não bloqueia, porque bloquear a CI
+// com ela forçaria a decisão pela porta dos fundos. Mas a regra que ela nomeia
+// não é órfã — existe porque a ADR em escrita a pede.
+const emVoo = ( adr ) => adr.status === 'proposta';
+
 /**
  * @param {Object}   entrada
  * @param {Object[]} entrada.adrs
@@ -33,9 +52,11 @@ const DOCTOR = 'doctor';
  * @param {Object}   entrada.ctx
  * @param {Object}   [entrada.doctorChecks] mapa id da ADR → seção do doctor
  *                                          que cobre a decisão. O CLI passa o registro real de `health.js`.
+ * @param {string}   [entrada.readme]       conteúdo de docs/adr/README.md. Vazio
+ *                                          desliga a checagem da tabela — é o default dos testes, que injetam ctx falso e não têm índice para conferir.
  * @return {{ problems: Object[], warnings: Object[] }} achados
  */
-function run( { adrs, registry, ctx, doctorChecks = {} } ) {
+function run( { adrs, registry, ctx, doctorChecks = {}, readme = '' } ) {
 	const problems = [];
 	const warnings = [];
 	const declaradas = new Set();
@@ -53,7 +74,26 @@ function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 			if ( LITERAIS.has( id ) ) {
 				continue;
 			}
-			declaradas.add( id );
+			// Revogada e superada NÃO registram: a regra delas passa a
+			// aparecer como órfã, que é o sinal para apagá-la. O porquê
+			// histórico fica no texto da ADR, que não se reescreve.
+			if ( enforca( adr ) || emVoo( adr ) ) {
+				declaradas.add( id );
+			}
+			if ( ! enforca( adr ) ) {
+				// Exigir que a regra ainda exista numa ADR aposentada
+				// obrigaria a manter código morto para sempre. Numa proposta,
+				// a regra pode simplesmente ainda não ter sido escrita: isso
+				// é aviso, não reprovação.
+				if ( emVoo( adr ) && ! registry[ id ] ) {
+					warnings.push( {
+						adr: adr.id,
+						rule: id,
+						message: `ADR-${ adr.id } está como proposta e declara enforced_by: ${ id }, que ainda não existe em scripts/lint-arch/rules/. Enquanto o status for proposta isso não reprova, mas aceitar a ADR sem a regra deixaria a decisão sem gate.`,
+					} );
+				}
+				continue;
+			}
 			if ( ! registry[ id ] ) {
 				problems.push( {
 					adr: adr.id,
@@ -73,7 +113,7 @@ function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 	// Espelho do `doctor` nas duas direções, como o das regras logo abaixo.
 	const pedemDoctor = new Set(
 		adrs
-			.filter( ( a ) => a.enforcedBy.includes( DOCTOR ) )
+			.filter( ( a ) => enforca( a ) && a.enforcedBy.includes( DOCTOR ) )
 			.map( ( a ) => a.id )
 	);
 	for ( const adrId of pedemDoctor ) {
@@ -105,6 +145,18 @@ function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 	}
 
 	for ( const adr of adrs ) {
+		if ( ! enforca( adr ) ) {
+			// Desvios numa ADR que não enforça não congelam nada: dizer isso
+			// em voz alta evita que alguém leia a lista como dívida viva.
+			if ( adr.desvios.length ) {
+				warnings.push( {
+					adr: adr.id,
+					message: `ADR-${ adr.id } tem status "${ adr.status }" e não enforça, mas lista ${ adr.desvios.length } desvio(s) — são inertes. Remova-os de ${ adr.file } ou reveja o status.`,
+				} );
+			}
+			continue;
+		}
+
 		// Agrupado por ADR, e não por regra: uma ADR com duas regras tem uma única
 		// lista de desvios, e comparar por regra faria uma acusar de "dívida
 		// quitada" o desvio que pertence à outra.
@@ -155,6 +207,18 @@ function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 		}
 	}
 
+	// A tabela do README duplica `status` e `enforced_by`, e isso precisa
+	// REPROVAR, não só aparecer no relatório: dava para mudar o front-matter e
+	// deixar a tabela mentindo com o lint:arch em 0. `require` aqui dentro, e
+	// não no topo, pela mesma razão documentada lá em cima: `run` tem de
+	// continuar importável sem carregar o que os testes não injetam.
+	if ( readme ) {
+		const { checkIndexTable } = require( './health' );
+		for ( const p of checkIndexTable( adrs, readme ) ) {
+			problems.push( { message: p.message } );
+		}
+	}
+
 	return { problems, warnings };
 }
 
@@ -192,12 +256,24 @@ if ( require.main === module ) {
 	// --report: não sai não-zero. É como `npm run doctor` consome o linter.
 	const reportOnly = process.argv.includes( '--report' );
 	const adrs = loadAdrs( path.join( root, 'docs/adr' ) );
+	const fs = require( 'node:fs' );
 	const { DOCTOR_CHECKS } = require( './health' );
+	let readme = '';
+	try {
+		readme = fs.readFileSync(
+			path.join( root, 'docs/adr/README.md' ),
+			'utf8'
+		);
+	} catch {
+		// Índice ausente já é reportado pelo doctor; aqui a falta dele só
+		// desliga a checagem da tabela, em vez de derrubar o lint inteiro.
+	}
 	const resultado = run( {
 		adrs,
 		registry,
 		ctx: createContext( { root } ),
 		doctorChecks: DOCTOR_CHECKS,
+		readme,
 	} );
 	process.stdout.write( format( resultado ) + '\n' );
 	process.exit( ! reportOnly && resultado.problems.length ? 1 : 0 );

@@ -230,6 +230,62 @@ function checkIndex( adrs, readme ) {
 		} ) );
 }
 
+// A tabela do README duplica `status` e `enforced_by` das ADRs. `checkIndex`
+// confere só que a ADR APARECE ali; as colunas em si não eram conferidas por
+// ninguém, então mudar o front-matter deixava a tabela mentindo com tudo
+// verde. Duplicação sem checagem é a deriva que este mecanismo existe para
+// impedir — e aqui ela estava dentro do próprio mecanismo.
+//
+// Ausência continua sendo assunto de `checkIndex`: aqui só se confere a linha
+// que existe, para que as duas checagens não reportem o mesmo defeito duas
+// vezes.
+const LINHA_TABELA_RE =
+	/^\|\s*\[(\d{4})\]\([^)]*\)\s*\|([^|]*)\|([^|]*)\|([^|]*)\|\s*$/gm;
+
+/**
+ * @param {Object[]} adrs
+ * @param {string}   readme conteúdo de docs/adr/README.md
+ * @return {Object[]} problemas
+ */
+function checkIndexTable( adrs, readme ) {
+	const porId = new Map( adrs.map( ( a ) => [ a.id, a ] ) );
+	const problemas = [];
+	LINHA_TABELA_RE.lastIndex = 0;
+	let m;
+	while ( ( m = LINHA_TABELA_RE.exec( readme ) ) !== null ) {
+		const [ , id, , statusCol, defendidaCol ] = m;
+		const adr = porId.get( id );
+		if ( ! adr ) {
+			problemas.push( {
+				message: `docs/adr/README.md lista uma ADR-${ id } que não existe em docs/adr/.`,
+			} );
+			continue;
+		}
+		const status = statusCol.trim();
+		if ( status !== adr.status ) {
+			problemas.push( {
+				message: `docs/adr/README.md diz que a ADR-${ id } tem status "${ status }", mas o front-matter de ${ adr.file } diz "${ adr.status }".`,
+			} );
+		}
+		// As regras aparecem entre crases na coluna; a comparação é da lista
+		// inteira e na ordem do front-matter, para que uma segunda regra
+		// omitida na tabela não passe.
+		const naTabela = ( defendidaCol.match( /`([^`]+)`/g ) || [] ).map(
+			( t ) => t.replace( /`/g, '' )
+		);
+		if ( naTabela.join( ', ' ) !== adr.enforcedBy.join( ', ' ) ) {
+			problemas.push( {
+				message: `docs/adr/README.md diz que a ADR-${ id } é defendida por [${ naTabela.join(
+					', '
+				) }], mas o enforced_by de ${
+					adr.file
+				} diz [${ adr.enforcedBy.join( ', ' ) }].`,
+			} );
+		}
+	}
+	return problemas;
+}
+
 function checkAdrHygiene( adrs, files ) {
 	const problemas = [];
 	for ( const adr of adrs ) {
@@ -352,6 +408,7 @@ module.exports = {
 	checkAdrCitations,
 	checkRulePaths,
 	checkIndex,
+	checkIndexTable,
 	checkAdrHygiene,
 	globToRegExp,
 	parseRulePaths,

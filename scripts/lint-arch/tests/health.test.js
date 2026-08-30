@@ -3,6 +3,7 @@ const {
 	checkAdrCitations,
 	checkRulePaths,
 	checkIndex,
+	checkIndexTable,
 	checkAdrHygiene,
 	globToRegExp,
 	parseRulePaths,
@@ -474,5 +475,68 @@ describe( 'DOCTOR_CHECKS', () => {
 			'0001',
 			'0012',
 		] );
+	} );
+} );
+
+// Achado da revisão final da branch: a tabela do README duplica `status` e
+// `enforced_by` das 15 ADRs, e `checkIndex` só conferia que o NOME DO ARQUIVO
+// aparecia no texto. Medido: trocar o status da ADR-0011 no front-matter
+// deixava a tabela mentindo com `lint:arch` em 0 e o doctor em "nada a
+// relatar". Duplicação sem checagem é exatamente a deriva que este mecanismo
+// existe para impedir.
+describe( 'checkIndexTable', () => {
+	const adr = ( over = {} ) => ( {
+		id: '0011',
+		status: 'aceita-com-desvio',
+		enforcedBy: [ 'no-untyped-editor-code' ],
+		file: 'docs/adr/0011-editor-em-typescript.md',
+		...over,
+	} );
+	const linha = ( status, defendida ) =>
+		`| [0011](0011-editor-em-typescript.md) | Editor em TypeScript | ${ status } | ${ defendida } |\n`;
+
+	it( 'aceita a linha que bate com o front-matter', () => {
+		expect(
+			checkIndexTable(
+				[ adr() ],
+				linha( 'aceita-com-desvio', '`no-untyped-editor-code`' )
+			)
+		).toEqual( [] );
+	} );
+
+	it( 'acusa status divergente', () => {
+		const p = checkIndexTable(
+			[ adr() ],
+			linha( 'aceita', '`no-untyped-editor-code`' )
+		);
+		expect( p ).toHaveLength( 1 );
+		expect( p[ 0 ].message ).toMatch( /status/ );
+	} );
+
+	it( 'acusa enforced_by divergente', () => {
+		const p = checkIndexTable(
+			[ adr() ],
+			linha( 'aceita-com-desvio', '`outra-regra`' )
+		);
+		expect( p ).toHaveLength( 1 );
+		expect( p[ 0 ].message ).toMatch( /defendida por|enforced_by/i );
+	} );
+
+	it( 'confere a lista inteira, não só a primeira regra', () => {
+		const p = checkIndexTable(
+			[
+				adr( {
+					enforcedBy: [ 'feature-layout', 'shared-two-consumers' ],
+				} ),
+			],
+			linha( 'aceita-com-desvio', '`feature-layout`' )
+		);
+		expect( p ).toHaveLength( 1 );
+	} );
+
+	it( 'ignora ADR ausente da tabela: quem cobra ausência é checkIndex', () => {
+		expect( checkIndexTable( [ adr() ], '| # | Título |\n' ) ).toEqual(
+			[]
+		);
 	} );
 } );

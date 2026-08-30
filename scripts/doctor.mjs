@@ -70,7 +70,17 @@ const adrIds = new Set( adrs.map( ( a ) => a.id ) );
 // 1. lint:arch em modo relatório: os desvios listados aparecem como dívida.
 const lint = tolerante(
 	'lint:arch não rodou',
-	() => run( { adrs, registry: regras, ctx } ),
+	// Os mesmos parâmetros que o CLI do lint:arch passa. Sem eles o relatório
+	// mostraria MENOS que o gate — e um doctor que relata menos do que reprova
+	// é pior que um doctor que não relata: ensina a confiar no silêncio dele.
+	() =>
+		run( {
+			adrs,
+			registry: regras,
+			ctx,
+			doctorChecks: health.DOCTOR_CHECKS,
+			readme: ler( 'docs/adr/README.md' ),
+		} ),
 	null
 );
 secao(
