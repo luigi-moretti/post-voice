@@ -45,6 +45,29 @@ describe( 'covers-annotation', () => {
 	// `"@covers " is invalid`. Ou seja, não é falha silenciosa — mas quem paga
 	// é o job de cobertura, o mais caro da CI, com uma mensagem que não diz o
 	// que fazer. `npm run test:php` sem cobertura passa verde (medido).
+	// Achado da revisão final da branch: remover o `docblock = null` do ramo de
+	// pontuação sobrevivia aos 496 testes, embora o ramo seja alcançável. É a
+	// ÚNICA divergência deliberada em relação ao lexer do PHP nesta regra, e
+	// era justamente a que nenhum teste fixava.
+	//
+	// Atenção ao que este teste fixa: o PHP ANEXA o docblock através do `;`
+	// — perguntei a ele (`ReflectionClass::getDocComment` devolve o docblock
+	// nesse arranjo), e o PHPUnit lê pelo mesmo caminho. A regra é estrita de
+	// propósito aqui, e o cabeçalho de `covers-annotation.js` registra a
+	// ratificação: o conjunto de separadores que ela aceita é subconjunto
+	// estrito do que o PHP aceita, então ela erra ACUSANDO, nunca absolvendo.
+	// Para um gate é a direção certa — um falso positivo aparece e se
+	// conserta, um falso negativo mede cobertura errada em silêncio.
+	it( 'pontuação entre o docblock e a classe quebra a adjacência', () => {
+		const a = regra.check(
+			ctxCom(
+				'<?php\n/** @covers Post_Voice_Assets */\n;\nclass Test_B extends A {}\n'
+			)
+		);
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toContain( 'sem-covers:Test_B' );
+	} );
+
 	describe( 'o @covers precisa de alvo', () => {
 		it( 'acusa @covers sem alvo nenhum', () => {
 			const a = regra.check(

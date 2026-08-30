@@ -94,6 +94,31 @@ describe( 'shared-two-consumers', () => {
 		expect( a[ 0 ].message ).toMatch( /1 feature/ );
 	} );
 
+	// Achado da revisão final da branch: trocar `features.add(
+	// file.split( '/' )[ 1 ] )` por `features.add( file )` sobrevivia aos 496
+	// testes — nenhum deles decidia se "dois consumidores" conta ARQUIVOS ou
+	// FEATURES. Quem decide é a ADR-0004: "compartilhar código entre
+	// features". Dois arquivos da mesma feature não justificam shared/, porque
+	// o código pertence àquela feature; contá-los como dois deixaria qualquer
+	// utilitário de uso local migrar para shared/ sem nunca ter tido um
+	// segundo consumidor de verdade.
+	it( 'dois arquivos da MESMA feature contam como um consumidor', () => {
+		const ctx = comArquivos(
+			[
+				'shared/php/class-settings-page.php',
+				'features/a/php/class-um.php',
+				'features/a/php/class-dois.php',
+			],
+			( f ) =>
+				f.startsWith( 'shared/' )
+					? '<?php\nclass Post_Voice_Settings_Page {}\n'
+					: '<?php\nPost_Voice_Settings_Page::MENU_SLUG;\n'
+		);
+		const a = shared.check( ctx );
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].message ).toMatch( /1 feature/ );
+	} );
+
 	it( 'não conta post-voice.php como feature consumidora', () => {
 		// A raiz carrega e registra tudo; contá-la faria qualquer módulo de
 		// shared/ parecer ter um consumidor a mais do que tem.
