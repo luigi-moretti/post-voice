@@ -73,16 +73,32 @@ describe( 'adr-index-table', () => {
 		expect( umaCoisa[ 0 ].message ).not.toBe( outraCoisa[ 0 ].message );
 	} );
 
-	it( 'cala quando o índice não está na árvore', () => {
-		expect(
-			regra.check(
-				createContext( {
-					files: [],
-					read: () => '',
-					adrs: [ adr() ],
-				} )
-			)
-		).toEqual( [] );
+	// Este teste já congelou o silêncio duas vezes nesta branch, com dois
+	// alvos diferentes. Índice ausente apaga a tabela INTEIRA, e quem cobra a
+	// ausência é o `checkIndex` do doctor, que não bloqueia — então calar aqui
+	// é a mesma lacuna que o `doctor.mjs` ausente tinha no outro espelho.
+	it( 'ACUSA quando o índice não está na árvore', () => {
+		const a = regra.check(
+			createContext( { files: [], read: () => '', adrs: [ adr() ] } )
+		);
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toBe( `${ INDICE } → indice-ausente` );
+	} );
+
+	it( 'ACUSA quando o índice está rastreado mas ilegível, sem estourar', () => {
+		const a = regra.check(
+			createContext( {
+				files: [ INDICE ],
+				read: () => {
+					throw Object.assign( new Error( 'ENOENT' ), {
+						code: 'ENOENT',
+					} );
+				},
+				adrs: [ adr() ],
+			} )
+		);
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toBe( `${ INDICE } → indice-ausente` );
 	} );
 
 	// Este teste já existiu ao contrário, congelando o silêncio como
@@ -96,11 +112,13 @@ describe( 'adr-index-table', () => {
 		expect( a[ 0 ].key ).toBe( `${ INDICE } → sem-adrs-no-contexto` );
 	} );
 
-	it( 'cala sem o índice na árvore, mesmo sem ADRs', () => {
-		expect(
-			regra.check(
-				createContext( { files: [], read: () => '', adrs: [] } )
-			)
-		).toEqual( [] );
+	it( 'com índice ausente E sem ADRs, reporta a ausência do índice', () => {
+		// A ausência do índice é o defeito mais externo: sem ele não há tabela
+		// para conferir, com ADRs ou sem.
+		const a = regra.check(
+			createContext( { files: [], read: () => '', adrs: [] } )
+		);
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toBe( `${ INDICE } → indice-ausente` );
 	} );
 } );

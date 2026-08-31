@@ -24,8 +24,32 @@ function check( ctx ) {
 	// Índice ausente não é problema desta regra — quem cobra ausência é o
 	// `checkIndex`, no doctor —, e ler um arquivo fora da árvore derrubaria o
 	// lint inteiro em vez de reportar.
-	if ( ! ctx.files.includes( INDICE ) ) {
-		return [];
+	// Arquivo ausente do disco: `ctx.read` estoura. Rastreado no git e sumido
+	// da árvore de trabalho é estado real (checkout parcial, `rm` sem `git
+	// rm`), e derrubar o lint inteiro com um stack trace de ENOENT é a pior
+	// forma de reportar isso.
+	let indice = null;
+	if ( ctx.files.includes( INDICE ) ) {
+		try {
+			indice = ctx.read( INDICE );
+		} catch {
+			indice = null;
+		}
+	}
+	if ( indice === null ) {
+		// Ausência é assunto do `checkIndex`, no doctor — MAS o doctor não
+		// bloqueia, e o índice sumido apaga a tabela inteira em vez de uma
+		// linha. É a mesma lacuna que o `doctor.mjs` ausente tem no espelho do
+		// `enforced_by: doctor`, e recebe o mesmo tratamento: quem não
+		// consegue conferir diz isso.
+		return [
+			{
+				key: `${ INDICE } → indice-ausente`,
+				file: INDICE,
+				line: 1,
+				message: `${ INDICE } não está legível na árvore, então a tabela do índice não foi conferida contra o front-matter das ADRs (ADR-0001)`,
+			},
+		];
 	}
 	// Índice presente e `ctx.adrs` vazio é FIAÇÃO QUEBRADA, não estado limpo:
 	// significa que quem montou o contexto não passou as ADRs, e a regra não
@@ -46,7 +70,7 @@ function check( ctx ) {
 			},
 		];
 	}
-	return checkIndexTable( ctx.adrs, ctx.read( INDICE ) ).map( ( p ) => ( {
+	return checkIndexTable( ctx.adrs, indice ).map( ( p ) => ( {
 		// A chave carrega o id da ADR e a coluna divergente, e não a mensagem
 		// inteira: a mensagem cita os dois valores observados e mudaria a cada
 		// edição, o que invalidaria o `desvios:` sozinho.

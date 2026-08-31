@@ -274,15 +274,31 @@ describe( 'run', () => {
 			);
 		} );
 
-		// Achado II3: apagar a seção reprovava, comentar não — e a prosa
-		// prometia as duas.
-		it( 'acusa a seção COMENTADA, não só a apagada', () => {
+		// Achado II3, fechado em duas etapas. Primeiro apagar reprovava e
+		// comentar não; depois a âncora de linha pegou o `//`, mas `/* */`,
+		// template e string ainda passavam. A busca virou o padrão de duas
+		// fontes: a CHAMADA é reconhecida na cópia branqueada, o TÍTULO é lido
+		// do cru no mesmo offset.
+		it.each( [
+			[ 'comentada com //', "// secao( 'fronteira Jest/E2E', l );\n" ],
+			[
+				'dentro de /* */',
+				"/*\nsecao( 'fronteira Jest/E2E', l );\n*/\n",
+			],
+			[
+				'dentro de template',
+				"const x = `\nsecao( 'fronteira Jest/E2E', l );\n`;\n",
+			],
+			[
+				'dentro de string',
+				'const x = "secao( \'fronteira Jest/E2E\', l );";\n',
+			],
+			[ 'ausente de vez', "secao( 'outra', l );\n" ],
+		] )( 'não aceita a seção %s', ( _, fonte ) => {
 			const out = run( {
 				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
 				registry: {},
-				ctx: comDoctorMjs(
-					"// secao( 'fronteira Jest/E2E', linhas );\n"
-				),
+				ctx: comDoctorMjs( fonte ),
 				doctorChecks: {
 					'0005': 'seção "fronteira Jest/E2E": contagem',
 				},
@@ -291,45 +307,14 @@ describe( 'run', () => {
 			expect( out.problems[ 0 ].message ).toMatch( /não a imprime/ );
 		} );
 
-		// Achado M7 da re-review: o espelho conferia só a DECLARAÇÃO.
-		// `DOCTOR_CHECKS` é um mapa escrito à mão, e apagar a seção
-		// correspondente do `doctor.mjs` deixava o gate em 0 — o mesmo defeito
-		// que a ADR-0012 sofreu por semanas, sobrevivendo dentro da correção
-		// dele. A busca é estática, pelo literal do título no fonte.
-		it( 'acusa quando a seção nomeada não é impressa pelo doctor', () => {
+		it( 'aceita o título com contagem, pelo prefixo antes do parêntese', () => {
 			const out = run( {
 				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
 				registry: {},
-				ctx: comDoctorMjs( "secao( 'outra coisa', [] );\n" ),
-				doctorChecks: {
-					'0005': 'seção "fronteira Jest/E2E": contagem',
-				},
+				ctx: comDoctorMjs( 'secao( `ADRs (${ n })`, l );\n' ),
+				doctorChecks: { '0005': 'seção "ADRs": contagem' },
 			} );
-			expect( out.problems ).toHaveLength( 1 );
-			expect( out.problems[ 0 ].message ).toMatch(
-				/não a imprime|fronteira Jest\/E2E/
-			);
-		} );
-
-		it( 'aceita a seção impressa, inclusive quebrando linha ou em template', () => {
-			for ( const fonte of [
-				"secao( 'fronteira Jest/E2E', linhas );\n",
-				"secao(\n\t'fronteira Jest/E2E',\n\tlinhas\n);\n",
-				'secao( `fronteira Jest/E2E (${ n })`, linhas );\n',
-			] ) {
-				const out = run( {
-					adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
-					registry: {},
-					ctx: comDoctorMjs( fonte ),
-					doctorChecks: {
-						'0005': 'seção "fronteira Jest/E2E": contagem',
-					},
-				} );
-				expect( { fonte, problems: out.problems } ).toEqual( {
-					fonte,
-					problems: [],
-				} );
-			}
+			expect( out.problems ).toEqual( [] );
 		} );
 
 		it( 'acusa seção órfã: declarada e nenhuma ADR a pede', () => {

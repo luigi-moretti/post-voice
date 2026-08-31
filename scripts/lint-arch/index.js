@@ -27,6 +27,49 @@ const LITERAIS = new Set( [ 'review-manual', 'doctor' ] );
 const DOCTOR = 'doctor';
 const DOCTOR_SOURCE = 'scripts/doctor.mjs';
 
+/**
+ * Os títulos das seções que o relatório IMPRIME de fato.
+ *
+ * Padrão de duas fontes, como nas regras: a ESTRUTURA — onde há uma chamada a
+ * `secao(` de verdade — sai da cópia com comentário e corpo de string
+ * branqueados; o TÍTULO sai do cru, no mesmo offset, porque é justamente o
+ * corpo da string que o branqueamento apaga.
+ *
+ * Uma versão anterior buscava o título direto no cru, e por isso um
+ * `secao( 'x' )` dentro de `/* ... *\/`, de template ou de string satisfazia o
+ * gate enquanto a seção não era impressa: apagar a chamada reprovava, comentar
+ * não.
+ *
+ * @param {string} raw conteúdo de scripts/doctor.mjs
+ * @return {Set<string>} títulos impressos
+ */
+function secoesDe( raw ) {
+	const { stripJsNoise } = require( './context' );
+	const codigo = stripJsNoise( raw );
+	const titulos = new Set();
+	for ( const m of codigo.matchAll( /^[ \t]*secao\(\s*/gm ) ) {
+		const abre = m.index + m[ 0 ].length;
+		const aspa = raw[ abre ];
+		if ( aspa !== "'" && aspa !== '"' && aspa !== '`' ) {
+			continue;
+		}
+		// O título vai até a aspa que fecha, no CRU. Quando ele carrega
+		// contagem (`\`ADRs (${ n })\``), o `DOCTOR_CHECKS` nomeia só o
+		// prefixo, então o prefixo também entra.
+		const fim = raw.indexOf( aspa, abre + 1 );
+		if ( fim === -1 ) {
+			continue;
+		}
+		const titulo = raw.slice( abre + 1, fim );
+		titulos.add( titulo );
+		const corte = titulo.indexOf( ' (' );
+		if ( corte > 0 ) {
+			titulos.add( titulo.slice( 0, corte ) );
+		}
+	}
+	return titulos;
+}
+
 // `status` decide se a ADR enforça. Antes o campo não era lido em lugar
 // nenhum: `proposta`, `aceita`, `revogada` e `superada-por-0016` bloqueavam
 // identicamente, e a ADR-0001 afirmava — falsamente — que "o lint:arch já
@@ -148,6 +191,7 @@ function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 		const fonte = ctx.files.includes( DOCTOR_SOURCE )
 			? ctx.read( DOCTOR_SOURCE )
 			: null;
+		const titulos = fonte === null ? new Set() : secoesDe( fonte );
 		if ( fonte === null ) {
 			problems.push( {
 				rule: DOCTOR,
@@ -163,18 +207,7 @@ function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 		) ) {
 			for ( const m of descricao.matchAll( /"([^"]+)"/g ) ) {
 				const nome = m[ 1 ];
-				// `^[ \t]*` com a flag `m`: a chamada tem de começar a linha.
-				// Sem isso, prefixar `// ` na chamada satisfazia a busca e a
-				// seção deixava de ser impressa com o gate verde — apagar
-				// reprovava, comentar não, e a prosa prometia as duas.
-				const literal = new RegExp(
-					`^[ \t]*secao\\(\\s*['\`]${ nome.replace(
-						/[.*+?^${}()|[\]\\]/g,
-						'\\$&'
-					) }`,
-					'm'
-				);
-				if ( ! literal.test( fonte ) ) {
+				if ( ! titulos.has( nome ) ) {
 					problems.push( {
 						adr: adrId,
 						rule: DOCTOR,
