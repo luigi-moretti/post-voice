@@ -85,9 +85,22 @@ describe( 'adr-index-table', () => {
 		).toEqual( [] );
 	} );
 
-	it( 'cala com ctx sem ADRs — é o ctx sintético dos testes de outras regras', () => {
+	// Este teste já existiu ao contrário, congelando o silêncio como
+	// comportamento desejado. Medido: tirar `adrs` da chamada de
+	// `createContext` no CLI desligava o gate inteiro — exit 0, zero saída,
+	// regra não órfã, 531 testes verdes. Índice presente sem ADRs é fiação
+	// quebrada, e um gate que não consegue conferir tem de dizer isso.
+	it( 'ACUSA com o índice presente e nenhuma ADR: é fiação quebrada', () => {
+		const a = regra.check( ctxCom( linha( 'revogada', '`x`' ), [] ) );
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].key ).toBe( `${ INDICE } → sem-adrs-no-contexto` );
+	} );
+
+	it( 'cala sem o índice na árvore, mesmo sem ADRs', () => {
 		expect(
-			regra.check( ctxCom( linha( 'revogada', '`x`' ), [] ) )
+			regra.check(
+				createContext( { files: [], read: () => '', adrs: [] } )
+			)
 		).toEqual( [] );
 	} );
 } );

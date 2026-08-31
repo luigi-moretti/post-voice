@@ -21,10 +21,30 @@ const INDICE = 'docs/adr/README.md';
  * @return {Object[]} achados
  */
 function check( ctx ) {
-	// Índice ausente não é problema desta regra, e ler um arquivo fora da
-	// árvore derrubaria o lint inteiro em vez de reportar.
-	if ( ! ctx.files.includes( INDICE ) || ! ctx.adrs.length ) {
+	// Índice ausente não é problema desta regra — quem cobra ausência é o
+	// `checkIndex`, no doctor —, e ler um arquivo fora da árvore derrubaria o
+	// lint inteiro em vez de reportar.
+	if ( ! ctx.files.includes( INDICE ) ) {
 		return [];
+	}
+	// Índice presente e `ctx.adrs` vazio é FIAÇÃO QUEBRADA, não estado limpo:
+	// significa que quem montou o contexto não passou as ADRs, e a regra não
+	// consegue conferir nada. Calar aqui foi medido: tirar `adrs` da chamada de
+	// `createContext` no CLI desligava este gate inteiro em silêncio — exit 0,
+	// zero saída, regra não órfã, e os 531 testes verdes. É exatamente o
+	// defeito que a correção do `status` inerte fechou, reintroduzido pela
+	// correção que trouxe esta regra para dentro do espelho. Um gate que não
+	// consegue conferir tem de dizer isso, não sair 0.
+	if ( ! ctx.adrs.length ) {
+		return [
+			{
+				key: `${ INDICE } → sem-adrs-no-contexto`,
+				file: INDICE,
+				line: 1,
+				message:
+					'o índice existe mas o contexto não trouxe ADR nenhuma, então a tabela não foi conferida; quem monta o ctx tem de passar `adrs` a `createContext` (ADR-0001)',
+			},
+		];
 	}
 	return checkIndexTable( ctx.adrs, ctx.read( INDICE ) ).map( ( p ) => ( {
 		// A chave carrega o id da ADR e a coluna divergente, e não a mensagem
