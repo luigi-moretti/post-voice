@@ -282,9 +282,15 @@ function dividirArgumentos( args ) {
 /**
  * Confere o domínio de uma chamada já resolvida em `{ fn, args }`.
  *
+ * `observado` sai no `errado` e carrega o argumento CRU, com as aspas quando
+ * é literal. É o que separa dois domínios estrangeiros diferentes no mesmo
+ * arquivo — dois defeitos, e portanto duas chaves, porque uma linha de
+ * `desvios:` nunca pode absolver os dois de uma vez. O cru, e não o texto
+ * dentro das aspas, para que `'$d'` (literal) e `$d` (variável) não colidam.
+ *
  * @param {string} fn   o nome da função gettext
  * @param {string} args a chamada inteira, com os parênteses externos
- * @return {{ tipo: 'ausente'|'errado', mensagem: string }|null} null quando ok
+ * @return {{ tipo: 'ausente'|'errado', observado?: string, mensagem: string }|null} null quando ok
  */
 function avaliarDominio( fn, args ) {
 	const partes = dividirArgumentos( args );
@@ -299,9 +305,11 @@ function avaliarDominio( fn, args ) {
 	if ( textoDoLiteral( ultimo ) === DOMINIO ) {
 		return null;
 	}
+	const observado = ultimo.replace( /\s+/g, ' ' ).trim();
 	return {
 		tipo: 'errado',
-		mensagem: `${ fn }() não usa o text domain ${ DOMINIO_LITERAL } (ADR-0010)`,
+		observado,
+		mensagem: `${ fn }() usa ${ observado } em vez do text domain ${ DOMINIO_LITERAL } (ADR-0010)`,
 	};
 }
 
@@ -319,7 +327,11 @@ function check( ctx ) {
 				continue;
 			}
 			achados.push( {
-				key: `${ file } → ${ fn }-dominio-${ problema.tipo }`,
+				key: `${ file } → ${ fn }-dominio-${ problema.tipo }${
+					problema.observado === undefined
+						? ''
+						: `:${ problema.observado }`
+				}`,
 				file,
 				line: raw.slice( 0, index ).split( '\n' ).length,
 				message: problema.mensagem,

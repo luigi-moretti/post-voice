@@ -62,7 +62,7 @@ describe( 'i18n-text-domain', () => {
 		// `translate_with_gettext_context` como `translate`, produziria a
 		// chave errada — e, com a aridade errada junto, o tipo errado.
 		expect( a[ 0 ].key ).toBe(
-			`features/x/php/class-a.php → ${ fn }-dominio-errado`
+			`features/x/php/class-a.php → ${ fn }-dominio-errado:'outro'`
 		);
 	} );
 
@@ -82,6 +82,32 @@ describe( 'i18n-text-domain', () => {
 		expect( a ).toHaveLength( 1 );
 		expect( a[ 0 ].line ).toBe( 2 );
 		expect( a[ 0 ].message ).toMatch( /post-voice/ );
+	} );
+
+	it( 'dá chaves distintas a dois domínios estrangeiros diferentes', () => {
+		// Dois domínios errados são dois defeitos: uma chave só deixaria uma
+		// linha de `desvios:` absolver os dois. É a escolha que
+		// `rest-namespace` já faz ao pôr o namespace observado na chave.
+		const a = regra.check(
+			ctxCom(
+				"<?php\n__( 'A', 'outro-plugin' );\n__( 'B', 'wordpress' );\n"
+			)
+		);
+		expect( a ).toHaveLength( 2 );
+		expect( new Set( a.map( ( f ) => f.key ) ).size ).toBe( 2 );
+		expect( a[ 0 ].key ).toBe(
+			"features/x/php/class-a.php → __-dominio-errado:'outro-plugin'"
+		);
+	} );
+
+	it( 'separa o domínio literal da variável de mesmo texto', () => {
+		// A chave carrega o argumento CRU, com as aspas: `'$d'` é um domínio
+		// literal errado e `$d` é uma expressão, e colapsá-los na mesma chave
+		// absolveria os dois de uma vez.
+		const chaves = regra
+			.check( ctxCom( "<?php\n__( 'A', '$d' );\n__( 'B', $d );\n" ) )
+			.map( ( f ) => f.key );
+		expect( new Set( chaves ).size ).toBe( 2 );
 	} );
 
 	it( 'acusa domínio ausente', () => {
@@ -123,7 +149,7 @@ describe( 'i18n-text-domain', () => {
 		);
 		expect( a ).toHaveLength( 1 );
 		expect( a[ 0 ].key ).toBe(
-			'features/x/php/class-a.php → esc_html__-dominio-errado'
+			"features/x/php/class-a.php → esc_html__-dominio-errado:'outro'"
 		);
 	} );
 
@@ -134,7 +160,7 @@ describe( 'i18n-text-domain', () => {
 		const chaves = a.map( ( f ) => f.key );
 		expect( new Set( chaves ).size ).toBe( 2 );
 		expect( chaves ).toContain(
-			'features/x/php/class-a.php → __-dominio-errado'
+			"features/x/php/class-a.php → __-dominio-errado:'outro'"
 		);
 		expect( chaves ).toContain(
 			'features/x/php/class-a.php → __-dominio-ausente'
@@ -171,7 +197,7 @@ describe( 'i18n-text-domain', () => {
 			);
 			expect( a ).toHaveLength( 1 );
 			expect( a[ 0 ].key ).toBe(
-				'features/x/php/class-a.php → _x-dominio-errado'
+				"features/x/php/class-a.php → _x-dominio-errado:'outro'"
 			);
 		} );
 
@@ -309,7 +335,7 @@ describe( 'i18n-text-domain', () => {
 					achados: 1,
 				} );
 				expect( a[ 0 ].key ).toBe(
-					'features/x/php/class-a.php → translate-dominio-errado'
+					"features/x/php/class-a.php → translate-dominio-errado:'outro'"
 				);
 			}
 		} );
@@ -341,7 +367,9 @@ describe( 'i18n-text-domain', () => {
 					arg,
 					achados: 1,
 				} );
-				expect( a[ 0 ].key ).toMatch( /-dominio-errado$/ );
+				expect( a[ 0 ].key ).toBe(
+					`features/x/php/class-a.php → __-dominio-errado:${ arg }`
+				);
 			}
 		} );
 
@@ -357,7 +385,7 @@ describe( 'i18n-text-domain', () => {
 			expect( a ).toHaveLength( 1 );
 			expect( a[ 0 ].line ).toBe( 3 );
 			expect( a[ 0 ].key ).toBe(
-				'features/x/php/class-a.php → __-dominio-errado'
+				"features/x/php/class-a.php → __-dominio-errado:'outro'"
 			);
 		} );
 
@@ -400,7 +428,7 @@ describe( 'i18n-text-domain', () => {
 			expect( a ).toHaveLength( 1 );
 			expect( a[ 0 ].line ).toBe( 3 );
 			expect( a[ 0 ].key ).toBe(
-				'features/x/php/class-a.php → __-dominio-errado'
+				"features/x/php/class-a.php → __-dominio-errado:'outro'"
 			);
 			// `contarChamadas` é a terceira peça do FIX D, e a única sem rede
 			// própria: `check` já prova, com o mesmo vetor, que a chamada é

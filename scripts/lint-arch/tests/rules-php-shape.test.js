@@ -342,6 +342,22 @@ describe( 'rest-namespace', () => {
 		expect( a[ 0 ].message ).toMatch( /não resolve/ );
 	} );
 
+	it( 'dá chaves distintas a duas expressões dinâmicas diferentes', () => {
+		// Duas expressões que a regra não resolveu podem valer coisas
+		// diferentes — é o desconhecimento que a chave registra. Uma chave só
+		// deixaria uma linha de `desvios:` absolver as duas de uma vez.
+		const a = rest.check(
+			ctxCom(
+				'features/x/php/class-rest-api.php',
+				'<?php\nregister_rest_route( $ns_um, "/a", [] );\nregister_rest_route( $ns_dois, "/b", [] );\n'
+			)
+		);
+		expect( a ).toHaveLength( 2 );
+		expect( new Set( a.map( ( f ) => f.key ) ).size ).toBe( 2 );
+		expect( a[ 0 ].key ).toContain( '$ns_um' );
+		expect( a[ 1 ].key ).toContain( '$ns_dois' );
+	} );
+
 	it( 'não confunde um literal de string cujo conteúdo parece uma chamada', () => {
 		// Regressão: antes do fix, o texto dentro da string era lido como uma
 		// chamada de verdade e virava um achado de namespace-dinamico.

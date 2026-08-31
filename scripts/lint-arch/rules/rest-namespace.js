@@ -89,8 +89,19 @@ function check( ctx ) {
 			const arg = source.slice( inicio, fim ).trim();
 			const ns = resolver( arg, consts );
 			if ( ns === null ) {
+				// O `arg` entra na chave pelo mesmo motivo que o `ns` entra na
+				// do ramo de baixo, e NÃO pelo mesmo raciocínio: ali um valor
+				// conhecido e igual é um defeito só, e congelá-lo cobre todos
+				// os usos daquele namespace no arquivo. Aqui `$um` e `$dois`
+				// podem valer coisas diferentes — é justamente o
+				// desconhecimento que a chave registra —, e uma linha de
+				// `desvios:` que absolvesse os dois absolveria uma expressão
+				// que ninguém olhou.
 				achados.push( {
-					key: `${ file } → namespace-dinamico`,
+					key: `${ file } → namespace-dinamico:${ arg.replace(
+						/\s+/g,
+						' '
+					) }`,
 					file,
 					line,
 					message: `o namespace de register_rest_route não resolve estaticamente ("${ arg }"); use '${ NAMESPACE }' ou uma constante do mesmo arquivo (ADR-0007)`,

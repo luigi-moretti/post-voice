@@ -636,7 +636,7 @@ describe( 'heredoc / nowdoc', () => {
 		expect( achados ).toHaveLength( 1 );
 		expect( achados[ 0 ].line ).toBe( 5 );
 		expect( achados[ 0 ].key ).toBe(
-			`${ ARQUIVO_PROD } → __-dominio-errado`
+			`${ ARQUIVO_PROD } → __-dominio-errado:'outro'`
 		);
 	} );
 
