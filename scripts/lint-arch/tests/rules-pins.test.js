@@ -23,6 +23,93 @@ const com = ( over = {} ) => {
 	} );
 };
 
+// Achado CRÍTICO da revisão das correções: `source.indexOf( 'MODEL_BASE_URL' )`
+// ancorava na primeira ocorrência TEXTUAL, e `source` é cru. Um comentário
+// acima da declaração que nomeasse a constante, citasse a URL fixada entre
+// aspas e terminasse em `;` fazia a varredura parar dentro do comentário — a
+// declaração real, apontando para outro host, nunca era olhada. Medido: 0
+// achados. O pin protege de onde o navegador do autor baixa ~190 MB de modelo.
+describe( 'contract-pins: o pin é lido do CÓDIGO, não do texto', () => {
+	const BOM = MIRROR_URL;
+	const MAU = 'https://cdn.evil.example.com/pocket-tts/';
+	const ARQ = 'features/narration/editor/model-source.ts';
+
+	const comFonte = ( src ) =>
+		pins
+			.check( com( { [ ARQ ]: src } ) )
+			.filter( ( f ) => f.key.includes( 'model-base-url' ) );
+
+	it.each( [
+		[
+			'comentário de linha citando o nome, o pin e ";"',
+			`// MODEL_BASE_URL = '${ BOM }';\nexport const MODEL_BASE_URL = '${ MAU }';\n`,
+		],
+		[
+			'bloco /** */ citando o nome, o pin e ";"',
+			`/**\n * MODEL_BASE_URL = '${ BOM }';\n */\nexport const MODEL_BASE_URL = '${ MAU }';\n`,
+		],
+		[
+			'nome dentro de string antes da declaração',
+			`const doc = "MODEL_BASE_URL = '${ BOM }';";\nexport const MODEL_BASE_URL = '${ MAU }';\n`,
+		],
+		[
+			'comentário com ";" DENTRO da declaração',
+			`export const MODEL_BASE_URL =\n\t/* nota; aqui */ '${ MAU }';\n`,
+		],
+	] )( 'acusa o host errado apesar de %s', ( _, src ) => {
+		expect( comFonte( src ) ).toHaveLength( 1 );
+	} );
+
+	it( 'acusa quando o nome só existe em comentário: não dá para provar o pin', () => {
+		expect(
+			comFonte(
+				'// MODEL_BASE_URL mora noutro módulo\nexport const X = 1;\n'
+			)
+		).toHaveLength( 1 );
+	} );
+
+	it( 'não confunde MY_MODEL_BASE_URL com o pin', () => {
+		expect(
+			comFonte(
+				`export const MY_MODEL_BASE_URL = '${ MAU }';\nexport const MODEL_BASE_URL = '${ BOM }';\n`
+			)
+		).toEqual( [] );
+	} );
+
+	// Arquivo truncado no meio de uma string ou de um comentário não pode
+	// derrubar o lint nem passar em silêncio: a varredura chega ao fim do
+	// arquivo e o chamador acusa por não conseguir provar o pin.
+	it.each( [
+		[ 'string sem fechar', "export const MODEL_BASE_URL = 'https://x/" ],
+		[
+			'comentário de bloco sem fechar',
+			'/* MODEL_BASE_URL\nexport const X = 1;',
+		],
+		[ 'comentário de linha sem quebra final', '// MODEL_BASE_URL' ],
+	] )( 'não estoura com %s', ( _, src ) => {
+		expect( () => comFonte( src ) ).not.toThrow();
+		expect( comFonte( src ).length ).toBeGreaterThan( 0 );
+	} );
+
+	it( 'a barra invertida não deixa a string escapar da varredura', () => {
+		// `'...\\'` termina em barra escapada, não em aspa aberta: sem tratar
+		// o escape, a varredura engoliria a declaração seguinte.
+		expect(
+			comFonte(
+				`const nota = 'caminho\\\\';\nexport const MODEL_BASE_URL = '${ MAU }';\n`
+			)
+		).toHaveLength( 1 );
+	} );
+
+	it( 'a chave não carrega quebra de linha, senão a violação é incongelável', () => {
+		const a = comFonte(
+			'export const MODEL_BASE_URL =\n\t"https://cdn.evil.example.com/" +\n\t"pocket-tts/";\n'
+		);
+		expect( a.length ).toBeGreaterThan( 0 );
+		a.forEach( ( f ) => expect( f.key ).not.toMatch( /\n/ ) );
+	} );
+} );
+
 describe( 'contract-pins', () => {
 	it( 'declara a ADR-0014', () => {
 		expect( pins.adr ).toBe( '0014' );

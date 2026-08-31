@@ -23,6 +23,7 @@ const FONTES_PHP = [
 // propósito não aparecem nas duas listas. Um arquivo que não declara uma
 // dimensão não é lido como se divergisse dela.
 const MODEL_SOURCE = 'features/narration/editor/model-source.ts';
+const NOME_PIN = 'MODEL_BASE_URL';
 
 // O mirror É fixado, ao contrário dos mínimos e do SHA. A ADR-0014 diz que a
 // regra "não fixa os valores em si — nem os mínimos atuais, nem o SHA atual",
@@ -115,55 +116,128 @@ function concordam( ctx, fontes, rotulo ) {
 }
 
 /**
- * Lê a declaração inteira de `MODEL_BASE_URL` — do nome até o `;` que a fecha
- * FORA de string — e devolve todos os literais de texto que ela contém.
+ * Percorre TypeScript pulando comentário e string, e devolve os offsets em que
+ * `nome` aparece em CÓDIGO de verdade.
  *
- * Existe porque a versão anterior usava
- * `MODEL_BASE_URL\s*=\s*[\s\S]*?'([^']+)'`, e o `*?` preguiçoso casa a
- * PRIMEIRA string depois do `=`. Num ternário cujo primeiro ramo é o mirror
- * fixado, o segundo ramo nunca era olhado: dava para apontar o fallback para
- * qualquer host com o gate verde. Um pin de contrato que passa violado é pior
- * que não ter pin, porque a ADR-0014 promete uma proteção que não existe.
+ * Existe porque a versão anterior fazia `source.indexOf( 'MODEL_BASE_URL' )` no
+ * arquivo CRU — a primeira ocorrência TEXTUAL, comentário incluído. Medido: um
+ * comentário acima da declaração que nomeie a constante, cite a URL fixada
+ * entre aspas e termine em `;` fazia a varredura parar dentro do próprio
+ * comentário; a declaração real, apontando para outro host, nunca era olhada, e
+ * `check` devolvia zero achado. Gate verde sobre pin de contrato violado — e o
+ * que esse pin protege é de onde o navegador do autor baixa ~190 MB de modelo.
  *
- * Varre caractere a caractere em vez de usar regex porque é preciso saber se
- * um `;` está dentro ou fora de string: `'https://x/;y/'` não fecha nada.
+ * O template literal é tratado como opaco até a crase que o fecha: `${ ... }`
+ * pode conter código, e acompanhar isso pediria um parser. A simplificação erra
+ * na direção segura — se ela dessincronizar, o resultado é ACHAR MENOS
+ * ocorrências, e zero ocorrência em código com o nome presente no cru já é
+ * tratado como "não consigo provar o pin" pelo chamador, que acusa.
  *
  * @param {string} source conteúdo do arquivo
- * @return {?Object[]} literais `{ valor, interpolado, index }`, ou `null` se
- *   a declaração não existe no arquivo
+ * @param {string} nome   o identificador procurado
+ * @return {number[]} offsets das ocorrências em código
  */
-function literaisDaDeclaracao( source ) {
-	const inicio = source.indexOf( 'MODEL_BASE_URL' );
-	if ( inicio === -1 ) {
-		return null;
+function ocorrenciasEmCodigo( source, nome ) {
+	const out = [];
+	let i = 0;
+	while ( i < source.length ) {
+		const c = source[ i ];
+		if ( c === '/' && source[ i + 1 ] === '/' ) {
+			const fim = source.indexOf( '\n', i );
+			i = fim === -1 ? source.length : fim + 1;
+			continue;
+		}
+		if ( c === '/' && source[ i + 1 ] === '*' ) {
+			const fim = source.indexOf( '*/', i + 2 );
+			i = fim === -1 ? source.length : fim + 2;
+			continue;
+		}
+		if ( c === "'" || c === '"' || c === '`' ) {
+			i = fimDaString( source, i ) + 1;
+			continue;
+		}
+		if (
+			source.startsWith( nome, i ) &&
+			! /[\w$]/.test( source[ i - 1 ] || '' ) &&
+			! /[\w$]/.test( source[ i + nome.length ] || '' )
+		) {
+			out.push( i );
+			i += nome.length;
+			continue;
+		}
+		i += 1;
 	}
+	return out;
+}
 
+/**
+ * Offset da aspa que fecha a string aberta em `abre`.
+ *
+ * @param {string} source
+ * @param {number} abre   offset da aspa de abertura
+ * @return {number} offset da aspa de fechamento, ou o fim do arquivo
+ */
+function fimDaString( source, abre ) {
+	const aspa = source[ abre ];
+	let i = abre + 1;
+	while ( i < source.length ) {
+		if ( source[ i ] === '\\' ) {
+			i += 2;
+			continue;
+		}
+		if ( source[ i ] === aspa ) {
+			return i;
+		}
+		i += 1;
+	}
+	return source.length;
+}
+
+/**
+ * Lê a declaração que começa em `inicio` — do nome até o `;` que a fecha FORA
+ * de string e FORA de comentário — e devolve os literais de texto que ela
+ * contém.
+ *
+ * Varre caractere a caractere em vez de usar regex por duas razões: é preciso
+ * saber se um `;` está dentro de string (`'https://x/;y/'` não fecha nada) ou
+ * dentro de comentário, e é preciso ver TODOS os literais. A versão original
+ * usava `MODEL_BASE_URL\s*=\s*[\s\S]*?'([^']+)'`, e o `*?` preguiçoso casa a
+ * PRIMEIRA string depois do `=`: num ternário cujo primeiro ramo é o mirror
+ * fixado, o segundo ramo nunca era olhado.
+ *
+ * @param {string} source conteúdo do arquivo
+ * @param {number} inicio offset do nome da constante, já em código
+ * @return {Object[]} literais `{ valor, interpolado, index }`
+ */
+function literaisDaDeclaracao( source, inicio ) {
 	const literais = [];
-	let i = inicio + 'MODEL_BASE_URL'.length;
+	let i = inicio;
 	while ( i < source.length ) {
 		const c = source[ i ];
 		if ( c === ';' ) {
 			break;
 		}
+		if ( c === '/' && source[ i + 1 ] === '/' ) {
+			const fim = source.indexOf( '\n', i );
+			i = fim === -1 ? source.length : fim + 1;
+			continue;
+		}
+		if ( c === '/' && source[ i + 1 ] === '*' ) {
+			const fim = source.indexOf( '*/', i + 2 );
+			i = fim === -1 ? source.length : fim + 2;
+			continue;
+		}
 		if ( c === "'" || c === '"' || c === '`' ) {
-			const abre = c;
 			const comeco = i;
-			let valor = '';
-			let interpolado = false;
-			i += 1;
-			while ( i < source.length && source[ i ] !== abre ) {
-				if ( source[ i ] === '\\' ) {
-					valor += source[ i + 1 ] || '';
-					i += 2;
-					continue;
-				}
-				if ( abre === '`' && source.startsWith( '${', i ) ) {
-					interpolado = true;
-				}
-				valor += source[ i ];
-				i += 1;
-			}
-			literais.push( { valor, interpolado, index: comeco } );
+			const fim = fimDaString( source, i );
+			const corpo = source.slice( comeco + 1, fim );
+			literais.push( {
+				valor: corpo.replace( /\\(.)/g, '$1' ),
+				interpolado: c === '`' && corpo.includes( '${' ),
+				index: comeco,
+			} );
+			i = fim + 1;
+			continue;
 		}
 		i += 1;
 	}
@@ -178,13 +252,21 @@ function check( ctx ) {
 
 	if ( ctx.files.includes( MODEL_SOURCE ) ) {
 		const source = ctx.read( MODEL_SOURCE );
-		const literais = literaisDaDeclaracao( source );
 		const linhaDe = ( idx ) => source.slice( 0, idx ).split( '\n' ).length;
 
-		// Declaração ausente, ou presente sem literal nenhum: a regra não
-		// consegue provar que o pin está certo, e silenciar seria afirmar que
-		// está. Mantém a chave sem valor observado — não há valor a observar.
-		if ( ! literais || ! literais.length ) {
+		// TODAS as declarações em código, não a primeira ocorrência textual.
+		// Uma só é o caso real; mais de uma seria redeclaração, e olhar as
+		// duas é mais barato que decidir qual vale.
+		const literais = ocorrenciasEmCodigo( source, NOME_PIN ).flatMap(
+			( inicio ) => literaisDaDeclaracao( source, inicio )
+		);
+
+		// Declaração ausente do código, ou presente sem literal nenhum: a
+		// regra não consegue provar que o pin está certo, e silenciar seria
+		// afirmar que está. Mantém a chave sem valor observado — não há valor
+		// a observar. Cai aqui também quando o nome só aparece em comentário
+		// ou em string, que é exatamente o caso que antes zerava os achados.
+		if ( ! literais.length ) {
 			achados.push( {
 				key: `${ MODEL_SOURCE } → model-base-url`,
 				file: MODEL_SOURCE,
@@ -207,7 +289,13 @@ function check( ctx ) {
 				}
 				if ( ! apontaParaOMirrorFixado( lit.valor ) ) {
 					achados.push( {
-						key: `${ MODEL_SOURCE } → model-base-url:${ lit.valor }`,
+						// Espaço em branco normalizado, como nas regras
+						// irmãs: um template literal pode quebrar linha, e uma
+						// chave com `\n` dentro não sobrevive a virar uma
+						// linha de `desvios:` — a violação seria incongelável.
+						key: `${ MODEL_SOURCE } → model-base-url:${ lit.valor
+							.replace( /\s+/g, ' ' )
+							.trim() }`,
 						file: MODEL_SOURCE,
 						line: linhaDe( lit.index ),
 						message: MENSAGEM_PIN,
