@@ -390,6 +390,14 @@ function filesAboveP95( ctx, read ) {
 // Cenários E2E declarados na árvore. `test(` e `test.only(`, nunca
 // `test.describe(`, que agrupa e não é cenário. Validado contra o oráculo que
 // importa: o Playwright reporta 37 na árvore de hoje, e esta conta devolve 37.
+//
+// `test.skip(` e `test.fixme(` também ficam de fora, e isso é escolha, não
+// descuido: quem lê esta linha está avaliando o `revisar_quando` da ADR-0012,
+// "a suíte E2E passar de 15 minutos", e cenário que não roda não consome
+// tempo. Hoje não existe nenhum na árvore, então a conta bate com o
+// Playwright; se algum aparecer, os dois números passam a divergir de
+// propósito — o daqui é "cenários que rodam", o do relatório é o mesmo, e o
+// que o `--list` do Playwright imprimiria inclui os pulados.
 const E2E_SPEC_RE = /^e2e\/.*\.spec\.ts$/;
 const E2E_TEST_RE = /^\s*test(?:\.only)?\s*\(/gm;
 

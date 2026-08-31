@@ -122,6 +122,78 @@ describe( 'php-class-naming', () => {
 		expect( a[ 0 ].message ).toMatch( /Post_Voice_/ );
 	} );
 
+	// Achado da revisão pré-PR: o `## Como verificar` da ADR-0006 escreve
+	// `Post_Voice_[A-Z][A-Za-z_]*`, e a regra conferia só `startsWith`. A regra
+	// prometia menos que a decisão — a divergência entre prosa e mecanismo que
+	// esta branch existe para impedir.
+	describe( 'o formato do nome vem da ADR, não de startsWith', () => {
+		it( 'acusa Post_Voice_9x: depois do prefixo vem letra maiúscula', () => {
+			const a = naming
+				.check(
+					ctxCom(
+						'features/x/php/class-9x.php',
+						'<?php\nclass Post_Voice_9x {}\n'
+					)
+				)
+				.filter( ( f ) => /formato-do-nome/.test( f.key ) );
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].message ).toMatch( /Post_Voice_\[A-Z\]/ );
+		} );
+
+		it( 'prefixo ausente e formato errado são chaves DIFERENTES', () => {
+			const semPrefixo = naming
+				.check(
+					ctxCom(
+						'features/x/php/class-api.php',
+						'<?php\nclass Api {}\n'
+					)
+				)
+				.filter( ( f ) => /prefixo|formato-do-nome/.test( f.key ) );
+			const formatoRuim = naming
+				.check(
+					ctxCom(
+						'features/x/php/class-9x.php',
+						'<?php\nclass Post_Voice_9x {}\n'
+					)
+				)
+				.filter( ( f ) => /prefixo|formato-do-nome/.test( f.key ) );
+			expect( semPrefixo[ 0 ].key ).toContain( '→ prefixo' );
+			expect( formatoRuim[ 0 ].key ).toContain( '→ formato-do-nome' );
+		} );
+
+		it( 'o nome canônico segue passando', () => {
+			expect(
+				naming
+					.check(
+						ctxCom(
+							'features/x/php/class-rest-api.php',
+							'<?php\nclass Post_Voice_Rest_Api {}\n'
+						)
+					)
+					.filter( ( f ) => /prefixo|formato-do-nome/.test( f.key ) )
+			).toEqual( [] );
+		} );
+	} );
+
+	// Achado da revisão pré-PR: para uma classe em subdiretório de `php/`, a
+	// comparação por basename produzia "deveria morar em class-foo.php, não em
+	// class-foo.php" — a mensagem que alguém lê no instante em que a CI reprova.
+	it( 'classe em subdiretório nomeia o CAMINHO esperado, não o basename', () => {
+		const a = naming.check(
+			ctxCom(
+				'features/narration/php/sub/class-foo.php',
+				'<?php\nclass Post_Voice_Foo {}\n'
+			)
+		);
+		expect( a ).toHaveLength( 1 );
+		expect( a[ 0 ].message ).toContain(
+			'deveria morar em features/narration/php/class-foo.php'
+		);
+		expect( a[ 0 ].message ).toContain(
+			'não em features/narration/php/sub/class-foo.php'
+		);
+	} );
+
 	it( 'acusa duas classes no mesmo arquivo', () => {
 		const a = naming.check(
 			ctxCom(

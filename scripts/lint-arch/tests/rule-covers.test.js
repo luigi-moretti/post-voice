@@ -145,6 +145,31 @@ describe( 'covers-annotation', () => {
 		// irmãs desta regra. Duas classes no mesmo arquivo com o MESMO alvo
 		// ruim colapsavam numa chave só, e uma linha de `desvios:` absolvia as
 		// duas.
+		// A guarda de prefixo NÃO é redundante com `donos.has`, embora um
+		// mutante que a removesse sobrevivesse à suíte: `phpClassOwners`
+		// mapeia toda classe declarada num `class-*.php`, com prefixo ou sem.
+		// Uma classe sem prefixo existente na árvore entra em `donos`, e só a
+		// guarda a reprova aqui. Ela já viola a ADR-0006 por outro gate; o
+		// ponto é o @covers não creditar cobertura a ela como se fosse nossa.
+		it( 'alvo existente mas sem o prefixo do plugin é acusado', () => {
+			const a = regra.check(
+				createContext( {
+					files: [
+						'features/narration/tests/php/test-x.php',
+						'features/narration/php/class-fora.php',
+					],
+					read: ( f ) =>
+						f.includes( 'tests' )
+							? '<?php\n/**\n * @covers Classe_Sem_Prefixo\n */\nclass A_Test extends WP_UnitTestCase {}\n'
+							: '<?php\nclass Classe_Sem_Prefixo {}\n',
+				} )
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toContain(
+				'covers-alvo-inexistente:A_Test:Classe_Sem_Prefixo'
+			);
+		} );
+
 		it( 'duas classes com o MESMO alvo ruim são duas chaves', () => {
 			const a = regra.check(
 				ctxCom(

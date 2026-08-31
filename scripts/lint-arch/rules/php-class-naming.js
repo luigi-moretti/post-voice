@@ -4,6 +4,14 @@ const { stripPhpNoise, stripPhpComments, isTestPath } = require( '../context' );
 const CLASS_RE = /^\s*(?:final\s+|abstract\s+)*class\s+(\w+)/gim;
 const PREFIXO = 'Post_Voice_';
 
+// O `## Como verificar` da ADR-0006 escreve o formato: `Post_Voice_[A-Z][A-Za-z_]*`.
+// A regra conferia só `startsWith( PREFIXO )`, então `Post_Voice_9x` passava —
+// a regra prometia MENOS que a decisão, que é a divergência entre prosa e
+// mecanismo que esta branch existe para impedir. Prefixo ausente e formato
+// errado são defeitos diferentes e têm chaves diferentes.
+const NOME_RE = /^Post_Voice_[A-Z][A-Za-z_]*$/;
+const FORMATO_LITERAL = 'Post_Voice_[A-Z][A-Za-z_]*';
+
 // O mesmo formato usado pelo `require_once` em post-voice.php:
 // `require_once POST_VOICE_PATH . '<caminho>';`.
 const REQUIRE_RE = /require_once\s+POST_VOICE_PATH\s*\.\s*'([^']*)'/g;
@@ -135,12 +143,17 @@ function check( ctx ) {
 		}
 
 		const { nome, line } = classes[ 0 ];
-		if ( ! nome.startsWith( PREFIXO ) ) {
+		if ( ! NOME_RE.test( nome ) ) {
+			const semPrefixo = ! nome.startsWith( PREFIXO );
 			achados.push( {
-				key: `${ file } → prefixo`,
+				key: `${ file } → ${
+					semPrefixo ? 'prefixo' : 'formato-do-nome'
+				}`,
 				file,
 				line,
-				message: `a classe "${ nome }" não usa o prefixo ${ PREFIXO } (ADR-0006)`,
+				message: semPrefixo
+					? `a classe "${ nome }" não usa o prefixo ${ PREFIXO } (ADR-0006)`
+					: `a classe "${ nome }" não casa com ${ FORMATO_LITERAL }: depois de ${ PREFIXO } vem letra maiúscula (ADR-0006)`,
 			} );
 			continue;
 		}
@@ -162,7 +175,14 @@ function check( ctx ) {
 		if ( FORMATO_CLASSE_RE.test( file ) ) {
 			continue;
 		}
-		const base = file.split( '/' ).pop();
+		// O CAMINHO esperado inteiro, não só o nome do arquivo. Uma classe num
+		// subdiretório de `php/` tem o basename certo e o lugar errado, e
+		// comparar basenames produzia "deveria morar em class-foo.php, não em
+		// class-foo.php" — mensagem que não diz nada a quem a lê no momento em
+		// que a CI reprova.
+		const raiz = file.startsWith( 'shared/' )
+			? 'shared/php'
+			: `features/${ file.split( '/' )[ 1 ] }/php`;
 		for ( const { nome, line } of declaradas( ctx, file ) ) {
 			// O nome da classe entra na chave: duas classes no mesmo arquivo
 			// são dois defeitos, e uma linha de `desvios:` não pode absolver
@@ -172,11 +192,11 @@ function check( ctx ) {
 				key,
 				file,
 				line,
-				message: nome.startsWith( PREFIXO )
-					? `a classe "${ nome }" deveria morar em ${ esperadoParaClasse(
+				message: NOME_RE.test( nome )
+					? `a classe "${ nome }" deveria morar em ${ raiz }/${ esperadoParaClasse(
 							nome
-					  ) }, não em ${ base }: sem autoloader, o nome do arquivo é como a classe é encontrada (ADR-0006)`
-					: `a classe "${ nome }" não usa o prefixo ${ PREFIXO } e não está num arquivo "class-*.php" (ADR-0006)`,
+					  ) }, não em ${ file }: sem autoloader, o caminho do arquivo é como a classe é encontrada (ADR-0006)`
+					: `a classe "${ nome }" não casa com ${ FORMATO_LITERAL } e não está num arquivo "class-*.php" (ADR-0006)`,
 			} );
 		}
 	}
