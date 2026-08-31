@@ -41,7 +41,17 @@ incremental.
 ## Como verificar
 
 `no-npm-install` — nenhuma ocorrência de `npm install` em `package.json`, nos
-workflows sob `.github/workflows/` ou em `scripts/`.
+workflows sob `.github/workflows/` (`.yml`/`.yaml`) ou em `scripts/`
+(`.sh`/`.mjs`/`.js`).
+
+A regra também acusa `npm i` e `npm add`: são a mesma decisão por outra porta,
+e cobri-las é o que impede escapar do lint sem escapar da decisão. Cada forma
+tem chave própria, para uma linha de `desvios:` nunca absolver as três.
+
+Dois arquivos ficam fora da varredura, por caminho exato: a própria regra
+(`scripts/lint-arch/rules/no-npm-install.js`) e o teste que a fixa
+(`scripts/lint-arch/tests/rules-pins.test.js`) — os únicos que citam a agulha
+de propósito. O resto de `scripts/lint-arch/` continua dentro.
 
 ## Alternativas rejeitadas
 

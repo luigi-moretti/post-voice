@@ -38,10 +38,16 @@ autor presente; não há como o servidor produzir uma segunda versão de um
 
 ## Como verificar
 
-`no-server-side-audio-processing` — nenhum arquivo PHP fora de `tests/`
+`no-server-side-audio-processing` — nenhum PHP de produção
 referencia `ffmpeg`, `lame`, `sox` ou `getID3`, os sinais de que o servidor
 estaria processando ou inspecionando o áudio recebido em vez de só
 armazená-lo.
+
+"PHP de produção" é uma allowlist por raiz, não "tudo que não é teste":
+`post-voice.php`, `features/` e `shared/` (`phpSources`, em
+`scripts/lint-arch/context.js`). `e2e/mu-plugins/*.php` e
+`scripts/check-coverage-threshold.php` ficam de fora de propósito — são
+ferramental versionado, e nada ali processa o áudio que o cliente enviou.
 
 ## Alternativas rejeitadas
 

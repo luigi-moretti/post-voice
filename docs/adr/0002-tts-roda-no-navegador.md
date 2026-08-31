@@ -39,11 +39,18 @@ download do modelo.
 
 ## Como verificar
 
-`no-server-side-tts` — nenhum arquivo PHP fora de `tests/` chama `exec`,
+`no-server-side-tts` — nenhum PHP de produção chama `exec`,
 `shell_exec`, `proc_open`, `passthru`, `system` ou `popen`, nem referencia
 `.onnx`/`onnxruntime`. Comentários são ignorados na varredura; strings não,
 porque um caminho de modelo ou um argumento de linha de comando moraria numa
 string.
+
+"PHP de produção" é uma allowlist por raiz, não "tudo que não é teste":
+`post-voice.php`, `features/` e `shared/` (`phpSources`, em
+`scripts/lint-arch/context.js`). `e2e/mu-plugins/*.php` e
+`scripts/check-coverage-threshold.php` ficam de fora de propósito — são
+ferramental versionado, e um harness futuro que use `exec` não é o servidor
+sintetizando fala.
 
 ## Alternativas rejeitadas
 

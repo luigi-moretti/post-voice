@@ -67,9 +67,10 @@ frase curta em `CLAUDE.md` **e** a ADR que a sustenta — ver seção 9).
    único passo deste procedimento que trava quem chega nele sem saber.
    O caminho é **relativo a `docs/`**, não um atalho:
    `superpowers/specs/2026-08-25-nome.md`, não `specs/2026-08-25-nome.md`.
-   O teste é `cat docs/<origem sem a âncora #...>` funcionar — e
-   `lint:arch` reprova a ADR se o arquivo não existir exatamente nesse
-   caminho.
+   O teste é `cat docs/<origem sem a âncora #...>` funcionar. Quem confere
+   isso é o `npm run doctor`, que **relata e sai 0**: o `lint:arch` não olha
+   para o campo `origem`, então uma origem quebrada não trava a CI. Confira
+   você mesmo antes de abrir o PR.
 4. `status` é um dos cinco valores fechados:
    `proposta | aceita | aceita-com-desvio | superada-por-NNNN | revogada`.
    Qualquer outro texto reprova o parser (`scripts/lint-arch/adr.js`).
@@ -139,10 +140,14 @@ Passo a passo ao ver uma reprovação:
      código. Não existe atalho de congelar uma violação que você mesmo está
      introduzindo.
    - **Violação preexistente, cuja correção é fora do escopo do PR atual**:
-     cole a `key` copiada dentro de `desvios:` na ADR correspondente, e mude
-     `status` para `aceita-com-desvio` se ainda não estava. O texto da ADR
-     (Contexto/Decisão/Consequências/Alternativas) não muda — só o
-     front-matter.
+     cole a `key` copiada dentro de `desvios:` na ADR correspondente, **na
+     forma de bloco** (uma linha `  - ` por entrada), e mude `status` para
+     `aceita-com-desvio` se ainda não estava. A forma inline
+     (`desvios: [ ... ]`) só serve para a lista vazia: uma `key` pode conter
+     vírgulas, o parser estilhaçaria a entrada em fragmentos que não batem
+     com nada, e por isso ele recusa uma lista inline com ` → ` dentro. O
+     texto da ADR (Contexto/Decisão/Consequências/Alternativas) não muda —
+     só o front-matter.
 3. Se a lista de `desvios:` de uma ADR chega a zero porque tudo foi
    corrigido, volte `status` para `aceita`. O `lint:arch` recusa
    `aceita-com-desvio` sem nenhum desvio listado, e é o próprio `lint:arch`

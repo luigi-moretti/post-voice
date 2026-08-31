@@ -39,10 +39,16 @@ uma decisão nova, porque hoje só o editor sabe montar o texto comparável.
 
 ## Como verificar
 
-`no-narration-logic-in-php` — nenhum arquivo PHP fora de `tests/` chama
+`no-narration-logic-in-php` — nenhum PHP de produção chama
 `md5`, `sha1`, `hash`, nem `parse_blocks` (a função que decompõe conteúdo de
 post em blocos), que são os sinais de que o servidor estaria recalculando o
 texto narrado em vez de só armazenar e comparar o hash recebido.
+
+"PHP de produção" é uma allowlist por raiz, não "tudo que não é teste":
+`post-voice.php`, `features/` e `shared/` (`phpSources`, em
+`scripts/lint-arch/context.js`). `e2e/mu-plugins/*.php` e
+`scripts/check-coverage-threshold.php` ficam de fora de propósito — são
+ferramental versionado, e nada ali recalcula o texto narrado do post.
 
 ## Alternativas rejeitadas
 
