@@ -101,6 +101,45 @@ describe( 'contract-pins: o pin é lido do CÓDIGO, não do texto', () => {
 		).toHaveLength( 1 );
 	} );
 
+	// Achados I1 e I2 da re-review. A varredura não conhece literal de regex:
+	// num `/'/` a aspa de dentro abre uma pseudo-string, e daí em diante um
+	// trecho de comentário passa a ser lido como código. Medido: a declaração
+	// de verdade era engolida, a isca do comentário era lida como código, e a
+	// regra devolvia ZERO com o pin apontando para outro host. O JSDoc afirmava
+	// que dessincronizar "erra achando menos" — não erra; quem faz isso valer é
+	// a âncora de declaração.
+	it( 'regex com aspa mais comentário-isca não absolve o pin errado', () => {
+		const a = comFonte(
+			`const RE = /'/;\nexport const MODEL_BASE_URL = "${ MAU }";\n/* era ' antes; MODEL_BASE_URL = '${ BOM }' */\n`
+		);
+		expect( a ).toHaveLength( 1 );
+	} );
+
+	// I2: regressão introduzida pela própria correção do #1. Qualquer segunda
+	// menção ao identificador virava "declaração", e a regra lia o literal ao
+	// lado como se fosse o pin — reprovando código correto.
+	it( 'uma segunda referência à constante não é uma declaração', () => {
+		expect(
+			comFonte(
+				`export const MODEL_BASE_URL = '${ BOM }';\nexport const VOICES_URL = MODEL_BASE_URL + 'voices.json';\n`
+			)
+		).toEqual( [] );
+	} );
+
+	it( 'a declaração conta com let, var e sem export', () => {
+		for ( const forma of [
+			`const MODEL_BASE_URL = '${ MAU }';`,
+			`let MODEL_BASE_URL = '${ MAU }';`,
+			`var MODEL_BASE_URL = '${ MAU }';`,
+			`export const MODEL_BASE_URL = '${ MAU }';`,
+		] ) {
+			expect( {
+				forma,
+				achados: comFonte( forma + '\n' ).length,
+			} ).toEqual( { forma, achados: 1 } );
+		}
+	} );
+
 	it( 'a chave não carrega quebra de linha, senão a violação é incongelável', () => {
 		const a = comFonte(
 			'export const MODEL_BASE_URL =\n\t"https://cdn.evil.example.com/" +\n\t"pocket-tts/";\n'

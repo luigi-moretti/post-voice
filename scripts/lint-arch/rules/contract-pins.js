@@ -25,6 +25,14 @@ const FONTES_PHP = [
 const MODEL_SOURCE = 'features/narration/editor/model-source.ts';
 const NOME_PIN = 'MODEL_BASE_URL';
 
+// O que precede o nome numa DECLARAÇÃO. A guarda de fronteira sozinha aceitava
+// qualquer menção ao identificador: um `X = MODEL_BASE_URL + '...'` correto
+// virava violação (a regra lia `'voices.json'` como se fosse o pin), e um
+// `MODEL_BASE_URL = '<url boa>'` dentro de um comentário lido como código por
+// dessincronização absolvia a declaração de verdade. Exigir a declaração fecha
+// os dois: comentário e segunda referência não têm `const` antes.
+const DECLARACAO_RE = /(?:^|[;{}()\s])(?:export\s+)?(?:const|let|var)\s+$/;
+
 // O mirror É fixado, ao contrário dos mínimos e do SHA. A ADR-0014 diz que a
 // regra "não fixa os valores em si — nem os mínimos atuais, nem o SHA atual",
 // mas a frase é sobre ESSES dois; o alvo do pin é outra coisa — a `##
@@ -127,11 +135,22 @@ function concordam( ctx, fontes, rotulo ) {
  * `check` devolvia zero achado. Gate verde sobre pin de contrato violado — e o
  * que esse pin protege é de onde o navegador do autor baixa ~190 MB de modelo.
  *
- * O template literal é tratado como opaco até a crase que o fecha: `${ ... }`
- * pode conter código, e acompanhar isso pediria um parser. A simplificação erra
- * na direção segura — se ela dessincronizar, o resultado é ACHAR MENOS
- * ocorrências, e zero ocorrência em código com o nome presente no cru já é
- * tratado como "não consigo provar o pin" pelo chamador, que acusa.
+ * A varredura NÃO conhece literal de regex nem interpolação de template, e por
+ * isso pode dessincronizar: num `/'/`, a aspa de dentro abre uma pseudo-string
+ * e daí em diante um trecho de comentário pode ser lido como código. Uma versão
+ * anterior deste comentário afirmava que dessincronizar "erra na direção
+ * segura, achando MENOS ocorrências". Isso era FALSO, e foi medido: com um
+ * regex desses e um comentário-isca contendo a URL fixada, a declaração de
+ * verdade era engolida pela pseudo-string, a isca era lida como código e a
+ * regra devolvia zero achado com o pin apontando para outro host.
+ *
+ * O que torna a dessincronização inofensiva não é a varredura, é a ÂNCORA: só
+ * conta como ocorrência o nome precedido de uma declaração de verdade
+ * (`const`/`let`/`var`, com `export` opcional). Texto solto num comentário não
+ * tem `const` antes; uma segunda referência à constante — `X = MODEL_BASE_URL +
+ * '...'` — também não. Assim, dessincronizar só pode fazer a conta CAIR, e
+ * zero ocorrência com o nome presente no cru é tratado pelo chamador como "não
+ * consigo provar o pin", que acusa.
  *
  * @param {string} source conteúdo do arquivo
  * @param {string} nome   o identificador procurado
@@ -158,8 +177,8 @@ function ocorrenciasEmCodigo( source, nome ) {
 		}
 		if (
 			source.startsWith( nome, i ) &&
-			! /[\w$]/.test( source[ i - 1 ] || '' ) &&
-			! /[\w$]/.test( source[ i + nome.length ] || '' )
+			! /[\w$]/.test( source[ i + nome.length ] || '' ) &&
+			DECLARACAO_RE.test( source.slice( Math.max( 0, i - 40 ), i ) )
 		) {
 			out.push( i );
 			i += nome.length;
