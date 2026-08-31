@@ -170,6 +170,44 @@ describe( 'covers-annotation', () => {
 			);
 		} );
 
+		// Achado M1 da re-review: `@coversDefaultClass X` + `@covers ::metodo`
+		// é sintaxe legítima do PHPUnit, e a regra a tratava como alvo de
+		// classe vazio — dois métodos viravam dois achados sob UMA chave
+		// terminada em `:`, com o nome da classe em branco na mensagem.
+		it( 'aceita @coversDefaultClass com métodos em ::', () => {
+			expect(
+				regra.check(
+					ctxCom(
+						'<?php\n/**\n * @coversDefaultClass Post_Voice_Assets\n * @covers ::render\n * @covers ::enqueue\n */\nclass A_Test extends WP_UnitTestCase {}\n'
+					)
+				)
+			).toEqual( [] );
+		} );
+
+		it( 'acusa ::metodo sem @coversDefaultClass, sob chave própria', () => {
+			const a = regra.check(
+				ctxCom(
+					'<?php\n/**\n * @covers ::render\n */\nclass A_Test extends WP_UnitTestCase {}\n'
+				)
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toContain(
+				'covers-metodo-sem-default:A_Test:::render'
+			);
+		} );
+
+		it( 'um @coversDefaultClass inexistente é UM defeito, não um por método', () => {
+			const a = regra.check(
+				ctxCom(
+					'<?php\n/**\n * @coversDefaultClass Post_Voice_Nao_Existe\n * @covers ::render\n * @covers ::enqueue\n */\nclass A_Test extends WP_UnitTestCase {}\n'
+				)
+			);
+			expect( a ).toHaveLength( 1 );
+			expect( a[ 0 ].key ).toContain(
+				'covers-alvo-inexistente:A_Test:Post_Voice_Nao_Existe'
+			);
+		} );
+
 		it( 'duas classes com o MESMO alvo ruim são duas chaves', () => {
 			const a = regra.check(
 				ctxCom(

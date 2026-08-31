@@ -136,6 +136,32 @@ describe( 'parseAdr', () => {
 		}
 	} );
 
+	// Achado M6 da re-review, reproduzido por acidente pelo próprio revisor ao
+	// testar o caminho de congelamento: aspas em volta do item são YAML
+	// legítimo, e o passo 1 da skill manda "copie esse texto entre aspas".
+	// Sem desaspar, as aspas viravam parte da chave, a entrada não casava com
+	// nada, a violação seguia reprovando e o aviso saía com aspas duplicadas.
+	it( 'desaspa entradas de desvios escritas entre aspas', () => {
+		const comAspas = VALIDO.replace(
+			/desvios:\n( +- .*\n)+/,
+			'desvios:\n  - "features/a.php → X"\n  - \'features/b.tsx → y\'\n'
+		);
+		expect( parseAdr( comAspas, 'f.md' ).desvios ).toEqual( [
+			'features/a.php → X',
+			'features/b.tsx → y',
+		] );
+	} );
+
+	it( 'não come aspas que fazem parte da chave', () => {
+		const interna = VALIDO.replace(
+			/desvios:\n( +- .*\n)+/,
+			'desvios:\n  - features/a.php → usa "wp/v2"\n'
+		);
+		expect( parseAdr( interna, 'f.md' ).desvios ).toEqual( [
+			'features/a.php → usa "wp/v2"',
+		] );
+	} );
+
 	it( 'recusa desvios em lista inline com " → "', () => {
 		// A chave real da ADR-0004 tem quatro vírgulas, e o split as
 		// estilhaça: a violação segue reprovando e cada fragmento vira um

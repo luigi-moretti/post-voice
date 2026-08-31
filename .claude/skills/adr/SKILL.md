@@ -148,8 +148,10 @@ Passo a passo ao ver uma reprovação:
      introduzindo.
    - **Violação preexistente, cuja correção é fora do escopo do PR atual**:
      cole a `key` copiada dentro de `desvios:` na ADR correspondente, **na
-     forma de bloco** (uma linha `  - ` por entrada), e mude `status` para
-     `aceita-com-desvio` se ainda não estava. A forma inline
+     forma de bloco** (uma linha `  - ` por entrada), mude `status` para
+     `aceita-com-desvio` se ainda não estava, **e ajuste a linha da ADR na
+     tabela de `docs/adr/README.md` no mesmo commit** — a regra
+     `adr-index-table` reprova a divergência entre as duas cópias. A forma inline
      (`desvios: [ ... ]`) só serve para a lista vazia: uma `key` pode conter
      vírgulas, o parser estilhaçaria a entrada em fragmentos que não batem
      com nada, e por isso ele recusa uma lista inline com ` → ` dentro. O
@@ -189,7 +191,7 @@ a fonte é a ADR-0001, e se as duas divergirem, ela vence.
 | Campo | Quem pode mudar, e como |
 |---|---|
 | `Contexto`, `Decisão`, `Consequências`, `Alternativas rejeitadas` | Ninguém, nunca. Mudou de ideia → escreva uma ADR **nova**, e mude o `status` da antiga para `superada-por-NNNN` (o `NNNN` da nova). |
-| `status`, `desvios` | Qualquer PR — são campos vivos, e existem justamente para refletir a realidade sem reescrever a decisão (ver seção 6). |
+| `status`, `desvios` | Qualquer PR — são campos vivos, e existem justamente para refletir a realidade sem reescrever a decisão (ver seção 6). Mudar `status` obriga a ajustar a linha da ADR na tabela de `docs/adr/README.md` no mesmo commit. |
 
 Ao mudar o status para `revogada` ou `superada-por-NNNN`, a ADR para de
 enforçar: as violações dela deixam de reprovar, e o `desvios:` dela vira

@@ -77,6 +77,14 @@ const COVERS_NOTHING_RE = /@coversNothing\b/;
 // job de cobertura, o mais caro da CI, com `"@covers " is invalid`, que não
 // diz o que fazer. Pegar aqui custa segundos e cita a ADR-0013.
 const COVERS_ALVO_RE = /@covers(?:DefaultClass)?(?![A-Za-z])[ \t]*([^\s*]*)/g;
+
+// `@coversDefaultClass X` mais `@covers ::metodo` é sintaxe legítima do
+// PHPUnit: o `::metodo` refere o método de X, não uma classe. Sem ler o
+// default, `alvo.split( '::' )[ 0 ]` dava string vazia — dois `@covers ::a` e
+// `::b` viravam dois achados sob UMA chave terminada em `:`, e a mensagem
+// saía com o nome da classe em branco. Falso positivo sobre PHP correto, com
+// chave que colide.
+const DEFAULT_CLASS_RE = /@coversDefaultClass(?![A-Za-z])[ \t]*([^\s*]+)/;
 const PREFIXO_PLUGIN = 'Post_Voice_';
 
 const ehBranco = ( ch ) => ch === undefined || /\s/.test( ch );
@@ -435,6 +443,29 @@ function check( ctx ) {
 				// (`explode(' ')[0]`) e lança no job de cobertura. Exigir o
 				// prefixo pega o mesmo caso no gate barato, sem divergir do
 				// parser dele.
+				// Alvo que começa em `::` é método do `@coversDefaultClass` do
+				// mesmo docblock. Sem default declarado, o PHPUnit não tem a
+				// que ancorar o método: acusa, com chave própria, para não
+				// colidir com o alvo de classe inexistente.
+				const padrao = ( docblock.match( DEFAULT_CLASS_RE ) ||
+					[] )[ 1 ];
+				if ( alvo.startsWith( '::' ) && ! padrao ) {
+					achados.push( {
+						key: `${ file } → covers-metodo-sem-default:${ nome }:${ alvo }`,
+						file,
+						line,
+						message: `a classe "${ nome }" declara @covers ${ alvo }, um método sem @coversDefaultClass no mesmo docblock para ancorá-lo; acrescente "@coversDefaultClass <Classe>" ou escreva o alvo completo (ADR-0013)`,
+					} );
+					continue;
+				}
+				// Com default declarado, o `::metodo` não precisa ser validado
+				// aqui: o próprio `@coversDefaultClass` casa em
+				// `COVERS_ALVO_RE` e é conferido como alvo de classe. Validar
+				// os dois reportaria o MESMO defeito uma vez por método, sob a
+				// mesma chave.
+				if ( alvo.startsWith( '::' ) ) {
+					continue;
+				}
 				const classe = alvo.split( '::' )[ 0 ];
 				if (
 					! classe.startsWith( PREFIXO_PLUGIN ) ||

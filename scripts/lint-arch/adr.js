@@ -62,6 +62,24 @@ function parseInlineList( raw, key, file ) {
 		.filter( Boolean );
 }
 
+/**
+ * Tira as aspas que envolvem o item inteiro.
+ *
+ * `desvios:` guarda a `key` que a regra emitiu, casada caractere a caractere.
+ * Aspas em volta são forma legítima de YAML, e o passo 1 da skill manda "copie
+ * esse texto entre aspas" — que se lê das duas maneiras. Sem desaspar, as
+ * aspas viravam parte da chave, a entrada não casava com nada, a violação
+ * seguia reprovando e o aviso saía com aspas duplicadas. Custou um ciclo de
+ * review para alguém descobrir.
+ *
+ * @param {string} item
+ * @return {string} o item sem as aspas externas
+ */
+function desaspar( item ) {
+	const m = item.match( /^"(.*)"$/s ) || item.match( /^'(.*)'$/s );
+	return m ? m[ 1 ] : item;
+}
+
 function parseFrontMatter( source, file ) {
 	const match = source.match( /^---\r?\n([\s\S]*?)\r?\n---\r?\n/ );
 	if ( ! match ) {
@@ -86,7 +104,7 @@ function parseFrontMatter( source, file ) {
 					`${ file }: item de lista sem chave: ${ rawLine }`
 				);
 			}
-			fields[ chaveCorrente ].push( item[ 1 ].trim() );
+			fields[ chaveCorrente ].push( desaspar( item[ 1 ].trim() ) );
 			continue;
 		}
 		const pair = line.match( /^([a-z_]+):\s*(.*)$/ );
