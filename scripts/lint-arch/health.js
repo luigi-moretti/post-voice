@@ -415,8 +415,15 @@ function e2eScenarioCount( ctx ) {
 }
 
 // Qual seção do relatório cobre qual ADR que declara `enforced_by: doctor`.
-// O `lint:arch` confere este mapa nas duas direções: uma ADR que pede `doctor`
-// sem entrada aqui reprova, e uma entrada aqui que nenhuma ADR pede também.
+// O `lint:arch` confere este mapa nas TRÊS direções: uma ADR que pede `doctor`
+// sem entrada aqui reprova; uma entrada aqui que nenhuma ADR pede também; e
+// cada trecho ENTRE ASPAS DUPLAS de uma descrição tem de existir como
+// `secao( '<trecho>'` em `scripts/doctor.mjs`.
+//
+// A terceira direção faz das aspas duplas um contrato, não decoração: escrever
+// `seção "x"` aqui obriga o relatório a imprimir uma seção chamada `x`. Para
+// citar algo que NÃO é título de seção, use aspas simples ou crase.
+//
 // Existe porque a ADR-0012 afirmou por semanas que o doctor reportava algo que
 // ele não reportava, e o mecanismo era estruturalmente incapaz de perceber:
 // o runner pulava os literais sem olhar.

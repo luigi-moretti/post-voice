@@ -90,12 +90,14 @@ do `CLAUDE.md` que originou este trabalho.
 disparou, ADR acima de 120 linhas, ADR cuja `origem` aponta para arquivo
 inexistente, e ADR ausente do índice de `README.md`.
 
-`adr-index-table` reprova quando a tabela de `README.md` discorda do
-front-matter em `status` ou em `enforced_by`, e também quando ela lista uma ADR
-que não existe em `docs/adr/`. O índice duplica esses dois
-campos, e duplicação sem checagem é a deriva que esta ADR existe para impedir —
-sem a regra dava para mudar o front-matter e deixar a tabela mentindo com o
-`lint:arch` em 0. Ausência de uma ADR no índice segue com o `doctor`, para os
+`adr-index-table` reprova em quatro casos: a tabela de `README.md` discorda do
+front-matter em `status`; discorda em `enforced_by`; lista uma ADR que não
+existe em `docs/adr/`; ou o índice existe mas o contexto do linter não trouxe
+ADR nenhuma, caso em que a tabela não pôde ser conferida.
+
+O índice duplica `status` e `enforced_by`, e duplicação sem checagem é a deriva
+que esta ADR existe para impedir — sem a regra dava para mudar o front-matter e
+deixar a tabela mentindo com o `lint:arch` em 0. Ausência de uma ADR no índice segue com o `doctor`, para os
 dois não reportarem o mesmo defeito duas vezes.
 
 O que continua sem gate determinístico é o critério de admissão: "isto merecia

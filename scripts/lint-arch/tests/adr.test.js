@@ -152,6 +152,20 @@ describe( 'parseAdr', () => {
 		] );
 	} );
 
+	// Achado MM1: o desaspar tinha ficado só na lista em bloco. A forma inline
+	// é a que `enforced_by` usa, e há chave de desvio sem ` → ` que passa pelo
+	// caminho inline sem ser recusada.
+	it( 'desaspa também na lista inline', () => {
+		const inline = VALIDO.replace(
+			'enforced_by: [ feature-deps ]    # lista, sempre',
+			'enforced_by: [ \'feature-deps\', "feature-layout" ]'
+		);
+		expect( parseAdr( inline, 'f.md' ).enforcedBy ).toEqual( [
+			'feature-deps',
+			'feature-layout',
+		] );
+	} );
+
 	it( 'não come aspas que fazem parte da chave', () => {
 		const interna = VALIDO.replace(
 			/desvios:\n( +- .*\n)+/,

@@ -58,7 +58,7 @@ function parseInlineList( raw, key, file ) {
 		.replace( /^\[/, '' )
 		.replace( /\]$/, '' )
 		.split( ',' )
-		.map( ( item ) => item.trim() )
+		.map( ( item ) => desaspar( item.trim() ) )
 		.filter( Boolean );
 }
 
