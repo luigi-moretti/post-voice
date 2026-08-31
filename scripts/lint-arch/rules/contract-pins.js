@@ -1,4 +1,5 @@
 'use strict';
+const { stripJsNoise, jsStringEnd } = require( '../context' );
 
 // Confere concordância, nunca o valor do mínimo. Fixar "6.6" aqui faria toda
 // subida de mínimo exigir editar a regra; o que a ADR-0014 protege é que os
@@ -29,7 +30,7 @@ const NOME_PIN = 'MODEL_BASE_URL';
 // qualquer menção: `X = MODEL_BASE_URL + '...'`, correto, virava violação
 // porque a regra lia `'voices.json'` como se fosse o pin.
 //
-// Isto é conferido contra `codigoDe( source )`, NUNCA contra o cru. Uma versão
+// Isto é conferido contra `stripJsNoise( source )`, NUNCA contra o cru. Uma versão
 // anterior testava a fatia crua e justificava-se dizendo "texto solto num
 // comentário não tem `const` antes" — o contraexemplo é a coisa mais comum que
 // existe dentro de um comentário, código comentado, e foi medido: três vetores
@@ -128,68 +129,12 @@ function concordam( ctx, fontes, rotulo ) {
 }
 
 /**
- * Branqueia comentário e corpo de string, preservando comprimento e linhas.
- *
- * Mesmo padrão de duas fontes que as regras de PHP usam: apagar PARA ESPAÇO em
- * vez de remover mantém cada offset válido nas duas cópias, então dá para achar
- * ESTRUTURA na cópia branqueada e ler CONTEÚDO no cru, no mesmo índice.
- *
- * Duas rodadas de review provaram que as duas alternativas mais baratas não
- * funcionam. Procurar o nome no cru deixava um comentário citando a constante
- * ancorar a varredura (round 1). Procurar em código mas conferir a âncora de
- * declaração numa fatia CRUA deixava passar a coisa mais comum que existe
- * dentro de um comentário — código comentado, que tem `const` (round 2). A
- * âncora tem de ler a MESMA cópia em que a ocorrência foi achada.
- *
- * @param {string} source conteúdo do arquivo
- * @return {string} o mesmo texto com comentário e corpo de string em branco
- */
-function codigoDe( source ) {
-	let out = '';
-	let i = 0;
-	const branco = ( trecho ) => trecho.replace( /[^\n]/g, ' ' );
-	while ( i < source.length ) {
-		const c = source[ i ];
-		if ( c === '/' && source[ i + 1 ] === '/' ) {
-			const fim = source.indexOf( '\n', i );
-			const ate = fim === -1 ? source.length : fim;
-			out += branco( source.slice( i, ate ) );
-			i = ate;
-			continue;
-		}
-		if ( c === '/' && source[ i + 1 ] === '*' ) {
-			const fim = source.indexOf( '*/', i + 2 );
-			const ate = fim === -1 ? source.length : fim + 2;
-			out += branco( source.slice( i, ate ) );
-			i = ate;
-			continue;
-		}
-		if ( c === "'" || c === '"' || c === '`' ) {
-			const fim = fimDaString( source, i );
-			// As aspas ficam; só o CORPO some. Um `;` dentro de string deixa de
-			// fechar declaração, e um literal de regex com aspa dentro deixa de
-			// engolir as linhas seguintes — porque `'` e `"` não atravessam
-			// quebra de linha em JavaScript, e `fimDaString` respeita isso.
-			out +=
-				c +
-				branco( source.slice( i + 1, fim ) ) +
-				( source[ fim ] || '' );
-			i = fim + 1;
-			continue;
-		}
-		out += c;
-		i += 1;
-	}
-	return out;
-}
-
-/**
  * Offsets em que `nome` aparece como DECLARAÇÃO, em código.
  *
  * Declaração, e não menção: sem isso, `X = MODEL_BASE_URL + '...'` fazia a
  * regra ler `'...'` como se fosse o pin e reprovar código correto.
  *
- * @param {string} codigo saída de `codigoDe`
+ * @param {string} codigo saída de `stripJsNoise`
  * @param {string} nome   o identificador procurado
  * @return {number[]} offsets das declarações
  */
@@ -212,37 +157,6 @@ function ocorrenciasEmCodigo( codigo, nome ) {
 }
 
 /**
- * Offset da aspa que fecha a string aberta em `abre`.
- *
- * @param {string} source
- * @param {number} abre   offset da aspa de abertura
- * @return {number} offset da aspa de fechamento, ou o fim do arquivo
- */
-function fimDaString( source, abre ) {
-	const aspa = source[ abre ];
-	let i = abre + 1;
-	while ( i < source.length ) {
-		if ( source[ i ] === '\\' ) {
-			i += 2;
-			continue;
-		}
-		// `'` e `"` não atravessam quebra de linha em JavaScript; só a crase
-		// atravessa. Sem esta parada, uma aspa solta — dentro de um literal de
-		// regex, tipicamente — abria uma pseudo-string que engolia o resto do
-		// arquivo, e a declaração de verdade deixava de ser vista. Foi o vetor
-		// de dois falsos negativos seguidos nesta regra.
-		if ( aspa !== '`' && source[ i ] === '\n' ) {
-			return i - 1;
-		}
-		if ( source[ i ] === aspa ) {
-			return i;
-		}
-		i += 1;
-	}
-	return source.length;
-}
-
-/**
  * Lê a declaração que começa em `inicio` — do nome até o `;` que a fecha FORA
  * de string e FORA de comentário — e devolve os literais de texto que ela
  * contém.
@@ -255,7 +169,7 @@ function fimDaString( source, abre ) {
  * fixado, o segundo ramo nunca era olhado.
  *
  * @param {string} source conteúdo cru do arquivo, de onde sai o VALOR
- * @param {string} codigo `codigoDe( source )`, de onde sai a ESTRUTURA
+ * @param {string} codigo `stripJsNoise( source )`, de onde sai a ESTRUTURA
  * @param {number} inicio offset do nome da constante, já em código
  * @return {Object[]} literais `{ valor, interpolado, index }`
  */
@@ -272,7 +186,7 @@ function literaisDaDeclaracao( source, codigo, inicio ) {
 		}
 		if ( c === "'" || c === '"' || c === '`' ) {
 			const comeco = i;
-			const fim = fimDaString( source, i );
+			const fim = jsStringEnd( source, i );
 			const corpo = source.slice( comeco + 1, fim );
 			literais.push( {
 				valor: corpo.replace( /\\(.)/g, '$1' ),
@@ -304,7 +218,7 @@ function check( ctx ) {
 		// onde a DECLARAÇÃO é reconhecida; `source` é o cru, de onde sai o
 		// VALOR do literal. Os dois têm o mesmo comprimento, então um offset
 		// achado num vale no outro.
-		const codigo = codigoDe( source );
+		const codigo = stripJsNoise( source );
 		const literais = ocorrenciasEmCodigo( codigo, NOME_PIN ).flatMap(
 			( inicio ) => literaisDaDeclaracao( source, codigo, inicio )
 		);

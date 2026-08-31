@@ -57,7 +57,17 @@ describe( 'contract-pins: o pin é lido do CÓDIGO, não do texto', () => {
 			`export const MODEL_BASE_URL =\n\t/* nota; aqui */ '${ MAU }';\n`,
 		],
 	] )( 'acusa o host errado apesar de %s', ( _, src ) => {
-		expect( comFonte( src ) ).toHaveLength( 1 );
+		const a = comFonte( src );
+		expect( a ).toHaveLength( 1 );
+		// A CHAVE, não só a contagem. Ler a ESTRUTURA do cru em vez da cópia
+		// branqueada dá o mesmo NÚMERO de achados em quase todo vetor, e uma
+		// chave diferente — o `;` dentro do comentário fecha a declaração cedo,
+		// a regra não vê literal nenhum e cai no "não consigo provar". Chave
+		// diferente é `desvios:` que não casa, e um mutante sobrevivia à suíte
+		// inteira por causa disso.
+		expect( a[ 0 ].key ).toBe(
+			`features/narration/editor/model-source.ts → model-base-url:${ MAU }`
+		);
 	} );
 
 	it( 'acusa quando o nome só existe em comentário: não dá para provar o pin', () => {
@@ -128,21 +138,33 @@ describe( 'contract-pins: o pin é lido do CÓDIGO, não do texto', () => {
 		[
 			'isca de bloco com const',
 			`const RE = /'/;\nexport const MODEL_BASE_URL = "${ MAU }";\n/* era ' antes; const MODEL_BASE_URL = '${ BOM }' */\n`,
+			`model-base-url:${ MAU }`,
 		],
 		[
 			'isca de linha com const',
 			`const RE = /'/;\nexport const MODEL_BASE_URL = "${ MAU }";\n// nao e' mais: const MODEL_BASE_URL = '${ BOM }';\n`,
+			`model-base-url:${ MAU }`,
 		],
 		[
 			'regex de validação realista',
 			`const RE = /[^\\s']+/;\nexport const MODEL_BASE_URL = "${ MAU }";\n// antigo (nao e' mais): const MODEL_BASE_URL = '${ BOM }';\n`,
+			`model-base-url:${ MAU }`,
 		],
 		[
 			'const no comentário sem dessincronizar',
 			`// TODO trocar por const\nMODEL_BASE_URL = '${ BOM }';\n`,
+			'model-base-url',
 		],
-	] )( 'não é absolvido por %s', ( _, src ) => {
-		expect( comFonte( src ) ).toHaveLength( 1 );
+	] )( 'não é absolvido por %s', ( _, src, chave ) => {
+		const a = comFonte( src );
+		expect( a ).toHaveLength( 1 );
+		// A CHAVE, e não só a contagem: desfazer a segunda fonte (ler a
+		// estrutura do cru) mantinha um achado, mas com o valor errado dentro
+		// da chave — e chave errada é `desvios:` que não casa. Um mutante
+		// sobrevivia a `toHaveLength( 1 )` sozinho.
+		expect( a[ 0 ].key ).toBe(
+			`features/narration/editor/model-source.ts → ${ chave }`
+		);
 	} );
 
 	it( 'uma segunda referência à constante não é uma declaração', () => {

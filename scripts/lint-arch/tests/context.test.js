@@ -7,6 +7,7 @@ const {
 	stripPhpNoise,
 	isTestPath,
 	phpSources,
+	stripJsNoise,
 } = require( '../context' );
 // Duas regras entram aqui de propósito, e só no describe de heredoc: as duas
 // "bocas" que o suporte a heredoc fecha eram defeitos observáveis no ACHADO de
@@ -720,5 +721,73 @@ describe( 'phpSources', () => {
 			'features/narration/php/class-assets.php',
 			'post-voice.php',
 		] );
+	} );
+} );
+
+// Invariante que sustenta o padrão de duas fontes do `contract-pins`: um
+// offset numa cópia vale na outra. Uma versão anterior devolvia `i - 1` na
+// parada de quebra de linha, e uma aspa que fosse o último caractere da linha
+// era emitida DUAS vezes — +1 em todo offset seguinte, o que deslocava em
+// silêncio todo literal que a regra lia. Fuzz de 200 mil entradas acusava ~5%.
+describe( 'stripJsNoise preserva comprimento e linhas', () => {
+	it.each( [
+		[ 'aspa no fim da linha', "x = '\n" ],
+		[ 'aspa solta antes de texto', "a'\nb" ],
+		[ 'aspa sozinha', "'" ],
+		[ 'template sem fechar', '`x' ],
+		[ 'comentário de bloco sem fechar', '/* x' ],
+		[ 'comentário de linha no fim do arquivo', '// x' ],
+		[ 'string com */ dentro', "'*/'" ],
+		[ 'CRLF', "x = '\r\n" ],
+	] )( 'em %s', ( _, src ) => {
+		const out = stripJsNoise( src );
+		expect( {
+			len: out.length,
+			linhas: out.split( '\n' ).length,
+		} ).toEqual( {
+			len: src.length,
+			linhas: src.split( '\n' ).length,
+		} );
+	} );
+
+	it( 'em 5 mil entradas aleatórias de caracteres perigosos', () => {
+		const PECAS = [
+			"'",
+			'"',
+			'`',
+			'\n',
+			'/',
+			'*',
+			'//',
+			'/*',
+			'*/',
+			'\\',
+			'a',
+			' ',
+			';',
+			'=',
+			'${',
+			'}',
+			'const',
+			'\r',
+		];
+		for ( let n = 0; n < 5000; n += 1 ) {
+			let src = '';
+			const k = 1 + Math.floor( Math.random() * 12 );
+			for ( let j = 0; j < k; j += 1 ) {
+				src += PECAS[ Math.floor( Math.random() * PECAS.length ) ];
+			}
+			const out = stripJsNoise( src );
+			expect( { src, len: out.length } ).toEqual( {
+				src,
+				len: src.length,
+			} );
+		}
+	} );
+
+	it( 'branqueia o corpo, mantendo as aspas e as quebras de linha', () => {
+		expect( stripJsNoise( "a = 'xyz'; // nota\nb = 1;" ) ).toBe(
+			"a = '   ';        \nb = 1;"
+		);
 	} );
 } );

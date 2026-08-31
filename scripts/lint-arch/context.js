@@ -342,8 +342,111 @@ function createContext( {
 	};
 }
 
+/**
+ * Offset da aspa que fecha a string aberta em `abre`.
+ *
+ * @param {string} source
+ * @param {number} abre   offset da aspa de abertura
+ * @return {number} offset da aspa de fechamento, ou o fim do arquivo
+ */
+function jsStringEnd( source, abre ) {
+	const aspa = source[ abre ];
+	let i = abre + 1;
+	while ( i < source.length ) {
+		if ( source[ i ] === '\\' ) {
+			i += 2;
+			continue;
+		}
+		// `'` e `"` não atravessam quebra de linha em JavaScript; só a crase
+		// atravessa. Sem esta parada, uma aspa solta — dentro de um literal de
+		// regex, tipicamente — abria uma pseudo-string que engolia o resto do
+		// arquivo, e a declaração de verdade deixava de ser vista. Foi o vetor
+		// de dois falsos negativos seguidos nesta regra.
+		if ( aspa !== '`' && source[ i ] === '\n' ) {
+			// `i`, e não `i - 1`: quem chama consome de `abre` até o retorno
+			// INCLUSIVE e reemite esse caractere. Com `i - 1`, uma aspa que
+			// fosse o último caractere da linha devolvia o próprio `abre`, e o
+			// chamador emitia a aspa duas vezes para um caractere consumido —
+			// +1 em todo offset seguinte, que é a invariante inteira do padrão
+			// de duas fontes. Medido: `"x = '\n"` saía com 7 caracteres para 6.
+			return i;
+		}
+		if ( source[ i ] === aspa ) {
+			return i;
+		}
+		i += 1;
+	}
+	return source.length;
+}
+
+/**
+ * Branqueia comentário e corpo de string, preservando comprimento e linhas.
+ *
+ * Mesmo padrão de duas fontes que as regras de PHP usam: apagar PARA ESPAÇO em
+ * vez de remover mantém cada offset válido nas duas cópias, então dá para achar
+ * ESTRUTURA na cópia branqueada e ler CONTEÚDO no cru, no mesmo índice.
+ *
+ * Limite conhecido: literal de REGEX não é reconhecido. `'` e `"` param na
+ * quebra de linha, então uma aspa solta dentro de um regex estraga no máximo
+ * uma linha. A crase não para, e por isso uma crase ímpar dentro de um regex
+ * (`/`/`) branqueia o resto do arquivo. Isso faz a declaração desaparecer da
+ * cópia branqueada, e quem chama trata "não achei declaração" como "não
+ * consigo provar" — ACUSA. Erra na direção do falso positivo, nunca da
+ * absolvição, e isso é medido, não suposto.
+ *
+ * Duas rodadas de review provaram que as duas alternativas mais baratas não
+ * funcionam. Procurar o nome no cru deixava um comentário citando a constante
+ * ancorar a varredura (round 1). Procurar em código mas conferir a âncora de
+ * declaração numa fatia CRUA deixava passar a coisa mais comum que existe
+ * dentro de um comentário — código comentado, que tem `const` (round 2). A
+ * âncora tem de ler a MESMA cópia em que a ocorrência foi achada.
+ *
+ * @param {string} source conteúdo do arquivo
+ * @return {string} o mesmo texto com comentário e corpo de string em branco
+ */
+function stripJsNoise( source ) {
+	let out = '';
+	let i = 0;
+	const branco = ( trecho ) => trecho.replace( /[^\n]/g, ' ' );
+	while ( i < source.length ) {
+		const c = source[ i ];
+		if ( c === '/' && source[ i + 1 ] === '/' ) {
+			const fim = source.indexOf( '\n', i );
+			const ate = fim === -1 ? source.length : fim;
+			out += branco( source.slice( i, ate ) );
+			i = ate;
+			continue;
+		}
+		if ( c === '/' && source[ i + 1 ] === '*' ) {
+			const fim = source.indexOf( '*/', i + 2 );
+			const ate = fim === -1 ? source.length : fim + 2;
+			out += branco( source.slice( i, ate ) );
+			i = ate;
+			continue;
+		}
+		if ( c === "'" || c === '"' || c === '`' ) {
+			const fim = jsStringEnd( source, i );
+			// As aspas ficam; só o CORPO some. Um `;` dentro de string deixa de
+			// fechar declaração, e um literal de regex com aspa dentro deixa de
+			// engolir as linhas seguintes — porque `'` e `"` não atravessam
+			// quebra de linha em JavaScript, e `jsStringEnd` respeita isso.
+			out +=
+				c +
+				branco( source.slice( i + 1, fim ) ) +
+				( source[ fim ] || '' );
+			i = fim + 1;
+			continue;
+		}
+		out += c;
+		i += 1;
+	}
+	return out;
+}
+
 module.exports = {
 	createContext,
+	stripJsNoise,
+	jsStringEnd,
 	trackedFiles,
 	stripPhpComments,
 	stripPhpNoise,
