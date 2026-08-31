@@ -138,16 +138,41 @@ function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 	// `includes`. Não executa o relatório, não importa ESM e não depende do
 	// Jest — que era a razão dada para declarar esta lacuna em vez de
 	// fechá-la, e ela valia para EXECUTAR o doctor, não para lê-lo.
-	if ( pedemDoctor.size && ctx.files.includes( DOCTOR_SOURCE ) ) {
-		const fonte = ctx.read( DOCTOR_SOURCE );
-		for ( const [ adrId, descricao ] of Object.entries( doctorChecks ) ) {
+	if ( pedemDoctor.size ) {
+		// Arquivo ausente NÃO é silêncio. Uma versão anterior desta checagem
+		// pulava quando `scripts/doctor.mjs` não estava na árvore, que é o
+		// mesmo defeito que o `adr-index-table` acabara de fechar um commit
+		// antes: apagar o alvo desligava o gate sem deixar rastro, e `doctor`
+		// não roda no `ci.yml`. Medido: `git rm scripts/doctor.mjs` dava exit 0
+		// e zero saída.
+		const fonte = ctx.files.includes( DOCTOR_SOURCE )
+			? ctx.read( DOCTOR_SOURCE )
+			: null;
+		if ( fonte === null ) {
+			problems.push( {
+				rule: DOCTOR,
+				message: `${ [ ...pedemDoctor ]
+					.map( ( id ) => `ADR-${ id }` )
+					.join(
+						', '
+					) } declara(m) enforced_by: doctor, mas ${ DOCTOR_SOURCE } não existe na árvore — o relatório que essas ADRs dizem ter não pode ser conferido.`,
+			} );
+		}
+		for ( const [ adrId, descricao ] of Object.entries(
+			fonte === null ? {} : doctorChecks
+		) ) {
 			for ( const m of descricao.matchAll( /"([^"]+)"/g ) ) {
 				const nome = m[ 1 ];
+				// `^[ \t]*` com a flag `m`: a chamada tem de começar a linha.
+				// Sem isso, prefixar `// ` na chamada satisfazia a busca e a
+				// seção deixava de ser impressa com o gate verde — apagar
+				// reprovava, comentar não, e a prosa prometia as duas.
 				const literal = new RegExp(
-					`secao\\(\\s*['\`]${ nome.replace(
+					`^[ \t]*secao\\(\\s*['\`]${ nome.replace(
 						/[.*+?^${}()|[\]\\]/g,
 						'\\$&'
-					) }`
+					) }`,
+					'm'
 				);
 				if ( ! literal.test( fonte ) ) {
 					problems.push( {

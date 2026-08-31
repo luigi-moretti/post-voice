@@ -227,11 +227,20 @@ describe( 'run', () => {
 	} );
 
 	describe( 'doctor como enforced_by verificável', () => {
+		// Estes dois passam um ctx que TEM o `doctor.mjs`: a ausência do arquivo
+		// é ela própria um achado (ver o teste do arquivo fora da árvore
+		// abaixo), e sem isto os dois casos abaixo mediriam essa outra coisa.
+		const comDoctorMjs = ( fonte ) =>
+			createContext( {
+				files: [ 'scripts/doctor.mjs' ],
+				read: () => fonte,
+			} );
+
 		it( 'acusa ADR que declara doctor sem seção declarada', () => {
 			const out = run( {
 				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
 				registry: {},
-				ctx,
+				ctx: comDoctorMjs( '' ),
 				doctorChecks: {},
 			} );
 			expect( out.problems ).toHaveLength( 1 );
@@ -242,10 +251,44 @@ describe( 'run', () => {
 			const out = run( {
 				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
 				registry: {},
-				ctx,
+				ctx: comDoctorMjs( '' ),
 				doctorChecks: { '0005': 'contagem de X' },
 			} );
 			expect( out.problems ).toEqual( [] );
+		} );
+
+		// Achado II2 da segunda re-review: a checagem pulava quando o
+		// `doctor.mjs` não estava na árvore — o mesmo defeito que o
+		// `adr-index-table` fechara um commit antes. Medido: `git rm` no
+		// arquivo dava exit 0 e zero saída, e `doctor` não roda no `ci.yml`.
+		it( 'acusa quando o doctor.mjs não está na árvore', () => {
+			const out = run( {
+				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
+				registry: {},
+				ctx: { root: '/repo', files: [], read: () => '' },
+				doctorChecks: { '0005': 'seção "x": contagem' },
+			} );
+			expect( out.problems ).toHaveLength( 1 );
+			expect( out.problems[ 0 ].message ).toMatch(
+				/não existe na árvore/
+			);
+		} );
+
+		// Achado II3: apagar a seção reprovava, comentar não — e a prosa
+		// prometia as duas.
+		it( 'acusa a seção COMENTADA, não só a apagada', () => {
+			const out = run( {
+				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
+				registry: {},
+				ctx: comDoctorMjs(
+					"// secao( 'fronteira Jest/E2E', linhas );\n"
+				),
+				doctorChecks: {
+					'0005': 'seção "fronteira Jest/E2E": contagem',
+				},
+			} );
+			expect( out.problems ).toHaveLength( 1 );
+			expect( out.problems[ 0 ].message ).toMatch( /não a imprime/ );
 		} );
 
 		// Achado M7 da re-review: o espelho conferia só a DECLARAÇÃO.
@@ -253,12 +296,6 @@ describe( 'run', () => {
 		// correspondente do `doctor.mjs` deixava o gate em 0 — o mesmo defeito
 		// que a ADR-0012 sofreu por semanas, sobrevivendo dentro da correção
 		// dele. A busca é estática, pelo literal do título no fonte.
-		const comDoctorMjs = ( fonte ) =>
-			createContext( {
-				files: [ 'scripts/doctor.mjs' ],
-				read: () => fonte,
-			} );
-
 		it( 'acusa quando a seção nomeada não é impressa pelo doctor', () => {
 			const out = run( {
 				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
