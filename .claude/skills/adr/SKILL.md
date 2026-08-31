@@ -74,6 +74,13 @@ frase curta em `CLAUDE.md` **e** a ADR que a sustenta — ver seção 9).
 4. `status` é um dos cinco valores fechados:
    `proposta | aceita | aceita-com-desvio | superada-por-NNNN | revogada`.
    Qualquer outro texto reprova o parser (`scripts/lint-arch/adr.js`).
+   **Mudar `status` ou `enforced_by` obriga a mudar a linha da ADR na tabela
+   de `docs/adr/README.md` no mesmo commit** — a regra `adr-index-table`
+   reprova a divergência entre as duas cópias.
+   Só `aceita` e `aceita-com-desvio` enforçam. `proposta` não reprova, mas o
+   `lint:arch` avisa quantas violações a regra dela está achando sem
+   bloquear; `revogada` e `superada-por-NNNN` deixam a regra órfã, que
+   reprova — é o sinal para apagá-la.
 5. `revisar_quando` é uma **condição observável**, nunca uma data —
    "uma quarta feature entrar", não "em março". Uma data vira dívida
    invisível: ninguém revê o arquivo no dia certo, e a ADR nunca é

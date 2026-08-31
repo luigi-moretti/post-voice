@@ -13,7 +13,7 @@ O que está decidido, por quê, e o que impede de ser desfeito por acidente.
 
 | # | Título | Status | Defendida por |
 |---|---|---|---|
-| [0001](0001-registrar-decisoes-em-adr.md) | Registrar decisões de arquitetura como ADR | aceita | `doctor` |
+| [0001](0001-registrar-decisoes-em-adr.md) | Registrar decisões de arquitetura como ADR | aceita | `doctor`, `adr-index-table` |
 | [0002](0002-tts-roda-no-navegador.md) | O TTS roda inteiro no navegador; o servidor só orquestra | aceita | `no-server-side-tts` |
 | [0003](0003-engine-pocket-tts.md) | Pocket TTS como engine, não Piper | aceita | `review-manual` |
 | [0004](0004-layout-por-feature.md) | Layout por feature; `shared/` só a partir do segundo consumidor | aceita-com-desvio | `feature-layout`, `shared-two-consumers` |

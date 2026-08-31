@@ -243,20 +243,30 @@ const LINHA_TABELA_RE =
 	/^\|\s*\[(\d{4})\]\([^)]*\)\s*\|([^|]*)\|([^|]*)\|([^|]*)\|\s*$/gm;
 
 /**
+ * `adr` e `coluna` saem em cada problema para a regra `adr-index-table` montar
+ * uma chave de desvio ESTÁVEL: a mensagem cita os dois valores observados e
+ * mudaria a cada edição da tabela, invalidando sozinha o `desvios:` escrito
+ * contra ela.
+ *
  * @param {Object[]} adrs
  * @param {string}   readme conteúdo de docs/adr/README.md
- * @return {Object[]} problemas
+ * @return {Object[]} problemas `{ adr, coluna, line, message }`
  */
 function checkIndexTable( adrs, readme ) {
 	const porId = new Map( adrs.map( ( a ) => [ a.id, a ] ) );
 	const problemas = [];
+	const linhaDe = ( idx ) => readme.slice( 0, idx ).split( '\n' ).length;
 	LINHA_TABELA_RE.lastIndex = 0;
 	let m;
 	while ( ( m = LINHA_TABELA_RE.exec( readme ) ) !== null ) {
 		const [ , id, , statusCol, defendidaCol ] = m;
+		const line = linhaDe( m.index );
 		const adr = porId.get( id );
 		if ( ! adr ) {
 			problemas.push( {
+				adr: id,
+				coluna: 'inexistente',
+				line,
 				message: `docs/adr/README.md lista uma ADR-${ id } que não existe em docs/adr/.`,
 			} );
 			continue;
@@ -264,6 +274,9 @@ function checkIndexTable( adrs, readme ) {
 		const status = statusCol.trim();
 		if ( status !== adr.status ) {
 			problemas.push( {
+				adr: id,
+				coluna: 'status',
+				line,
 				message: `docs/adr/README.md diz que a ADR-${ id } tem status "${ status }", mas o front-matter de ${ adr.file } diz "${ adr.status }".`,
 			} );
 		}
@@ -275,6 +288,9 @@ function checkIndexTable( adrs, readme ) {
 		);
 		if ( naTabela.join( ', ' ) !== adr.enforcedBy.join( ', ' ) ) {
 			problemas.push( {
+				adr: id,
+				coluna: 'enforced_by',
+				line,
 				message: `docs/adr/README.md diz que a ADR-${ id } é defendida por [${ naTabela.join(
 					', '
 				) }], mas o enforced_by de ${

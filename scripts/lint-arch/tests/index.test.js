@@ -108,6 +108,42 @@ describe( 'run', () => {
 			expect( out.problems ).toEqual( [] );
 		} );
 
+		// Achado da revisão das correções: `proposta` não bloqueava E não
+		// deixava rastro. `revogada` e `superada-por-NNNN` ao menos deixam a
+		// regra órfã, que reprova alto. Medido: baixar uma ADR aceita para
+		// proposta, ajustar a tabela do índice e esvaziar `desvios:` — tudo o
+		// que o mecanismo exige para ficar consistente — dava lint:arch em 0
+		// com a regra ainda achando violação real. Desligar um gate é decisão
+		// legítima; desligá-lo sem rastro é como esta branch começou.
+		it( 'proposta não bloqueia, mas DIZ quantas violações não estão reprovando', () => {
+			const out = run( comRegra( 'proposta' ) );
+			expect( out.problems ).toEqual( [] );
+			const aviso = out.warnings.find( ( w ) =>
+				/não reprova — mas acha 1 violação/.test( w.message )
+			);
+			expect( aviso ).toBeDefined();
+			expect( aviso.rule ).toBe( 'feature-deps' );
+		} );
+
+		it( 'proposta sem violação nenhuma não gera aviso de violação', () => {
+			const out = run( {
+				adrs: [ adr( { status: 'proposta' } ) ],
+				registry: {
+					'feature-deps': {
+						id: 'feature-deps',
+						adr: '0005',
+						check: () => [],
+					},
+				},
+				ctx,
+			} );
+			expect(
+				out.warnings.filter( ( w ) =>
+					/não reprova — mas acha/.test( w.message )
+				)
+			).toEqual( [] );
+		} );
+
 		// A violação achada pela regra não é reportada. A regra em si vira
 		// órfã, que é outro problema e tem teste próprio logo abaixo — por
 		// isso a asserção filtra em vez de exigir zero.

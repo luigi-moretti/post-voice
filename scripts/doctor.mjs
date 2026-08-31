@@ -62,8 +62,10 @@ const adrs = tolerante(
 // Vale a mesma regra — vira avaria, não morte.
 const ctx = tolerante(
 	'não consegui listar os arquivos versionados',
-	() => createContext( { root } ),
-	{ root, files: [], read: () => '' }
+	// `adrs` entra no ctx porque a regra `adr-index-table` confere a tabela do
+	// índice contra o front-matter — o mesmo ctx que o CLI do lint:arch monta.
+	() => createContext( { root, adrs } ),
+	{ root, files: [], read: () => '', adrs: [] }
 );
 const adrIds = new Set( adrs.map( ( a ) => a.id ) );
 
@@ -79,7 +81,6 @@ const lint = tolerante(
 			registry: regras,
 			ctx,
 			doctorChecks: health.DOCTOR_CHECKS,
-			readme: ler( 'docs/adr/README.md' ),
 		} ),
 	null
 );
@@ -166,7 +167,18 @@ secao(
 //     semanas elas não existiam — o `revisar_quando` dela é "a suíte E2E passar
 //     de 15 minutos", e sem duração no relatório ninguém conseguia avaliar o
 //     gatilho lendo o doctor. É o que deixou a ADR e o TESTING.md divergirem
-//     sem ninguém notar. O `lint:arch` agora confere que esta seção existe.
+//     sem ninguém notar.
+//
+//     O que o `lint:arch` confere é a DECLARAÇÃO, não esta seção: o espelho de
+//     `DOCTOR` (em `index.js`) exige que toda ADR com `enforced_by: doctor`
+//     tenha entrada em `DOCTOR_CHECKS` e vice-versa. `DOCTOR_CHECKS` é um mapa
+//     escrito à mão em `health.js`; nada lê este arquivo. Apagar o bloco
+//     abaixo deixa o `lint:arch` em 0.
+//
+//     Fica declarado em vez de disfarçado, que é a regra desta branch: fechar
+//     essa metade exigiria o gate ler a saída do próprio relatório, e o
+//     `doctor` é ESM justamente por ficar fora do Jest. Quem mexer aqui
+//     mantém a seção de pé por leitura, não por gate.
 const REPORT_E2E = 'artifacts/test-results/report.json';
 const linhasE2e = [ `cenários E2E: ${ health.e2eScenarioCount( ctx ) }` ];
 if ( fs.existsSync( path.join( root, REPORT_E2E ) ) ) {

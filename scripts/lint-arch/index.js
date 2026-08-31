@@ -52,11 +52,9 @@ const emVoo = ( adr ) => adr.status === 'proposta';
  * @param {Object}   entrada.ctx
  * @param {Object}   [entrada.doctorChecks] mapa id da ADR → seção do doctor
  *                                          que cobre a decisão. O CLI passa o registro real de `health.js`.
- * @param {string}   [entrada.readme]       conteúdo de docs/adr/README.md. Vazio
- *                                          desliga a checagem da tabela — é o default dos testes, que injetam ctx falso e não têm índice para conferir.
  * @return {{ problems: Object[], warnings: Object[] }} achados
  */
-function run( { adrs, registry, ctx, doctorChecks = {}, readme = '' } ) {
+function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 	const problems = [];
 	const warnings = [];
 	const declaradas = new Set();
@@ -154,6 +152,32 @@ function run( { adrs, registry, ctx, doctorChecks = {}, readme = '' } ) {
 					message: `ADR-${ adr.id } tem status "${ adr.status }" e não enforça, mas lista ${ adr.desvios.length } desvio(s) — são inertes. Remova-os de ${ adr.file } ou reveja o status.`,
 				} );
 			}
+
+			// Uma ADR em `proposta` não bloqueia, de propósito — bloquear a CI
+			// com decisão ainda em discussão forçaria a decisão pela porta dos
+			// fundos. Mas ela não pode ficar MUDA: `revogada` e
+			// `superada-por-NNNN` deixam a regra órfã, que reprova alto;
+			// `proposta` não deixa rastro nenhum. Medido: baixar uma ADR
+			// aceita para proposta, ajustar a tabela do índice e esvaziar
+			// `desvios:` — tudo o que o próprio mecanismo exige para ficar
+			// consistente — dava lint:arch em 0 com a regra ainda achando
+			// violação real. Desligar um gate é decisão legítima; desligá-lo
+			// sem deixar rastro é como esta branch inteira começou.
+			if ( emVoo( adr ) ) {
+				for ( const id of adr.enforcedBy ) {
+					if ( LITERAIS.has( id ) || ! registry[ id ] ) {
+						continue;
+					}
+					const achadosEmVoo = executar( id );
+					if ( achadosEmVoo.length ) {
+						warnings.push( {
+							adr: adr.id,
+							rule: id,
+							message: `ADR-${ adr.id } está como proposta, então ${ id } não reprova — mas acha ${ achadosEmVoo.length } violação(ões) agora. Aceitar a ADR sem corrigir ou sem listar em desvios: deixa a CI vermelha.`,
+						} );
+					}
+				}
+			}
 			continue;
 		}
 
@@ -207,18 +231,6 @@ function run( { adrs, registry, ctx, doctorChecks = {}, readme = '' } ) {
 		}
 	}
 
-	// A tabela do README duplica `status` e `enforced_by`, e isso precisa
-	// REPROVAR, não só aparecer no relatório: dava para mudar o front-matter e
-	// deixar a tabela mentindo com o lint:arch em 0. `require` aqui dentro, e
-	// não no topo, pela mesma razão documentada lá em cima: `run` tem de
-	// continuar importável sem carregar o que os testes não injetam.
-	if ( readme ) {
-		const { checkIndexTable } = require( './health' );
-		for ( const p of checkIndexTable( adrs, readme ) ) {
-			problems.push( { message: p.message } );
-		}
-	}
-
 	return { problems, warnings };
 }
 
@@ -256,24 +268,14 @@ if ( require.main === module ) {
 	// --report: não sai não-zero. É como `npm run doctor` consome o linter.
 	const reportOnly = process.argv.includes( '--report' );
 	const adrs = loadAdrs( path.join( root, 'docs/adr' ) );
-	const fs = require( 'node:fs' );
 	const { DOCTOR_CHECKS } = require( './health' );
-	let readme = '';
-	try {
-		readme = fs.readFileSync(
-			path.join( root, 'docs/adr/README.md' ),
-			'utf8'
-		);
-	} catch {
-		// Índice ausente já é reportado pelo doctor; aqui a falta dele só
-		// desliga a checagem da tabela, em vez de derrubar o lint inteiro.
-	}
 	const resultado = run( {
 		adrs,
 		registry,
-		ctx: createContext( { root } ),
+		// As ADRs entram no ctx porque a regra `adr-index-table` confere a
+		// tabela do índice contra o front-matter delas.
+		ctx: createContext( { root, adrs } ),
 		doctorChecks: DOCTOR_CHECKS,
-		readme,
 	} );
 	process.stdout.write( format( resultado ) + '\n' );
 	process.exit( ! reportOnly && resultado.problems.length ? 1 : 0 );

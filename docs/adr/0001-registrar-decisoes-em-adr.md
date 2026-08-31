@@ -4,7 +4,7 @@ titulo: Registrar decisões de arquitetura como ADR
 status: aceita
 data: 2026-08-27
 origem: superpowers/specs/2026-08-25-adr-e-governanca-de-arquitetura-design.md
-enforced_by: [ doctor ]
+enforced_by: [ doctor, adr-index-table ]
 revisar_quando: o índice passar de 40 ADRs, ou uma ADR levar mais de meia hora para ser escrita
 desvios: []
 ---
@@ -90,8 +90,16 @@ do `CLAUDE.md` que originou este trabalho.
 disparou, ADR acima de 120 linhas, ADR cuja `origem` aponta para arquivo
 inexistente, e ADR ausente do índice de `README.md`.
 
-O `lint:arch` não tem regra determinística para esta ADR: "isto merecia ser uma
-ADR?" é julgamento. É a razão de `enforced_by: [ doctor ]`.
+`adr-index-table` reprova quando a tabela de `README.md` discorda do
+front-matter em `status` ou em `enforced_by`. O índice duplica esses dois
+campos, e duplicação sem checagem é a deriva que esta ADR existe para impedir —
+sem a regra dava para mudar o front-matter e deixar a tabela mentindo com o
+`lint:arch` em 0. Ausência de uma ADR no índice segue com o `doctor`, para os
+dois não reportarem o mesmo defeito duas vezes.
+
+O que continua sem gate determinístico é o critério de admissão: "isto merecia
+ser uma ADR?" é julgamento, e é a razão de `doctor` estar no `enforced_by` ao
+lado da regra.
 
 ## Alternativas rejeitadas
 

@@ -16,4 +16,5 @@ module.exports = {
 	'no-untyped-editor-code': require( './no-untyped-editor-code' ),
 	'contract-pins': require( './contract-pins' ),
 	'no-npm-install': require( './no-npm-install' ),
+	'adr-index-table': require( './adr-index-table' ),
 };

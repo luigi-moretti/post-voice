@@ -311,9 +311,15 @@ function phpSources( ctx ) {
  * @param {string}   [entrada.root]  raiz do repo
  * @param {string[]} [entrada.files] injetado nos testes
  * @param {Function} [entrada.read]  injetado nos testes
+ * @param {Object[]} [entrada.adrs]  ADRs já parseadas, para `adr-index-table`
  * @return {Object} o contexto
  */
-function createContext( { root = process.cwd(), files, read } = {} ) {
+function createContext( {
+	root = process.cwd(),
+	files,
+	read,
+	adrs = [],
+} = {} ) {
 	const lista = files || trackedFiles( root );
 	const ler =
 		read || ( ( f ) => fs.readFileSync( path.join( root, f ), 'utf8' ) );
@@ -321,6 +327,12 @@ function createContext( { root = process.cwd(), files, read } = {} ) {
 	return {
 		root,
 		files: lista,
+		// As ADRs já parseadas. Existe para a regra `adr-index-table`, que
+		// confere a tabela do índice contra o front-matter: sem isto ela teria
+		// de reparsear as ADRs por conta própria, e passariam a existir duas
+		// noções de "o que o front-matter diz" dentro do mesmo linter. Default
+		// `[]` para o ctx sintético dos testes, que não injeta ADR nenhuma.
+		adrs,
 		read( file ) {
 			if ( ! cache.has( file ) ) {
 				cache.set( file, ler( file ) );

@@ -46,6 +46,10 @@ arquivo registra isso. O `doctor` reporta a contagem de cenários E2E e o
 tempo da última execução, para que o crescimento da suíte apareça antes de
 doer.
 
+O `lint:arch` confere que esta ADR e o `DOCTOR_CHECKS` do `health.js` se
+declarem mutuamente — não que o relatório de fato imprima as duas linhas.
+Essa metade fica com quem editar `scripts/doctor.mjs`, e está dita lá.
+
 ## Alternativas rejeitadas
 
 **Mockar o Worker.** Testa a fidelidade do mock, não a engine.
