@@ -118,6 +118,33 @@ describe( 'contract-pins: o pin é lido do CÓDIGO, não do texto', () => {
 	// I2: regressão introduzida pela própria correção do #1. Qualquer segunda
 	// menção ao identificador virava "declaração", e a regra lia o literal ao
 	// lado como se fosse o pin — reprovando código correto.
+	// Achado II1 da segunda re-review: a âncora de declaração era conferida
+	// contra uma fatia CRUA, então o `const` de um trecho de código comentado
+	// a satisfazia. Três vetores devolviam zero achado com o pin apontando
+	// para outro host. A âncora passa a ler a mesma cópia branqueada em que a
+	// ocorrência é achada, e `'`/`"` deixam de atravessar quebra de linha —
+	// que é o que fazia o literal de regex engolir a declaração.
+	it.each( [
+		[
+			'isca de bloco com const',
+			`const RE = /'/;\nexport const MODEL_BASE_URL = "${ MAU }";\n/* era ' antes; const MODEL_BASE_URL = '${ BOM }' */\n`,
+		],
+		[
+			'isca de linha com const',
+			`const RE = /'/;\nexport const MODEL_BASE_URL = "${ MAU }";\n// nao e' mais: const MODEL_BASE_URL = '${ BOM }';\n`,
+		],
+		[
+			'regex de validação realista',
+			`const RE = /[^\\s']+/;\nexport const MODEL_BASE_URL = "${ MAU }";\n// antigo (nao e' mais): const MODEL_BASE_URL = '${ BOM }';\n`,
+		],
+		[
+			'const no comentário sem dessincronizar',
+			`// TODO trocar por const\nMODEL_BASE_URL = '${ BOM }';\n`,
+		],
+	] )( 'não é absolvido por %s', ( _, src ) => {
+		expect( comFonte( src ) ).toHaveLength( 1 );
+	} );
+
 	it( 'uma segunda referência à constante não é uma declaração', () => {
 		expect(
 			comFonte(

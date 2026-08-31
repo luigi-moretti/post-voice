@@ -26,11 +26,15 @@ const MODEL_SOURCE = 'features/narration/editor/model-source.ts';
 const NOME_PIN = 'MODEL_BASE_URL';
 
 // O que precede o nome numa DECLARAÇÃO. A guarda de fronteira sozinha aceitava
-// qualquer menção ao identificador: um `X = MODEL_BASE_URL + '...'` correto
-// virava violação (a regra lia `'voices.json'` como se fosse o pin), e um
-// `MODEL_BASE_URL = '<url boa>'` dentro de um comentário lido como código por
-// dessincronização absolvia a declaração de verdade. Exigir a declaração fecha
-// os dois: comentário e segunda referência não têm `const` antes.
+// qualquer menção: `X = MODEL_BASE_URL + '...'`, correto, virava violação
+// porque a regra lia `'voices.json'` como se fosse o pin.
+//
+// Isto é conferido contra `codigoDe( source )`, NUNCA contra o cru. Uma versão
+// anterior testava a fatia crua e justificava-se dizendo "texto solto num
+// comentário não tem `const` antes" — o contraexemplo é a coisa mais comum que
+// existe dentro de um comentário, código comentado, e foi medido: três vetores
+// devolviam zero achado com o pin apontando para outro host. Na cópia
+// branqueada não há `const` de comentário nenhum para satisfazer a âncora.
 const DECLARACAO_RE = /(?:^|[;{}()\s])(?:export\s+)?(?:const|let|var)\s+$/;
 
 // O mirror É fixado, ao contrário dos mínimos e do SHA. A ADR-0014 diz que a
@@ -124,61 +128,79 @@ function concordam( ctx, fontes, rotulo ) {
 }
 
 /**
- * Percorre TypeScript pulando comentário e string, e devolve os offsets em que
- * `nome` aparece em CÓDIGO de verdade.
+ * Branqueia comentário e corpo de string, preservando comprimento e linhas.
  *
- * Existe porque a versão anterior fazia `source.indexOf( 'MODEL_BASE_URL' )` no
- * arquivo CRU — a primeira ocorrência TEXTUAL, comentário incluído. Medido: um
- * comentário acima da declaração que nomeie a constante, cite a URL fixada
- * entre aspas e termine em `;` fazia a varredura parar dentro do próprio
- * comentário; a declaração real, apontando para outro host, nunca era olhada, e
- * `check` devolvia zero achado. Gate verde sobre pin de contrato violado — e o
- * que esse pin protege é de onde o navegador do autor baixa ~190 MB de modelo.
+ * Mesmo padrão de duas fontes que as regras de PHP usam: apagar PARA ESPAÇO em
+ * vez de remover mantém cada offset válido nas duas cópias, então dá para achar
+ * ESTRUTURA na cópia branqueada e ler CONTEÚDO no cru, no mesmo índice.
  *
- * A varredura NÃO conhece literal de regex nem interpolação de template, e por
- * isso pode dessincronizar: num `/'/`, a aspa de dentro abre uma pseudo-string
- * e daí em diante um trecho de comentário pode ser lido como código. Uma versão
- * anterior deste comentário afirmava que dessincronizar "erra na direção
- * segura, achando MENOS ocorrências". Isso era FALSO, e foi medido: com um
- * regex desses e um comentário-isca contendo a URL fixada, a declaração de
- * verdade era engolida pela pseudo-string, a isca era lida como código e a
- * regra devolvia zero achado com o pin apontando para outro host.
- *
- * O que torna a dessincronização inofensiva não é a varredura, é a ÂNCORA: só
- * conta como ocorrência o nome precedido de uma declaração de verdade
- * (`const`/`let`/`var`, com `export` opcional). Texto solto num comentário não
- * tem `const` antes; uma segunda referência à constante — `X = MODEL_BASE_URL +
- * '...'` — também não. Assim, dessincronizar só pode fazer a conta CAIR, e
- * zero ocorrência com o nome presente no cru é tratado pelo chamador como "não
- * consigo provar o pin", que acusa.
+ * Duas rodadas de review provaram que as duas alternativas mais baratas não
+ * funcionam. Procurar o nome no cru deixava um comentário citando a constante
+ * ancorar a varredura (round 1). Procurar em código mas conferir a âncora de
+ * declaração numa fatia CRUA deixava passar a coisa mais comum que existe
+ * dentro de um comentário — código comentado, que tem `const` (round 2). A
+ * âncora tem de ler a MESMA cópia em que a ocorrência foi achada.
  *
  * @param {string} source conteúdo do arquivo
- * @param {string} nome   o identificador procurado
- * @return {number[]} offsets das ocorrências em código
+ * @return {string} o mesmo texto com comentário e corpo de string em branco
  */
-function ocorrenciasEmCodigo( source, nome ) {
-	const out = [];
+function codigoDe( source ) {
+	let out = '';
 	let i = 0;
+	const branco = ( trecho ) => trecho.replace( /[^\n]/g, ' ' );
 	while ( i < source.length ) {
 		const c = source[ i ];
 		if ( c === '/' && source[ i + 1 ] === '/' ) {
 			const fim = source.indexOf( '\n', i );
-			i = fim === -1 ? source.length : fim + 1;
+			const ate = fim === -1 ? source.length : fim;
+			out += branco( source.slice( i, ate ) );
+			i = ate;
 			continue;
 		}
 		if ( c === '/' && source[ i + 1 ] === '*' ) {
 			const fim = source.indexOf( '*/', i + 2 );
-			i = fim === -1 ? source.length : fim + 2;
+			const ate = fim === -1 ? source.length : fim + 2;
+			out += branco( source.slice( i, ate ) );
+			i = ate;
 			continue;
 		}
 		if ( c === "'" || c === '"' || c === '`' ) {
-			i = fimDaString( source, i ) + 1;
+			const fim = fimDaString( source, i );
+			// As aspas ficam; só o CORPO some. Um `;` dentro de string deixa de
+			// fechar declaração, e um literal de regex com aspa dentro deixa de
+			// engolir as linhas seguintes — porque `'` e `"` não atravessam
+			// quebra de linha em JavaScript, e `fimDaString` respeita isso.
+			out +=
+				c +
+				branco( source.slice( i + 1, fim ) ) +
+				( source[ fim ] || '' );
+			i = fim + 1;
 			continue;
 		}
+		out += c;
+		i += 1;
+	}
+	return out;
+}
+
+/**
+ * Offsets em que `nome` aparece como DECLARAÇÃO, em código.
+ *
+ * Declaração, e não menção: sem isso, `X = MODEL_BASE_URL + '...'` fazia a
+ * regra ler `'...'` como se fosse o pin e reprovar código correto.
+ *
+ * @param {string} codigo saída de `codigoDe`
+ * @param {string} nome   o identificador procurado
+ * @return {number[]} offsets das declarações
+ */
+function ocorrenciasEmCodigo( codigo, nome ) {
+	const out = [];
+	let i = 0;
+	while ( i < codigo.length ) {
 		if (
-			source.startsWith( nome, i ) &&
-			! /[\w$]/.test( source[ i + nome.length ] || '' ) &&
-			DECLARACAO_RE.test( source.slice( Math.max( 0, i - 40 ), i ) )
+			codigo.startsWith( nome, i ) &&
+			! /[\w$]/.test( codigo[ i + nome.length ] || '' ) &&
+			DECLARACAO_RE.test( codigo.slice( Math.max( 0, i - 40 ), i ) )
 		) {
 			out.push( i );
 			i += nome.length;
@@ -204,6 +226,14 @@ function fimDaString( source, abre ) {
 			i += 2;
 			continue;
 		}
+		// `'` e `"` não atravessam quebra de linha em JavaScript; só a crase
+		// atravessa. Sem esta parada, uma aspa solta — dentro de um literal de
+		// regex, tipicamente — abria uma pseudo-string que engolia o resto do
+		// arquivo, e a declaração de verdade deixava de ser vista. Foi o vetor
+		// de dois falsos negativos seguidos nesta regra.
+		if ( aspa !== '`' && source[ i ] === '\n' ) {
+			return i - 1;
+		}
 		if ( source[ i ] === aspa ) {
 			return i;
 		}
@@ -224,27 +254,21 @@ function fimDaString( source, abre ) {
  * PRIMEIRA string depois do `=`: num ternário cujo primeiro ramo é o mirror
  * fixado, o segundo ramo nunca era olhado.
  *
- * @param {string} source conteúdo do arquivo
+ * @param {string} source conteúdo cru do arquivo, de onde sai o VALOR
+ * @param {string} codigo `codigoDe( source )`, de onde sai a ESTRUTURA
  * @param {number} inicio offset do nome da constante, já em código
  * @return {Object[]} literais `{ valor, interpolado, index }`
  */
-function literaisDaDeclaracao( source, inicio ) {
+function literaisDaDeclaracao( source, codigo, inicio ) {
 	const literais = [];
 	let i = inicio;
 	while ( i < source.length ) {
-		const c = source[ i ];
+		// A ESTRUTURA sai de `codigo`: um `;` dentro de comentário ou de string
+		// não fecha declaração nenhuma, e ali ele já é espaço. O VALOR sai de
+		// `source`, no mesmo offset.
+		const c = codigo[ i ];
 		if ( c === ';' ) {
 			break;
-		}
-		if ( c === '/' && source[ i + 1 ] === '/' ) {
-			const fim = source.indexOf( '\n', i );
-			i = fim === -1 ? source.length : fim + 1;
-			continue;
-		}
-		if ( c === '/' && source[ i + 1 ] === '*' ) {
-			const fim = source.indexOf( '*/', i + 2 );
-			i = fim === -1 ? source.length : fim + 2;
-			continue;
 		}
 		if ( c === "'" || c === '"' || c === '`' ) {
 			const comeco = i;
@@ -276,8 +300,13 @@ function check( ctx ) {
 		// TODAS as declarações em código, não a primeira ocorrência textual.
 		// Uma só é o caso real; mais de uma seria redeclaração, e olhar as
 		// duas é mais barato que decidir qual vale.
-		const literais = ocorrenciasEmCodigo( source, NOME_PIN ).flatMap(
-			( inicio ) => literaisDaDeclaracao( source, inicio )
+		// Duas fontes: `codigo` tem comentário e corpo de string em branco e é
+		// onde a DECLARAÇÃO é reconhecida; `source` é o cru, de onde sai o
+		// VALOR do literal. Os dois têm o mesmo comprimento, então um offset
+		// achado num vale no outro.
+		const codigo = codigoDe( source );
+		const literais = ocorrenciasEmCodigo( codigo, NOME_PIN ).flatMap(
+			( inicio ) => literaisDaDeclaracao( source, codigo, inicio )
 		);
 
 		// Declaração ausente do código, ou presente sem literal nenhum: a
