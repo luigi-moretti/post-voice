@@ -1,4 +1,7 @@
-const { parseAdr, STATUSES } = require( '../adr' );
+const fs = require( 'node:fs' );
+const os = require( 'node:os' );
+const path = require( 'node:path' );
+const { parseAdr, loadAdrs, STATUSES } = require( '../adr' );
 
 const VALIDO = `---
 id: 0005
@@ -122,7 +125,61 @@ describe( 'parseAdr', () => {
 		).toThrow( /aceita/ );
 	} );
 
+	it( 'recusa enforced_by como lista vazia, nas três formas', () => {
+		// A guarda que impede uma ADR de sair silenciosamente de toda
+		// aplicação: sem `enforced_by`, nada confere a decisão, e o campo
+		// vazio é a forma mais fácil de chegar lá sem parecer que se chegou.
+		for ( const vazio of [ '[]', '[ ]', '' ] ) {
+			expect( () =>
+				parseAdr( VALIDO.replace( '[ feature-deps ]', vazio ), 'f.md' )
+			).toThrow( /enforced_by/ );
+		}
+	} );
+
+	it( 'recusa desvios em lista inline com " → "', () => {
+		// A chave real da ADR-0004 tem quatro vírgulas, e o split as
+		// estilhaça: a violação segue reprovando e cada fragmento vira um
+		// aviso de dívida quitada. A seta é a assinatura do caso.
+		expect( () =>
+			parseAdr(
+				VALIDO.replace(
+					/desvios:\n( +- .*\n)+/,
+					'desvios: [ features/narration/format-time.ts → fora de features/<f>/{php,editor,frontend,admin,tests}/ ]\n'
+				),
+				'f.md'
+			)
+		).toThrow( /forma de bloco/ );
+	} );
+
 	it( 'expõe o vocabulário de status', () => {
 		expect( STATUSES ).toContain( 'aceita-com-desvio' );
+	} );
+} );
+
+describe( 'loadAdrs', () => {
+	let dir;
+
+	beforeEach( () => {
+		dir = fs.mkdtempSync( path.join( os.tmpdir(), 'lint-arch-adr-' ) );
+	} );
+
+	afterEach( () => {
+		fs.rmSync( dir, { recursive: true, force: true } );
+	} );
+
+	it( 'recusa id que não bate com o nome do arquivo', () => {
+		// A guarda que mantém a numeração honesta. Sem ela, `0016-x.md` com
+		// `id: 0099` dentro passa, e toda referência cruzada — o índice, o
+		// `superada-por-NNNN`, a citação no código — aponta para o nada.
+		fs.writeFileSync(
+			path.join( dir, '0016-x.md' ),
+			VALIDO.replace( 'id: 0005', 'id: 0099' )
+		);
+		expect( () => loadAdrs( dir ) ).toThrow( /não bate com o nome/ );
+	} );
+
+	it( 'aceita quando o id bate', () => {
+		fs.writeFileSync( path.join( dir, '0005-x.md' ), VALIDO );
+		expect( loadAdrs( dir ).map( ( a ) => a.id ) ).toEqual( [ '0005' ] );
 	} );
 } );

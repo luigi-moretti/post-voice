@@ -30,7 +30,30 @@ function stripComment( line ) {
 	return i === -1 ? line : line.slice( 0, i );
 }
 
-function parseInlineList( raw ) {
+/**
+ * Lê a lista inline `[ a, b ]`.
+ *
+ * O split é por vírgula, sem aspas nem escape — e uma chave de desvio pode
+ * conter vírgulas (`... → fora de features/<f>/{php,editor,frontend,admin,tests}/`
+ * tem quatro). Estilhaçada, ela não bate mais com a chave que o linter produz:
+ * a violação segue reprovando E cada fragmento vira um aviso de "dívida
+ * quitada". Barulhento, mas silencioso quanto à causa.
+ *
+ * Toda chave de desvio tem ` → `, e nenhum outro campo de lista tem. Então a
+ * seta na forma inline é a assinatura exata do caso perigoso, e é recusada com
+ * a instrução de usar a forma de bloco — que não tem separador para estilhaçar.
+ *
+ * @param {string} raw  o valor entre colchetes, já trimado
+ * @param {string} key  o nome do campo, para a mensagem de erro
+ * @param {string} file caminho relativo, para a mensagem de erro
+ * @return {string[]} os itens
+ */
+function parseInlineList( raw, key, file ) {
+	if ( raw.includes( '→' ) ) {
+		throw new Error(
+			`${ file }: ${ key } em lista inline contém " → ", e chaves com vírgula se estilhaçam no split; use a forma de bloco (uma linha "  - " por item)`
+		);
+	}
 	return raw
 		.replace( /^\[/, '' )
 		.replace( /\]$/, '' )
@@ -76,7 +99,7 @@ function parseFrontMatter( source, file ) {
 		const value = rawValue.trim();
 		chaveCorrente = key;
 		if ( value.startsWith( '[' ) ) {
-			fields[ key ] = parseInlineList( value );
+			fields[ key ] = parseInlineList( value, key, file );
 		} else if ( value === '' ) {
 			// Chave sem valor na mesma linha abre uma lista em bloco. Se nenhum
 			// item vier, fica [] — que é o que `desvios:` vazio significa.
