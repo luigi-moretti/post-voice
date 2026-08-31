@@ -169,16 +169,17 @@ secao(
 //     gatilho lendo o doctor. É o que deixou a ADR e o TESTING.md divergirem
 //     sem ninguém notar.
 //
-//     O que o `lint:arch` confere é a DECLARAÇÃO, não esta seção: o espelho de
-//     `DOCTOR` (em `index.js`) exige que toda ADR com `enforced_by: doctor`
-//     tenha entrada em `DOCTOR_CHECKS` e vice-versa. `DOCTOR_CHECKS` é um mapa
-//     escrito à mão em `health.js`; nada lê este arquivo. Apagar o bloco
-//     abaixo deixa o `lint:arch` em 0.
+//     O espelho de `DOCTOR` (em `index.js`) confere as três direções: toda ADR
+//     com `enforced_by: doctor` tem entrada em `DOCTOR_CHECKS`, toda entrada é
+//     pedida por alguma ADR, e cada seção que a entrada nomeia entre aspas
+//     aparece de fato como `secao( '<nome>'` NESTE arquivo. Apagar o bloco
+//     abaixo reprova o `lint:arch`.
 //
-//     Fica declarado em vez de disfarçado, que é a regra desta branch: fechar
-//     essa metade exigiria o gate ler a saída do próprio relatório, e o
-//     `doctor` é ESM justamente por ficar fora do Jest. Quem mexer aqui
-//     mantém a seção de pé por leitura, não por gate.
+//     A terceira direção chegou depois: por um tempo o espelho conferia só a
+//     declaração, e este comentário afirmava que fechar a lacuna exigiria o
+//     gate ler a SAÍDA do relatório. Não exigia — a busca é estática, pelo
+//     literal do título no fonte, e a razão ESM/Jest valia para executar o
+//     doctor, não para lê-lo.
 const REPORT_E2E = 'artifacts/test-results/report.json';
 const linhasE2e = [ `cenários E2E: ${ health.e2eScenarioCount( ctx ) }` ];
 if ( fs.existsSync( path.join( root, REPORT_E2E ) ) ) {

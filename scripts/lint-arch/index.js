@@ -25,6 +25,7 @@ const LITERAIS = new Set( [ 'review-manual', 'doctor' ] );
 // em `doctorChecks`, espelhada nas duas direções — a mesma disciplina que já
 // vale entre as ADRs e o registro de regras.
 const DOCTOR = 'doctor';
+const DOCTOR_SOURCE = 'scripts/doctor.mjs';
 
 // `status` decide se a ADR enforça. Antes o campo não era lido em lugar
 // nenhum: `proposta`, `aceita`, `revogada` e `superada-por-0016` bloqueavam
@@ -123,6 +124,42 @@ function run( { adrs, registry, ctx, doctorChecks = {} } ) {
 			} );
 		}
 	}
+	// A terceira direção do espelho: `DOCTOR_CHECKS` nomeia as seções entre
+	// aspas, e o relatório tem de imprimi-las de fato. Sem isto o espelho
+	// conferia só a DECLARAÇÃO — `DOCTOR_CHECKS` é um mapa escrito à mão, e
+	// apagar a seção correspondente do `doctor.mjs` deixava o gate em 0. Era o
+	// defeito que a ADR-0012 sofreu por semanas, sobrevivendo dentro da própria
+	// correção dele.
+	//
+	// A checagem é estática: o nome da seção aparece como literal na chamada
+	// `secao( '<nome>'`, ou como início de um template quando o título carrega
+	// contagem (`secao( \`ADRs (${ n })\``). A chamada pode quebrar linha
+	// depois do parêntese, e por isso a busca é por regex e não por
+	// `includes`. Não executa o relatório, não importa ESM e não depende do
+	// Jest — que era a razão dada para declarar esta lacuna em vez de
+	// fechá-la, e ela valia para EXECUTAR o doctor, não para lê-lo.
+	if ( pedemDoctor.size && ctx.files.includes( DOCTOR_SOURCE ) ) {
+		const fonte = ctx.read( DOCTOR_SOURCE );
+		for ( const [ adrId, descricao ] of Object.entries( doctorChecks ) ) {
+			for ( const m of descricao.matchAll( /"([^"]+)"/g ) ) {
+				const nome = m[ 1 ];
+				const literal = new RegExp(
+					`secao\\(\\s*['\`]${ nome.replace(
+						/[.*+?^${}()|[\]\\]/g,
+						'\\$&'
+					) }`
+				);
+				if ( ! literal.test( fonte ) ) {
+					problems.push( {
+						adr: adrId,
+						rule: DOCTOR,
+						message: `DOCTOR_CHECKS diz que o relatório tem a seção "${ nome }" pela ADR-${ adrId }, mas ${ DOCTOR_SOURCE } não a imprime. Implemente a seção ou corrija a descrição em health.js.`,
+					} );
+				}
+			}
+		}
+	}
+
 	for ( const adrId of Object.keys( doctorChecks ) ) {
 		if ( ! pedemDoctor.has( adrId ) ) {
 			problems.push( {

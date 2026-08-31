@@ -47,8 +47,10 @@ tempo da última execução, para que o crescimento da suíte apareça antes de
 doer.
 
 O `lint:arch` confere que esta ADR e o `DOCTOR_CHECKS` do `health.js` se
-declarem mutuamente — não que o relatório de fato imprima as duas linhas.
-Essa metade fica com quem editar `scripts/doctor.mjs`, e está dita lá.
+declarem mutuamente **e** que a seção nomeada ali apareça de fato no fonte de
+`scripts/doctor.mjs`. Apagar a seção reprova. O que continua sem gate é o
+conteúdo das duas linhas: que a contagem e a duração impressas estejam certas
+é responsabilidade de quem editar o relatório.
 
 ## Alternativas rejeitadas
 
