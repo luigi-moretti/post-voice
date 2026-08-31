@@ -441,9 +441,14 @@ function check( ctx ) {
 					! donos.has( classe )
 				) {
 					achados.push( {
-						// O alvo entra na chave: dois @covers errados na mesma
-						// classe de teste são dois defeitos.
-						key: `${ file } → covers-alvo-inexistente:${ classe }`,
+						// Nome da classe de teste E alvo, os dois. O alvo,
+						// porque dois @covers errados na mesma classe de teste
+						// são dois defeitos. O nome, porque as chaves irmãs
+						// desta regra o carregam e sem ele duas classes de
+						// teste no mesmo arquivo com o MESMO alvo ruim
+						// colapsam numa chave só — uma linha de `desvios:`
+						// absolveria as duas.
+						key: `${ file } → covers-alvo-inexistente:${ nome }:${ classe }`,
 						file,
 						line,
 						message: `a classe "${ nome }" declara @covers ${ classe }, que não é uma classe deste plugin versionada em arquivo de classe; a ADR-0013 pede o @covers apontando para a classe que o teste de fato exercita, e o job de cobertura reprova com "@covers ${ classe }" is invalid (ADR-0013)`,

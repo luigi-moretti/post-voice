@@ -135,7 +135,26 @@ describe( 'covers-annotation', () => {
 				)
 			);
 			expect( a ).toHaveLength( 1 );
-			expect( a[ 0 ].key ).toContain( 'covers-alvo-inexistente:porque' );
+			expect( a[ 0 ].key ).toContain(
+				'covers-alvo-inexistente:X:porque'
+			);
+		} );
+
+		// Achado da revisão das correções: a chave do alvo inexistente não
+		// carregava o nome da classe de teste, ao contrário das três chaves
+		// irmãs desta regra. Duas classes no mesmo arquivo com o MESMO alvo
+		// ruim colapsavam numa chave só, e uma linha de `desvios:` absolvia as
+		// duas.
+		it( 'duas classes com o MESMO alvo ruim são duas chaves', () => {
+			const a = regra.check(
+				ctxCom(
+					'<?php\n/**\n * @covers Post_Voice_Nao_Existe\n */\nclass A_Test extends WP_UnitTestCase {}\n\n/**\n * @covers Post_Voice_Nao_Existe\n */\nclass B_Test extends WP_UnitTestCase {}\n'
+				)
+			);
+			expect( a ).toHaveLength( 2 );
+			expect( new Set( a.map( ( f ) => f.key ) ).size ).toBe( 2 );
+			expect( a[ 0 ].key ).toContain( ':A_Test:' );
+			expect( a[ 1 ].key ).toContain( ':B_Test:' );
 		} );
 
 		it( '@coversNothing não é lido como alvo "Nothing"', () => {
