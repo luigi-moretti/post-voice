@@ -9,6 +9,13 @@ declare global {
 			siteLanguage: string;
 			/** Whether to offer the link to the site dictionary. */
 			canManageOptions: boolean;
+			/**
+			 * Cache-busted URL of the narration Worker's own script
+			 * (`build/pocket-tts-worker.js?ver=...`). Empty string if the build
+			 * output is missing (mirrors every other asset guard in
+			 * `Post_Voice_Assets`).
+			 */
+			workerUrl: string;
 		};
 	}
 }

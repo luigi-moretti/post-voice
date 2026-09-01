@@ -38,7 +38,7 @@ either complains.
 | `npm run test:unit -- --coverage` | same, with the coverage gate | ≥80% lines | ~5s |
 | `npm run test:php` | PHPUnit against wp-env | all pass | ~5s |
 | `npm run test:php:coverage` | PHPUnit + line coverage | ≥85% lines | ~30s |
-| `npm run test:e2e` | Playwright, 37 scenarios | all pass | ~20-25min |
+| `npm run test:e2e` | Playwright, 44 scenarios | all pass | ~20-25min |
 | `npm run i18n:check` | committed `.pot` matches the source | no drift | ~20s |
 | `npm run audit:npm` / `:production` | dependency advisories | see below | ~15s |
 | `npm run audit:composer` | same for PHP tooling | 0 critical, 0 high | ~5s |
@@ -110,7 +110,7 @@ Playwright drives a real browser against wp-env, so the build has to be current:
 npm run build && npm run test:e2e
 ```
 
-The 37 scenarios split in four families, plus the performance ceiling
+The 44 scenarios split in six families, plus the performance ceiling
 described further below. Eighteen are Fase 1's: happy path, no
 `crossOriginIsolated`, cancel mid-generation, insufficient storage, regenerate
 without orphans, axe with zero serious/critical violations in editor and
@@ -146,6 +146,32 @@ above (no error, one `<audio>` element) while capping real narration at
 ~10s regardless of paragraph length. The floor catches that specific
 failure mode without intercepting the worker's internal `postMessage`
 traffic.
+
+Two more, in `narration-worker-error.spec.ts`: the Worker's own script is
+intercepted and corrupted, proving a Worker construction/runtime failure now
+surfaces as a visible error in the panel instead of hanging forever, and that
+a failure on the first (multi-thread) attempt retries once single-threaded
+and still completes rather than failing outright — the regression tests for
+the two fixes in the 2026-08-21 Worker cross-origin-isolation spec ("Achado
+1" and "Achado 4"). The first is page-load-fast (no real generation, no
+model download — the corruption fails on parse); the second is a real
+single-threaded generation and costs real time, same as the existing
+single-thread fallback scenario it shares its shape with.
+
+Five more, in `narration-performance.spec.ts`: the post editor gets the
+`crossOriginIsolated`-enabling headers by default, an unrelated admin
+screen does not, and neither does the post editor's own `$pagenow` when
+editing a different post type (a Page, or any third-party CPT — see the
+2026-08-21 performance spec's investigation for why that distinction
+matters: `post.php`/`post-new.php` are shared by every post type); `post.php`
+(an existing post, not just `post-new.php`) gets the headers too, since it
+resolves its post type by a different path (`get_post()` by ID, not the
+`post_type` query arg); and a site can turn the headers off entirely with
+the `post_voice_send_isolation_headers` filter added after the final
+whole-branch review flagged two unverified residual risks (a cross-origin
+embed block's iframe, an OAuth "connect account" popup — see the spec).
+All five are page-load-only — no post content, no generation, no model
+download — so they run in well under a second each.
 
 Five more, in `player-style.spec.ts`: an uncustomised site ships no inline
 player CSS at all, a saved accent colour reaches the reader (round-tripped

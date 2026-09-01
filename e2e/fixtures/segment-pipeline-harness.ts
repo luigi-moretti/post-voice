@@ -23,7 +23,7 @@ import {
  * Built by its own webpack entry (see `webpack.config.js`) and loaded only by
  * `e2e/mu-plugins/segment-pipeline-harness.php`, which nothing in the plugin's
  * own `post-voice.php` chain requires — a production install never enqueues
- * it. Mirrors the `coop-coep-headers.php` pattern.
+ * it.
  */
 window.__postVoiceSegmentPipeline = {
 	async run(

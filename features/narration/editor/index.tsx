@@ -550,8 +550,36 @@ function NarrationPanel() {
 			}
 
 			if ( ! engineRef.current ) {
-				engineRef.current = new PocketTtsEngine();
-				await engineRef.current.load( targetLanguage );
+				const engine = new PocketTtsEngine();
+				try {
+					await engine.load( targetLanguage );
+				} catch ( err ) {
+					// A failed construction must not leave a broken engine
+					// cached: the next "Generate" would take the `else`
+					// branch below, call `ensureLanguage()` against a
+					// worker that never loaded, and hang exactly the way
+					// this branch's `onError` listeners exist to prevent —
+					// `load()` already set `this.language`, so the "already
+					// loaded" check alone can't tell a real engine from a
+					// dead one.
+					engine.dispose();
+					throw err;
+				}
+				engineRef.current = engine;
+				// The retry inside load() (see tts-engine.ts) is silent by
+				// design at that layer — this is the one place that knows
+				// there is an author to tell. Without it, the only symptom
+				// is generation taking longer than the device should need,
+				// with nothing explaining why.
+				if ( engineRef.current.usedSingleThreadFallback ) {
+					createErrorNotice(
+						__(
+							"This browser couldn't run faster multi-threaded narration — falling back to a slower single-threaded mode.",
+							'post-voice'
+						),
+						{ type: 'snackbar' }
+					);
+				}
 			} else {
 				// The engine outlives a single generation; the selector does not
 				// have to agree with it.
@@ -560,7 +588,7 @@ function NarrationPanel() {
 
 			return engineRef.current;
 		},
-		[ language, wasmSupported ]
+		[ createErrorNotice, language, wasmSupported ]
 	);
 
 	/**
