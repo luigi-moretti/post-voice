@@ -8,8 +8,14 @@ module.exports = {
 			// Tooling that runs in Node, not in a browser or a bundle. Without an
 			// explicit env, the shared config leaves modern globals like
 			// `globalThis` undeclared and `no-undef` fires on correct code.
-			files: [ 'test/**/*.js', 'scripts/**/*.mjs', '*.config.js' ],
+			files: [ 'test/**/*.js', 'scripts/**/*.{js,mjs}', '*.config.js' ],
 			env: { node: true, es2022: true },
+		},
+		{
+			// Jest globals for the lint-arch suites. Scoped to that directory:
+			// `test/jest.setup.js` is plain Node setup and declares none of them.
+			files: [ 'scripts/**/tests/**/*.js' ],
+			env: { jest: true },
 		},
 	],
 	ignorePatterns: [

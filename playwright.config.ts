@@ -14,12 +14,35 @@
  *
  * `WP_BASE_URL` defaults to wp-env's tests site on :8889 — the same site the
  * PHPUnit suite deliberately avoids by using a separate table prefix.
+ *
+ * A third override adds the `json` reporter alongside the base config's `list`.
+ * ADR-0012's review trigger is "the E2E suite going past 15 minutes", and
+ * nothing on disk recorded how long a run took — so the trigger could not be
+ * evaluated by reading the report, and `TESTING.md` and the ADR drifted apart
+ * without anyone noticing. `npm run doctor` reads the duration from this file.
+ * The output lands in the already-git-ignored artifacts directory.
  */
 import baseConfig from '@wordpress/scripts/config/playwright.config.js';
 import { defineConfig } from '@playwright/test';
+import type { ReporterDescription } from '@playwright/test';
+
+// O reporter do config base é tipado como `string | ReporterDescription[]`, e
+// um `string` solto não é atribuível a `ReporterDescription`. Normalizar aqui
+// mantém o que a base decidir (hoje `list`) sem fixar essa escolha por cópia.
+const reporterBase: ReporterDescription[] = (
+	Array.isArray( baseConfig.reporter )
+		? baseConfig.reporter
+		: [ baseConfig.reporter || 'list' ]
+).map( ( r ) =>
+	typeof r === 'string' ? ( [ r ] as ReporterDescription ) : r
+);
 
 export default defineConfig( {
 	...baseConfig,
 	testDir: './e2e',
+	reporter: [
+		...reporterBase,
+		[ 'json', { outputFile: 'artifacts/test-results/report.json' } ],
+	],
 	timeout: parseInt( process.env.TIMEOUT || '', 10 ) || 300_000,
 } );

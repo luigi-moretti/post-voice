@@ -47,7 +47,24 @@ module.exports = {
 		'features/pronunciation/editor/row-ids.ts',
 		'features/player-style/admin/contrast.ts',
 		'features/player-style/admin/hex-field.ts',
+		'scripts/lint-arch/**/*.js',
+		'!scripts/lint-arch/tests/**',
+		// `tools/` é ferramenta de investigação de quem mexe nas regras (hoje
+		// `covers-oracle-diff.js`, o harness diferencial contra o PHP): não
+		// roda no `lint:arch`, não roda na CI e teste nenhum depende dela —
+		// medir cobertura dela mediria o que ninguém executa em CI. O limiar
+		// de 80% não muda; o que muda é o denominador não incluir ferramenta
+		// que, por desenho, não tem suíte.
+		'!scripts/lint-arch/tools/**',
 	],
+	// O default do Jest (`json`, `text`, `lcov`, `clover`) não escreve
+	// `coverage-summary.json`, que é do reporter `json-summary` — e é esse o
+	// arquivo que o `npm run doctor` lê para relatar a cobertura. Sem ele o
+	// doctor dizia "sem relatório recente no disco" e mandava rodar justamente
+	// o comando que acabara de rodar. Os quatro default seguem listados porque
+	// declarar a chave substitui a lista inteira, e `text` é a tabela impressa
+	// no terminal.
+	coverageReporters: [ 'json', 'text', 'lcov', 'clover', 'json-summary' ],
 	coverageThreshold: {
 		global: { lines: 80 },
 	},

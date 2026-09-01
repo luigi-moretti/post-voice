@@ -1,0 +1,54 @@
+name: Release Assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to (re)build the zip for, e.g. v1.2.3'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-zip:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      # Validates $TAG before anything else touches it — a fat-fingered
+      # workflow_dispatch input fails here instead of 3 minutes into npm
+      # ci, and it's what makes deriving $VERSION from it below safe:
+      # git tag names permit `` ` ``/`;`/`$()`, so an unvalidated tag
+      # reaching a run: block would be shell injection, not just a typo.
+      - name: Validate tag format
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::TAG '$TAG' doesn't match vX.Y.Z" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run build
+
+      # Exported to GITHUB_ENV (not just GITHUB_OUTPUT) so later steps can
+      # reference $VERSION as a shell variable, the same way $TAG already
+      # is — never interpolate ${{ steps....outputs.version }} directly
+      # into a run: block.
+      - name: Resolve version from tag
+        run: echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - run: scripts/build-plugin-zip.sh "$VERSION"
+
+      - name: Upload zip to the release
+        run: gh release upload "$TAG" "post-voice-${VERSION}.zip" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
