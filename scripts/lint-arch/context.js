@@ -1,0 +1,456 @@
+'use strict';
+// O corpus sobre o qual as regras operam, e os strippers de PHP que elas
+// compartilham. Nenhuma regra lê o disco por conta própria.
+const { execFileSync } = require( 'node:child_process' );
+const fs = require( 'node:fs' );
+const path = require( 'node:path' );
+
+const TEST_PATH_RE = /(^|\/)tests?\//;
+
+/**
+ * Arquivos versionados no git.
+ *
+ * `git ls-files` em vez de varrer o disco: pula node_modules/, vendor/, build/,
+ * coverage/ e artifacts/ sem manter uma lista de exclusão que apodrece, e
+ * "arquivo versionado" é a definição usada nos critérios de aceite.
+ *
+ * @param {string} root
+ * @return {string[]} caminhos relativos, com barra normal
+ */
+function trackedFiles( root ) {
+	const out = execFileSync( 'git', [ '-C', root, 'ls-files', '-z' ], {
+		encoding: 'utf8',
+		maxBuffer: 32 * 1024 * 1024,
+	} );
+	return out.split( '\0' ).filter( Boolean );
+}
+
+function blank( text ) {
+	return text.replace( /[^\n]/g, ' ' );
+}
+
+// `<<<` seguido de espaço opcional e então um identificador — cru, ou entre
+// aspas simples (nowdoc) ou duplas (heredoc); PHP não distingue os dois para
+// fins de onde o corpo começa e termina, só para se ele interpola variável, o
+// que não importa aqui.
+//
+// Espaço só ANTES do rótulo: `<<< EOT` é legal, `<<<EOT ` (com espaço depois)
+// é erro de sintaxe — confirmado com `php -l`. A assimetria é a do próprio
+// lexer do PHP, e é por isso que ela fica: o `[ \t]*` da esquerda está certo e
+// não sai daqui.
+//
+// O que NÃO se pode concluir dessa assimetria é que os dois strippers
+// componham. Eles não compõem, e não é possível fazê-los compor apertando este
+// padrão: `stripPhpComments` apaga comentário PARA ESPAÇO, e o espaço à
+// esquerda do rótulo é PHP legal, então `<<</*x*/EOT\n` vira `<<<     EOT\n` na
+// primeira passada e a segunda lê ali um cabeçalho que o original não tinha.
+// Distinguir esse espaço do espaço legítimo de `<<< EOT` é impossível na
+// segunda passada — o texto é o mesmo — e apertar o padrão só trocaria um falso
+// negativo por um falso positivo em heredoc legal. A saída é não compor: cada
+// regra roda os dois strippers sobre o arquivo CRU, em passadas independentes
+// (ver o JSDoc de `gettextCalls`). O invariante de que as regras dependem é
+// outro, e esse vale sempre: `blank()` troca `[^\n]` por espaço UNIDADE A
+// UNIDADE, portanto os dois strippers preservam o número de linhas e o
+// comprimento em UNIDADES DE CÓDIGO UTF-16 — que é o que os offsets do
+// JavaScript indexam. Não é o mesmo que bytes: um emoji apagado vira dois
+// espaços, as mesmas duas unidades de código e dois bytes a menos. Um offset
+// em um vale no outro.
+const HEREDOC_CABECALHO_RE = /^<<<[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\r?\n/;
+
+/**
+ * Reconhece um heredoc/nowdoc que começa em `source[i]` (que já é `<<<`).
+ *
+ * O corpo é opaco: um `?>`, uma aspa, um `//`, um `#` ou um bloco `/* ... *\/` lá
+ * dentro não abre nem fecha nada, do mesmo jeito que já valia para o corpo
+ * de uma string comum antes desta função existir — é por isso que `strip`
+ * não faz uma segunda passada sobre o corpo, só decide apagá-lo ou não.
+ *
+ * O rótulo de fechamento pode vir indentado (PHP 7.3+) — por isso a busca é
+ * por uma linha cujo primeiro token, depois de espaço em branco, é o próprio
+ * rótulo não seguido de mais um caractere de palavra: um corpo que
+ * simplesmente *contém* o rótulo no meio de uma linha, ou como prefixo de um
+ * identificador maior, não é o terminador.
+ *
+ * @param {string} source
+ * @param {number} i      posição de `<<<` em `source`
+ * @return {{inicioCorpo:number,fimCorpo:number,fimRotulo:number,temTerminador:boolean}|null}
+ *   null quando `<<<` ali não é um heredoc válido (não é reconhecido; `strip`
+ *   trata os caracteres normalmente, um de cada vez)
+ */
+function lerHeredoc( source, i ) {
+	const cabecalho = HEREDOC_CABECALHO_RE.exec( source.slice( i ) );
+	if ( cabecalho === null ) {
+		return null;
+	}
+	const rotulo = cabecalho[ 2 ];
+	const inicioCorpo = i + cabecalho[ 0 ].length;
+	// `(^|\n)` casa tanto um corpo vazio (rótulo de fechamento já na
+	// primeira linha) quanto o início de qualquer linha seguinte.
+	const termRe = new RegExp( '(^|\n)([ \t]*)' + rotulo + '(?![A-Za-z0-9_])' );
+	const resto = source.slice( inicioCorpo );
+	const achado = termRe.exec( resto );
+	if ( achado === null ) {
+		// Sem terminador: consome até o fim do arquivo, como um comentário
+		// de bloco ou uma string sem fechamento.
+		return {
+			inicioCorpo,
+			fimCorpo: source.length,
+			fimRotulo: source.length,
+			temTerminador: false,
+		};
+	}
+	const fimCorpo = inicioCorpo + achado.index + achado[ 1 ].length;
+	const fimRotulo = fimCorpo + achado[ 2 ].length + rotulo.length;
+	return { inicioCorpo, fimCorpo, fimRotulo, temTerminador: true };
+}
+
+/**
+ * O comprimento da tag de abertura de PHP que começa em `source[i]`, ou 0
+ * quando não há tag ali.
+ *
+ * Uma definição só, usada por `strip` e pela varredura de
+ * `rules/covers-annotation.js`: as duas precisam concordar sobre ONDE o código
+ * PHP começa, e duas cópias da regra são duas chances de divergirem.
+ *
+ * `<?PHP` e `<?PhP` são PHP válido — a tag não diferencia maiúsculas de
+ * minúsculas. `<?=` não tem letra nenhuma, então não precisa da mesma
+ * checagem; ela é a única tag curta que o PHP habilita sempre.
+ *
+ * `<?` sozinho NÃO é tag aqui, de propósito: ele só abre com
+ * `short_open_tag = On`, que é `Off` no default do PHP, e o `phpcs.xml.dist`
+ * herda `Generic.PHP.DisallowShortOpenTag` do ruleset WordPress — `composer
+ * run lint` barra a forma antes que ela chegue a importar. A consequência de
+ * ignorá-la é conhecida: num interpretador com a diretiva ligada, o que vem
+ * depois de um `<?` é código para o PHP e prosa para nós, e a varredura
+ * deixaria de ver uma classe declarada ali. A tag só abre quando o que vem depois dela é espaço em branco
+ * (espaço, tab ou quebra de linha — é a regra do próprio lexer do PHP) ou o
+ * fim do arquivo: `<?phpecho 1;` não abre nada, é texto literal.
+ *
+ * @param {string} source
+ * @param {number} i      posição a testar
+ * @return {number} 5 (`<?php`), 3 (`<?=`) ou 0 (não é tag de abertura)
+ */
+function phpOpenTagAt( source, i ) {
+	const abrePhp =
+		/^<\?php/i.test( source.slice( i, i + 5 ) ) &&
+		( i + 5 === source.length || /[ \t\r\n]/.test( source[ i + 5 ] ) );
+	if ( abrePhp ) {
+		return 5;
+	}
+	return source.startsWith( '<?=', i ) ? 3 : 0;
+}
+
+/**
+ * Substitui comentários PHP por espaços, e opcionalmente o corpo das strings.
+ *
+ * Substitui em vez de remover para que linha e coluna de um match continuem
+ * apontando para o lugar certo no arquivo original.
+ *
+ * Um arquivo PHP alterna entre dois modos: fora de `<?php ... ?>` o texto é
+ * saída literal (HTML, em geral), e dentro é código. `strip` só entende
+ * comentário/string/atributo enquanto está dentro — fora, copia tudo ao pé da
+ * letra, porque uma aspa ou um `//` no HTML não abre nada em PHP. Sem essa
+ * distinção, uma tag `<?php ... ?>` embutida num atributo `class="<?php ...
+ * ?>"` cai dentro do rastreamento de string aberto pela aspa do atributo e é
+ * apagada como se fosse corpo de string.
+ *
+ * @param {string}  source
+ * @param {boolean} strings também apaga o corpo dos literais de string
+ * @return {string} o mesmo comprimento, com o ruído em branco
+ */
+function strip( source, strings ) {
+	let out = '';
+	let i = 0;
+	// O arquivo começa fora do PHP. Isso não muda o resultado para os arquivos
+	// que já começam com `<?php` — a fatia "fora" antes dele é vazia.
+	let dentro = false;
+	while ( i < source.length ) {
+		if ( ! dentro ) {
+			// Sem a exigência de espaço em branco depois da tag (ver
+			// `phpOpenTagAt`), o stripper entrava em modo código onde o PHP não
+			// entra, e apagava como comentário/string algo que na verdade é
+			// saída literal.
+			const comprimento = phpOpenTagAt( source, i );
+			if ( comprimento !== 0 ) {
+				// `slice`, não um literal fixo: preserva a caixa original da
+				// tag em vez de normalizar para `<?php` minúsculo.
+				out += source.slice( i, i + comprimento );
+				i += comprimento;
+				dentro = true;
+				continue;
+			}
+			// Texto literal (HTML): copiado sem interpretar aspas ou `//`.
+			out += source[ i ];
+			i += 1;
+			continue;
+		}
+
+		const dois = source.slice( i, i + 2 );
+		if ( dois === '?>' ) {
+			out += dois;
+			i += 2;
+			dentro = false;
+			continue;
+		}
+		// `#[` abre um atributo do PHP 8, não um comentário.
+		const hashComment = source[ i ] === '#' && source[ i + 1 ] !== '[';
+		if ( dois === '//' || hashComment ) {
+			// Diferente de `/* */` e de string, um `?>` FECHA um comentário de
+			// linha — é a própria linguagem que trata a tag de fechamento como
+			// o fim da linha ali. Para no que vier primeiro: a quebra de linha
+			// ou a tag.
+			const fimLinha = source.indexOf( '\n', i );
+			const fimTag = source.indexOf( '?>', i );
+			const paraNaTag =
+				fimTag !== -1 && ( fimLinha === -1 || fimTag < fimLinha );
+			const fimSemTag = fimLinha === -1 ? source.length : fimLinha;
+			const stop = paraNaTag ? fimTag : fimSemTag;
+			out += blank( source.slice( i, stop ) );
+			i = stop;
+			if ( paraNaTag ) {
+				out += '?>';
+				i += 2;
+				dentro = false;
+			}
+			continue;
+		}
+		if ( dois === '/*' ) {
+			// Um `?>` dentro do comentário não fecha a tag — faz parte do
+			// comentário, então a busca é só por `*/`.
+			const fim = source.indexOf( '*/', i + 2 );
+			const stop = fim === -1 ? source.length : fim + 2;
+			out += blank( source.slice( i, stop ) );
+			i = stop;
+			continue;
+		}
+		if ( source.startsWith( '<<<', i ) ) {
+			const heredoc = lerHeredoc( source, i );
+			if ( heredoc !== null ) {
+				// Cabeçalho (`<<<EOT\n`, `<<<'EOT'\n`, com o espaço opcional
+				// que o PHP aceita): sintaxe de verdade, sempre visível.
+				out += source.slice( i, heredoc.inicioCorpo );
+				// Corpo: tratado como o corpo de uma string comum — apagado só
+				// quando `strings` é true. `?>`, aspas, `//`, `#` e `/* */`
+				// dentro dele não abrem nem fecham nada; são só bytes do corpo,
+				// do mesmo jeito que um `?>` dentro de uma string comum já era
+				// inerte antes desta função existir.
+				const corpo = source.slice(
+					heredoc.inicioCorpo,
+					heredoc.fimCorpo
+				);
+				out += strings ? blank( corpo ) : corpo;
+				if ( heredoc.temTerminador ) {
+					// A indentação e o rótulo de fechamento também são
+					// sintaxe — ficam visíveis, como a aspa de fechamento de
+					// uma string comum.
+					out += source.slice( heredoc.fimCorpo, heredoc.fimRotulo );
+					i = heredoc.fimRotulo;
+				} else {
+					// Sem terminador: o heredoc consome até o fim do
+					// arquivo, igual a uma string ou comentário de bloco sem
+					// fechamento.
+					i = heredoc.fimCorpo;
+				}
+				continue;
+			}
+		}
+		if ( source[ i ] === "'" || source[ i ] === '"' ) {
+			const aspas = source[ i ];
+			let j = i + 1;
+			// Um `?>` dentro da string não fecha a tag — faz parte do corpo,
+			// então a busca é só pela aspa de fechamento.
+			while ( j < source.length && source[ j ] !== aspas ) {
+				j += source[ j ] === '\\' ? 2 : 1;
+			}
+			const corpo = source.slice( i + 1, Math.min( j, source.length ) );
+			out += aspas + ( strings ? blank( corpo ) : corpo );
+			if ( source[ j ] === aspas ) {
+				out += aspas;
+			}
+			i = j + 1;
+			continue;
+		}
+		out += source[ i ];
+		i += 1;
+	}
+	return out;
+}
+
+const stripPhpComments = ( source ) => strip( source, false );
+const stripPhpNoise = ( source ) => strip( source, true );
+
+const isTestPath = ( file ) => TEST_PATH_RE.test( file );
+
+/**
+ * PHP de produção: o que é entregue dentro do plugin.
+ *
+ * Allowlist por raiz, e não só "não é teste". `e2e/mu-plugins/*.php` e
+ * `scripts/check-coverage-threshold.php` são PHP versionado, não moram em
+ * diretório de teste, e não são código do plugin — deixá-los entrar faria as
+ * regras de conteúdo (ADRs 0002, 0008, 0009), a de namespace REST (0007) e a
+ * de i18n (0010) valerem sobre ferramental de teste. Hoje nenhum deles as
+ * dispararia; um harness futuro que use `exec` ou uma string sem text domain
+ * dispararia, e o lint reprovaria código correto.
+ *
+ * @param {Object} ctx
+ * @return {string[]} .php versionados de `features/`, `shared/` e a raiz do plugin
+ */
+function phpSources( ctx ) {
+	return ctx.files.filter(
+		( f ) =>
+			f.endsWith( '.php' ) &&
+			! isTestPath( f ) &&
+			( f === 'post-voice.php' ||
+				f.startsWith( 'features/' ) ||
+				f.startsWith( 'shared/' ) )
+	);
+}
+
+/**
+ * @param {Object}   [entrada]
+ * @param {string}   [entrada.root]  raiz do repo
+ * @param {string[]} [entrada.files] injetado nos testes
+ * @param {Function} [entrada.read]  injetado nos testes
+ * @param {Object[]} [entrada.adrs]  ADRs já parseadas, para `adr-index-table`
+ * @return {Object} o contexto
+ */
+function createContext( {
+	root = process.cwd(),
+	files,
+	read,
+	adrs = [],
+} = {} ) {
+	const lista = files || trackedFiles( root );
+	const ler =
+		read || ( ( f ) => fs.readFileSync( path.join( root, f ), 'utf8' ) );
+	const cache = new Map();
+	return {
+		root,
+		files: lista,
+		// As ADRs já parseadas. Existe para a regra `adr-index-table`, que
+		// confere a tabela do índice contra o front-matter: sem isto ela teria
+		// de reparsear as ADRs por conta própria, e passariam a existir duas
+		// noções de "o que o front-matter diz" dentro do mesmo linter. Default
+		// `[]` para o ctx sintético dos testes, que não injeta ADR nenhuma.
+		adrs,
+		read( file ) {
+			if ( ! cache.has( file ) ) {
+				cache.set( file, ler( file ) );
+			}
+			return cache.get( file );
+		},
+	};
+}
+
+/**
+ * Offset da aspa que fecha a string aberta em `abre`.
+ *
+ * @param {string} source
+ * @param {number} abre   offset da aspa de abertura
+ * @return {number} offset da aspa de fechamento, ou o fim do arquivo
+ */
+function jsStringEnd( source, abre ) {
+	const aspa = source[ abre ];
+	let i = abre + 1;
+	while ( i < source.length ) {
+		if ( source[ i ] === '\\' ) {
+			i += 2;
+			continue;
+		}
+		// `'` e `"` não atravessam quebra de linha em JavaScript; só a crase
+		// atravessa. Sem esta parada, uma aspa solta — dentro de um literal de
+		// regex, tipicamente — abria uma pseudo-string que engolia o resto do
+		// arquivo, e a declaração de verdade deixava de ser vista. Foi o vetor
+		// de dois falsos negativos seguidos nesta regra.
+		if ( aspa !== '`' && source[ i ] === '\n' ) {
+			// `i`, e não `i - 1`: quem chama consome de `abre` até o retorno
+			// INCLUSIVE e reemite esse caractere. Com `i - 1`, uma aspa que
+			// fosse o último caractere da linha devolvia o próprio `abre`, e o
+			// chamador emitia a aspa duas vezes para um caractere consumido —
+			// +1 em todo offset seguinte, que é a invariante inteira do padrão
+			// de duas fontes. Medido: `"x = '\n"` saía com 7 caracteres para 6.
+			return i;
+		}
+		if ( source[ i ] === aspa ) {
+			return i;
+		}
+		i += 1;
+	}
+	return source.length;
+}
+
+/**
+ * Branqueia comentário e corpo de string, preservando comprimento e linhas.
+ *
+ * Mesmo padrão de duas fontes que as regras de PHP usam: apagar PARA ESPAÇO em
+ * vez de remover mantém cada offset válido nas duas cópias, então dá para achar
+ * ESTRUTURA na cópia branqueada e ler CONTEÚDO no cru, no mesmo índice.
+ *
+ * Limite conhecido: literal de REGEX não é reconhecido. `'` e `"` param na
+ * quebra de linha, então uma aspa solta dentro de um regex estraga no máximo
+ * uma linha. A crase não para, e por isso uma crase ímpar dentro de um regex
+ * (`/`/`) branqueia o resto do arquivo. Isso faz a declaração desaparecer da
+ * cópia branqueada, e quem chama trata "não achei declaração" como "não
+ * consigo provar" — ACUSA. Erra na direção do falso positivo, nunca da
+ * absolvição, e isso é medido, não suposto.
+ *
+ * Duas rodadas de review provaram que as duas alternativas mais baratas não
+ * funcionam. Procurar o nome no cru deixava um comentário citando a constante
+ * ancorar a varredura (round 1). Procurar em código mas conferir a âncora de
+ * declaração numa fatia CRUA deixava passar a coisa mais comum que existe
+ * dentro de um comentário — código comentado, que tem `const` (round 2). A
+ * âncora tem de ler a MESMA cópia em que a ocorrência foi achada.
+ *
+ * @param {string} source conteúdo do arquivo
+ * @return {string} o mesmo texto com comentário e corpo de string em branco
+ */
+function stripJsNoise( source ) {
+	let out = '';
+	let i = 0;
+	const branco = ( trecho ) => trecho.replace( /[^\n]/g, ' ' );
+	while ( i < source.length ) {
+		const c = source[ i ];
+		if ( c === '/' && source[ i + 1 ] === '/' ) {
+			const fim = source.indexOf( '\n', i );
+			const ate = fim === -1 ? source.length : fim;
+			out += branco( source.slice( i, ate ) );
+			i = ate;
+			continue;
+		}
+		if ( c === '/' && source[ i + 1 ] === '*' ) {
+			const fim = source.indexOf( '*/', i + 2 );
+			const ate = fim === -1 ? source.length : fim + 2;
+			out += branco( source.slice( i, ate ) );
+			i = ate;
+			continue;
+		}
+		if ( c === "'" || c === '"' || c === '`' ) {
+			const fim = jsStringEnd( source, i );
+			// As aspas ficam; só o CORPO some. Um `;` dentro de string deixa de
+			// fechar declaração, e um literal de regex com aspa dentro deixa de
+			// engolir as linhas seguintes — porque `'` e `"` não atravessam
+			// quebra de linha em JavaScript, e `jsStringEnd` respeita isso.
+			out +=
+				c +
+				branco( source.slice( i + 1, fim ) ) +
+				( source[ fim ] || '' );
+			i = fim + 1;
+			continue;
+		}
+		out += c;
+		i += 1;
+	}
+	return out;
+}
+
+module.exports = {
+	createContext,
+	stripJsNoise,
+	jsStringEnd,
+	trackedFiles,
+	stripPhpComments,
+	stripPhpNoise,
+	phpOpenTagAt,
+	isTestPath,
+	phpSources,
+};

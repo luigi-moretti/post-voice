@@ -7,6 +7,10 @@ runs on the server.
 
 Documents of record, in this order:
 
+- `docs/adr/` — the architecture decisions, and what constrains new code. The
+  front-matter is the configuration for `npm run lint:arch`, which blocks CI;
+  `docs/adr/README.md` is the index; the `adr` skill is the procedure for
+  opening or changing one. `npm run doctor` reports health without blocking.
 - `docs/superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md` — what is
   decided and why. Amend it (dated section, with the reasoning) rather than
   letting code and spec disagree.
@@ -14,81 +18,59 @@ Documents of record, in this order:
   tasks, plus numbered revisions recording every defect execution found.
 - `TESTING.md` — how to run every gate.
 
+Path-scoped conventions live in `.claude/rules/` and load when you open a file
+they cover. This file carries only what must never be forgotten.
+
 ## Before opening a pull request
 
-**Mandatory, in this order. No PR until all of it is green.**
-
-**1. Run the full CI locally.** wp-env must be running (`npx wp-env start`).
-Ordered cheap-to-expensive so it fails fast:
+**Mandatory, in this order. No PR until all of it is green.** wp-env must be
+running (`npx wp-env start`). Ordered cheap-to-expensive so it fails fast:
 
 ```bash
-npm run lint:js
+npm run lint:js && npm run lint:arch
 npx tsc --noEmit
-composer run lint
-composer run stan
-npm run test:unit -- --coverage      # gate: 80% lines
-npm run test:php
-npm run test:php:coverage            # gate: 85% lines
+composer run lint && composer run stan
+npm run test:unit -- --coverage
+npm run test:php && npm run test:php:coverage
 npm run i18n:check
 npm run audit:npm:production && npm run audit:npm && npm run audit:composer
-npm run build && npm run test:e2e    # ~9 min, downloads the model on first run
+npm run build && npm run test:e2e    # downloads the model on first run
 ```
 
-This is the same set `.github/workflows/ci.yml` runs. Running it locally first is
-not politeness — CI here needs Docker, a WordPress install and a ~190MB model
-download, so a red job costs far more than a red terminal.
+This is the same set `.github/workflows/ci.yml` runs; `TESTING.md` has the
+thresholds and the timings. Running it locally
+first is not politeness — CI here needs Docker, a WordPress install and a ~190MB
+model download, so a red job costs far more than a red terminal.
 
-**2. If anything fails: stop and present correction plans.** Do not open the PR,
-do not disable the check, do not lower a threshold to make it pass. Report:
-
-- what failed, with the actual output;
-- the root cause, established rather than guessed;
-- two or three ways to fix it, each with its cost and what it risks;
-- a recommendation.
-
-Then wait for the decision. A threshold or a gate is only changed when the user
+**If anything fails, stop and present correction plans.** Do not open the PR, do
+not disable the check, do not lower a threshold to make it pass. Report what
+failed with the actual output; the root cause, established rather than guessed;
+two or three ways to fix it, each with its cost and risk; and a recommendation.
+Then wait for the decision. A gate or a threshold is only changed when the user
 chooses that explicitly, and the reasoning goes into the spec.
 
-**3. If everything passes: run the code review skill.** Invoke
-`superpowers:requesting-code-review`, which dispatches a reviewer subagent
-against the branch's diff. Address what it finds — or explain why a finding does
-not apply — before the PR exists.
+**If everything passes**, run `npm run doctor` and act on what it shows, then
+invoke `superpowers:requesting-code-review`, which dispatches a reviewer
+subagent against the branch's diff. Address what it finds — or explain why a
+finding does not apply — before the PR exists.
 
-**4. Only then open the PR, and only if the user asked for one.** Opening a PR is
+**Only then open the PR, and only if the user asked for one.** Opening a PR is
 an outward-facing action; it is never done unprompted.
 
 ## Conventions
 
-- **Layout is feature-based**: `features/<feature>/{php,editor,frontend,tests}/`.
-  Shared code moves to `shared/` only when a second feature actually needs it.
-- **PHP**: class prefix `Post_Voice_`, one class per file, `class-*.php`, WPCS
-  clean, PHP 8.2+, WordPress 6.6+.
-- **REST**: namespace `post-voice/v1`. Every value the endpoint accepts is
-  validated server-side even when the UI already constrains it — a disabled
-  control is UX, not a guarantee.
-- **i18n**: every user-facing string through `__()`/`_x()` with text domain
-  `post-voice`. The one deliberate exception is `SAMPLE_TEXTS` in
-  `voice-catalog.ts`: gettext follows the admin locale, but those phrases feed a
-  speech model whose language is the chosen bundle. Regenerate the `.pot`
-  (`npm run i18n:pot`) whenever strings change; `npm run i18n:check` enforces it.
-- **Tests**: pure TypeScript gets Jest; PHP gets PHPUnit with a `@covers`
-  annotation per test class; anything involving the Worker, ONNX or a real
-  browser gets an E2E scenario instead of a mock — *unless* the specific
-  behaviour under test is itself a pure function with no such dependency,
-  merely reached through the UI. Extract that function to its own module and
-  give it a Jest suite instead; keep an E2E scenario only for the integration
-  behaviour that still needs the Worker/ONNX/browser (`tokenizer-sanitize.ts`
-  is the precedent — extracted from `pocket-tts.worker.js` specifically
-  because its only Worker coupling was living in the same file as one, not
-  because the logic itself touched `self`/ONNX). Before adding a new E2E
-  scenario, check whether it would in fact only be pinning a pure function's
-  output — `e2e/segment-pipeline-perf.spec.ts` is the counter-example: it
-  looks like it could be a Jest test but deliberately isn't, because jsdom's
-  `DOMParser` is orders of magnitude slower than a real browser's and gave
-  untrustworthy timing numbers (see the file's own header comment) — staying
-  E2E there is a considered choice, not an oversight.
-- **Dependencies**: `npm ci`, never `npm install`, in CI and in scripts — the
-  lockfile is the audit surface.
+- Layout is feature-based, `features/<f>/{php,editor,frontend,admin,tests}/`;
+  code moves to `shared/` at the second real consumer (ADR-0004, ADR-0005).
+- The server never synthesizes speech, transcodes audio, or recomputes what the
+  client already computed (ADR-0002, ADR-0008, ADR-0009).
+- PHP classes: prefix `Post_Voice_`, one per file, `class-*.php` — there is no
+  autoloader, so the name is how the file is found (ADR-0006).
+- REST is namespaced `post-voice/v1`, and every value an endpoint accepts is
+  validated server-side even when the UI already constrains it (ADR-0007).
+- Every user-facing string goes through gettext with the domain `post-voice` (ADR-0010).
+- Worker, ONNX or a real browser means an E2E scenario, never a mock; pure
+  TypeScript means Jest (ADR-0012).
+- A new ADR never touches this file (ADR-0001).
 
 ## Gotchas that have already cost a session each
 
