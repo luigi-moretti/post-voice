@@ -307,6 +307,37 @@ describe( 'run', () => {
 			expect( out.problems[ 0 ].message ).toMatch( /não a imprime/ );
 		} );
 
+		// As formas que o `doctor.mjs` REALMENTE escreve, e que portanto têm
+		// de ser aceitas. A quebra de linha depois do parêntese é a mais
+		// usada — 5 das 10 chamadas — e é o único caso que exercita o `\s*`
+		// da regex atravessando o `\n`. Sem ela pinada, trocar `\s*` por
+		// `[ \t]*` passava a suíte inteira e desligava o gate para metade do
+		// relatório.
+		it.each( [
+			[ 'em uma linha', "secao( 'fronteira Jest/E2E', l );\n" ],
+			[
+				'quebrando linha depois do parêntese',
+				"secao(\n\t'fronteira Jest/E2E',\n\tlinhas\n);\n",
+			],
+			[
+				'indentada dentro de um bloco',
+				"\tsecao( 'fronteira Jest/E2E', l );\n",
+			],
+		] )( 'aceita a seção impressa %s', ( _, fonte ) => {
+			const out = run( {
+				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
+				registry: {},
+				ctx: comDoctorMjs( fonte ),
+				doctorChecks: {
+					'0005': 'seção "fronteira Jest/E2E": contagem',
+				},
+			} );
+			expect( { fonte, problems: out.problems } ).toEqual( {
+				fonte,
+				problems: [],
+			} );
+		} );
+
 		it( 'aceita o título com contagem, pelo prefixo antes do parêntese', () => {
 			const out = run( {
 				adrs: [ adr( { enforcedBy: [ 'doctor' ] } ) ],
