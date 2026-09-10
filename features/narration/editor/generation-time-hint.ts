@@ -36,6 +36,9 @@ export function splitMinutesSeconds( totalSeconds: number ): {
  *                     early.
  */
 export function formatRemainingHint( wholeSeconds: number ): string {
+	if ( ! Number.isFinite( wholeSeconds ) || wholeSeconds < 0 ) {
+		wholeSeconds = 0;
+	}
 	if ( wholeSeconds > MINUTE_THRESHOLD_SECONDS ) {
 		const { minutes, seconds } = splitMinutesSeconds( wholeSeconds );
 		return sprintf(
@@ -68,6 +71,9 @@ export function formatRemainingHint( wholeSeconds: number ): string {
  * @param wholeSeconds Estimated seconds, already `Math.round`'d by the caller.
  */
 export function formatEstimatedTimeMessage( wholeSeconds: number ): string {
+	if ( ! Number.isFinite( wholeSeconds ) || wholeSeconds < 0 ) {
+		wholeSeconds = 0;
+	}
 	if ( wholeSeconds > MINUTE_THRESHOLD_SECONDS ) {
 		const { minutes, seconds } = splitMinutesSeconds( wholeSeconds );
 		return sprintf(

@@ -54,6 +54,10 @@ describe( 'formatRemainingHint', () => {
 		expect( formatRemainingHint( 61 ) ).toBe( '~1m 1s remaining' );
 		expect( formatRemainingHint( 316 ) ).toBe( '~5m 16s remaining' );
 	} );
+
+	it( 'guards non-finite input in the seconds-only branch too', () => {
+		expect( formatRemainingHint( Number.NaN ) ).toBe( '~0s remaining' );
+	} );
 } );
 
 describe( 'formatEstimatedTimeMessage', () => {
@@ -66,6 +70,12 @@ describe( 'formatEstimatedTimeMessage', () => {
 	it( 'switches to minutes+seconds above the threshold', () => {
 		expect( formatEstimatedTimeMessage( 345 ) ).toBe(
 			'This text is long — estimated time: 5m 45s.'
+		);
+	} );
+
+	it( 'guards non-finite input in the seconds-only branch too', () => {
+		expect( formatEstimatedTimeMessage( Number.NaN ) ).toBe(
+			'This text is long — estimated time: 0 seconds.'
 		);
 	} );
 } );
