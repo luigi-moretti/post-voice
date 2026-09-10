@@ -5,7 +5,7 @@ import {
 import { ToolbarDropdownMenu, ToolbarGroup } from '@wordpress/components';
 import { useSelect } from '@wordpress/data';
 import { createElement } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import {
 	applyFormat,
 	registerFormatType,
@@ -43,6 +43,7 @@ function Edit( { value, onChange, activeAttributes }: FormatProps ) {
 	);
 
 	const current = activeAttributes.language ?? '';
+	const currentLabel = current ? LANGUAGE_LABELS[ current ] ?? current : '';
 
 	if ( ! selectedBlockName || ! isEligibleBlockName( selectedBlockName ) ) {
 		return null;
@@ -75,7 +76,17 @@ function Edit( { value, onChange, activeAttributes }: FormatProps ) {
 			null,
 			createElement( ToolbarDropdownMenu, {
 				icon: 'translation',
-				label: __( 'Narrate in another language', 'post-voice' ),
+				label: currentLabel
+					? sprintf(
+							/* translators: %s: currently selected narration language, e.g. "English". */
+							__(
+								'Narrate in another language (currently %s)',
+								'post-voice'
+							),
+							currentLabel
+					  )
+					: __( 'Narrate in another language', 'post-voice' ),
+				text: currentLabel || undefined,
 				controls,
 			} )
 		)
