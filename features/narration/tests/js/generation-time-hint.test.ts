@@ -1,6 +1,7 @@
 import {
 	splitMinutesSeconds,
 	formatRemainingHint,
+	formatEstimatedTimeMessage,
 } from '../../editor/generation-time-hint';
 
 describe( 'splitMinutesSeconds', () => {
@@ -52,5 +53,19 @@ describe( 'formatRemainingHint', () => {
 	it( 'switches to minutes+seconds above the threshold', () => {
 		expect( formatRemainingHint( 61 ) ).toBe( '~1m 1s remaining' );
 		expect( formatRemainingHint( 316 ) ).toBe( '~5m 16s remaining' );
+	} );
+} );
+
+describe( 'formatEstimatedTimeMessage', () => {
+	it( 'stays seconds-only at and below the one-minute threshold', () => {
+		expect( formatEstimatedTimeMessage( 60 ) ).toBe(
+			'This text is long — estimated time: 60 seconds.'
+		);
+	} );
+
+	it( 'switches to minutes+seconds above the threshold', () => {
+		expect( formatEstimatedTimeMessage( 345 ) ).toBe(
+			'This text is long — estimated time: 5m 45s.'
+		);
 	} );
 } );

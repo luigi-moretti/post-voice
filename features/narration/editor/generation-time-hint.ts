@@ -1,6 +1,5 @@
 import { __, sprintf } from '@wordpress/i18n';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const MINUTE_THRESHOLD_SECONDS = 60;
 
 /**
@@ -49,6 +48,41 @@ export function formatRemainingHint( wholeSeconds: number ): string {
 	return sprintf(
 		/* translators: %d: seconds remaining until narration is ready. */
 		__( '~%ds remaining', 'post-voice' ),
+		wholeSeconds
+	);
+}
+
+/**
+ * The long-text confirmation card's estimate. Same threshold and split as
+ * `formatRemainingHint`, worded as its own sentence rather than sharing one:
+ * the two cards read naturally in their own context, and translators see
+ * full sentences, not fragments.
+ *
+ * Note: since `LONG_TEXT_CONFIRMATION_ETA_SECONDS` in `rtf-calibration.ts`
+ * is 120, the card this feeds only ever renders with an ETA above 120 in
+ * practice — the `<= 60` branch below is unreachable from that one call
+ * site today. Kept anyway: this function is general-purpose, and coupling
+ * its branching to a threshold defined in another module would be a trap
+ * for whoever changes that threshold later.
+ *
+ * @param wholeSeconds Estimated seconds, already `Math.round`'d by the caller.
+ */
+export function formatEstimatedTimeMessage( wholeSeconds: number ): string {
+	if ( wholeSeconds > MINUTE_THRESHOLD_SECONDS ) {
+		const { minutes, seconds } = splitMinutesSeconds( wholeSeconds );
+		return sprintf(
+			/* translators: 1: estimated minutes; 2: estimated additional seconds. */
+			__(
+				'This text is long — estimated time: %1$dm %2$ds.',
+				'post-voice'
+			),
+			minutes,
+			seconds
+		);
+	}
+	return sprintf(
+		/* translators: %d: estimated generation time in seconds. */
+		__( 'This text is long — estimated time: %d seconds.', 'post-voice' ),
 		wholeSeconds
 	);
 }
