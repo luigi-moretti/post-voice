@@ -16,7 +16,7 @@ import {
 	INLINE_LANGUAGE_ATTRIBUTE,
 	isEligibleBlockName,
 } from './extract-segments';
-import { LANGUAGE_LABELS } from './language-labels';
+import { LANGUAGE_LABELS, languageLabel } from './language-labels';
 import { SUPPORTED_LANGUAGES } from './model-source';
 
 const FORMAT_NAME = 'post-voice/language';
@@ -43,7 +43,17 @@ function Edit( { value, onChange, activeAttributes }: FormatProps ) {
 	);
 
 	const current = activeAttributes.language ?? '';
-	const currentLabel = current ? LANGUAGE_LABELS[ current ] ?? current : '';
+	const currentLabel = current ? languageLabel( current ) : '';
+	// Only a language with a known, human label is painted as visible text on
+	// the narrow inline toolbar button — an unsupported/legacy code (see the
+	// "This post marks a language this version does not support" notice in
+	// `index.tsx`) would otherwise render raw bundle-identifier text there.
+	// The tooltip/accessible `label` below still uses `currentLabel`, so the
+	// raw code stays discoverable via keyboard/screen-reader focus.
+	const visibleLabel =
+		current && current in LANGUAGE_LABELS
+			? LANGUAGE_LABELS[ current ]
+			: undefined;
 
 	if ( ! selectedBlockName || ! isEligibleBlockName( selectedBlockName ) ) {
 		return null;
@@ -86,7 +96,7 @@ function Edit( { value, onChange, activeAttributes }: FormatProps ) {
 							currentLabel
 					  )
 					: __( 'Narrate in another language', 'post-voice' ),
-				text: currentLabel || undefined,
+				text: visibleLabel,
 				controls,
 			} )
 		)
