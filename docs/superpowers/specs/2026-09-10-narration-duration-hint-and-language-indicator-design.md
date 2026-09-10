@@ -96,3 +96,30 @@ WordPress/PHP).
   tabela de Decisão.
 - Cenário E2E novo para o indicador de idioma — decisão explícita do
   usuário, ver tabela de Decisão.
+
+## 2026-09-10 — Amendment: `npm run audit:npm` fica vermelho nesta branch, aceito como dívida conhecida
+
+**Contexto.** No gate final (`TESTING.md`), `npm run audit:npm` (auditoria
+completa, incluindo devDependencies) reportou `{ critical: 0, high: 13,
+moderate: 10, low: 2 }` — acima do limiar de 5 `high`. Todos os outros gates
+passaram limpo, inclusive `npm run audit:npm:production` (`0/0/0/0`) e
+`npm run audit:composer` (`0/0/0/0`).
+
+**Causa raiz, estabelecida.** `git diff master..HEAD -- package.json
+package-lock.json` não mostra diferença nenhuma — esta branch não toca
+dependência alguma. Rastreado pacote por pacote (`npm ls <pacote>`), as 13
+vulnerabilidades `high` são todas transitivas de ferramental de
+desenvolvimento — `@wordpress/scripts`, `@wordpress/env`,
+`@wordpress/eslint-plugin`, `semantic-release`/`@semantic-release/github` —
+nenhuma em dependência de produção. É drift acumulado no lockfile desde a
+última auditoria limpa; o mesmo resultado apareceria rodando `npm audit`
+direto na `master` hoje, já que a checagem é contra a base de CVE ao vivo,
+não um snapshot.
+
+**Decisão do usuário.** Seguir com a auditoria vermelha nesta branch — sem
+`npm audit fix` nem bump de `@wordpress/scripts`/`@wordpress/env`/
+`semantic-release` aqui. Esta branch fica escopada só aos dois bugs de UX;
+atualização de dependência de dev-toolchain é tarefa própria, separada, fora
+deste documento. Threshold do gate (`scripts/audit-check.mjs`) não muda —
+continua vermelho aqui, e a correção real é resolver as dependências, não
+abaixar o número.
