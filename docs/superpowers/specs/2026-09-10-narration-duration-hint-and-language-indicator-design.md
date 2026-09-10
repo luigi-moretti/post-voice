@@ -53,6 +53,7 @@ decisões já convergidas.
 | `features/narration/tests/js/generation-time-hint.test.ts` (**novo**) | Cobertura Jest — ver "Testes". |
 | `jest.config.js` | Adiciona `features/narration/editor/generation-time-hint.ts` a `collectCoverageFrom` (gate de 80% linhas, `CLAUDE.md`). |
 | `TESTING.md` | Registra o novo arquivo de teste unitário, mesmo padrão de specs anteriores que tocaram este arquivo. |
+| `languages/post-voice.pot` | Regenerado (`npm run i18n:pot`) pelas 3 strings novas — `~%1$dm %2$ds remaining`, `Narrate in another language (currently %s)`, `This text is long — estimated time: %1$dm %2$ds.` — mais o `Project-Id-Version` do header acompanhando a versão do plugin, 0.1.0 → 0.4.0 (drift incidental da regeneração, não uma mudança visada). |
 
 Sem mudança de interface pública (REST, meta de post, mensagens do worker),
 sem migração de dado, sem alteração de contrato (`MODEL_BASE_URL`, mínimos de
