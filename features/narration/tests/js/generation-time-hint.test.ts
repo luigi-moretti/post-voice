@@ -1,4 +1,7 @@
-import { splitMinutesSeconds } from '../../editor/generation-time-hint';
+import {
+	splitMinutesSeconds,
+	formatRemainingHint,
+} from '../../editor/generation-time-hint';
 
 describe( 'splitMinutesSeconds', () => {
 	it( 'splits whole seconds into minutes and seconds', () => {
@@ -37,5 +40,17 @@ describe( 'splitMinutesSeconds', () => {
 			minutes: 0,
 			seconds: 0,
 		} );
+	} );
+} );
+
+describe( 'formatRemainingHint', () => {
+	it( 'stays seconds-only at and below the one-minute threshold', () => {
+		expect( formatRemainingHint( 9 ) ).toBe( '~9s remaining' );
+		expect( formatRemainingHint( 60 ) ).toBe( '~60s remaining' );
+	} );
+
+	it( 'switches to minutes+seconds above the threshold', () => {
+		expect( formatRemainingHint( 61 ) ).toBe( '~1m 1s remaining' );
+		expect( formatRemainingHint( 316 ) ).toBe( '~5m 16s remaining' );
 	} );
 } );
