@@ -28,6 +28,7 @@ define( 'POST_VOICE_URL', plugin_dir_url( __FILE__ ) );
 // file that does not exist yet is a fatal error the moment PHPUnit's bootstrap
 // loads this plugin, so this list only ever names files already committed.
 
+require_once POST_VOICE_PATH . 'features/narration/php/class-model.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-post-meta.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-rest-api.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-attachment-cleanup.php';

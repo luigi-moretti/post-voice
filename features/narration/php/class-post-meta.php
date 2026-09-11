@@ -111,12 +111,12 @@ class Post_Voice_Post_Meta {
 		foreach ( $value as $language ) {
 			$language = (string) $language;
 			if (
-				in_array( $language, Post_Voice_Rest_Api::ALLOWED_LANGUAGES, true )
+				in_array( $language, Post_Voice_Model::ALLOWED_LANGUAGES, true )
 				&& ! in_array( $language, $clean, true )
 			) {
 				$clean[] = $language;
 			}
-			if ( count( $clean ) >= count( Post_Voice_Rest_Api::ALLOWED_LANGUAGES ) ) {
+			if ( count( $clean ) >= count( Post_Voice_Model::ALLOWED_LANGUAGES ) ) {
 				break;
 			}
 		}

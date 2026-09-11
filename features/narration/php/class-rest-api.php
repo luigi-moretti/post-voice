@@ -22,8 +22,6 @@ class Post_Voice_Rest_Api {
 	private const REST_NAMESPACE = 'post-voice/v1';
 	private const ROUTE          = '/posts/(?P<id>\d+)/narration';
 
-	public const ALLOWED_LANGUAGES = array( 'english_2026-04', 'german', 'italian', 'portuguese', 'spanish' );
-
 	/**
 	 * The predefined voices every Pocket TTS bundle ships, mirrored from the
 	 * editor's `voice-catalog.ts`. Validated here as well because a disabled
@@ -223,7 +221,7 @@ class Post_Voice_Rest_Api {
 		}
 
 		$language = (string) $request->get_param( 'language' );
-		if ( ! in_array( $language, self::ALLOWED_LANGUAGES, true ) ) {
+		if ( ! in_array( $language, Post_Voice_Model::ALLOWED_LANGUAGES, true ) ) {
 			return new WP_Error(
 				'post_voice_invalid_language',
 				__( 'Unsupported narration language.', 'post-voice' ),
@@ -241,7 +239,7 @@ class Post_Voice_Rest_Api {
 		// (valid, invalid, or duplicated) should not get a `foreach` or a dedupe
 		// pass over them — cardinality can never legitimately exceed the number of
 		// bundles that exist, so a list longer than that is rejected outright.
-		if ( count( $languages_raw ) > count( self::ALLOWED_LANGUAGES ) ) {
+		if ( count( $languages_raw ) > count( Post_Voice_Model::ALLOWED_LANGUAGES ) ) {
 			return new WP_Error(
 				'post_voice_invalid_language',
 				__( 'Too many languages.', 'post-voice' ),
@@ -252,7 +250,7 @@ class Post_Voice_Rest_Api {
 		$languages = array_values( array_unique( $languages_raw ) );
 
 		foreach ( $languages as $candidate ) {
-			if ( ! in_array( $candidate, self::ALLOWED_LANGUAGES, true ) ) {
+			if ( ! in_array( $candidate, Post_Voice_Model::ALLOWED_LANGUAGES, true ) ) {
 				return new WP_Error(
 					'post_voice_invalid_language',
 					__( 'Unsupported narration language.', 'post-voice' ),
