@@ -49,6 +49,13 @@ add_action(
 );
 
 Post_Voice_Attachment_Cleanup::register();
+// Único lugar do plugin que conhece as duas pontas: o núcleo (Assets) e as
+// extensões que provêm seus dados. features/narration/php/class-assets.php
+// não referencia mais Post_Voice_Dictionary_Store nem Post_Voice_Style_Store
+// — ver docs/superpowers/specs/2026-09-11-topologia-nucleo-extensoes-design.md,
+// "Mecanismo 1".
+Post_Voice_Assets::set_dictionary_provider( array( 'Post_Voice_Dictionary_Store', 'get_global' ) );
+Post_Voice_Assets::set_style_provider( array( 'Post_Voice_Style_Store', 'inline_css' ) );
 Post_Voice_Assets::register();
 Post_Voice_Editor_Headers::register();
 Post_Voice_Frontend_Render::register();
