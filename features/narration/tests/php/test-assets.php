@@ -220,7 +220,6 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 		set_current_screen( 'post' );
 		$this->with_asset_file( $this->asset_file() );
 
-		$original = array( 'Post_Voice_Dictionary_Store', 'get_global' );
 		Post_Voice_Assets::set_dictionary_provider(
 			static function (): array {
 				return array(
@@ -238,8 +237,24 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 
 		$this->assertIsString( $data );
 		$this->assertStringContainsString( 'STUB', $data );
+	}
 
-		Post_Voice_Assets::set_dictionary_provider( $original );
+	public function test_editor_assets_throw_when_dictionary_provider_is_unconfigured(): void {
+		$property = new ReflectionProperty( Post_Voice_Assets::class, 'dictionary_provider' );
+		$property->setAccessible( true );
+		$original = $property->getValue();
+		$property->setValue( null, null );
+
+		set_current_screen( 'post' );
+		$this->with_asset_file( $this->asset_file() );
+
+		try {
+			$this->expectException( RuntimeException::class );
+			$this->expectExceptionMessage( 'no dictionary provider set' );
+			Post_Voice_Assets::enqueue_editor_assets();
+		} finally {
+			$property->setValue( null, $original );
+		}
 	}
 
 	public function test_style_provider_can_be_swapped_and_is_restored(): void {
@@ -254,7 +269,6 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
 		$this->go_to( get_permalink( $post_id ) );
 
-		$original = array( 'Post_Voice_Style_Store', 'inline_css' );
 		Post_Voice_Assets::set_style_provider(
 			static function (): string {
 				return '.post-voice-player{--stub:1}';
@@ -267,8 +281,32 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 			'.post-voice-player{--stub:1}',
 			(array) wp_styles()->get_data( 'post-voice-player', 'after' )
 		);
+	}
 
-		Post_Voice_Assets::set_style_provider( $original );
+	public function test_frontend_assets_throw_when_style_provider_is_unconfigured(): void {
+		$property = new ReflectionProperty( Post_Voice_Assets::class, 'style_provider' );
+		$property->setAccessible( true );
+		$original = $property->getValue();
+		$property->setValue( null, null );
+
+		$this->with_asset_file( $this->asset_file( 'player' ) );
+		$post_id       = self::factory()->post->create();
+		$attachment_id = self::factory()->attachment->create_object(
+			array(
+				'file'        => 'n.mp3',
+				'post_parent' => $post_id,
+			)
+		);
+		Post_Voice_Post_Meta::save( $post_id, $attachment_id, 'portuguese', array( 'portuguese' ), 'alba', str_repeat( 'a', 64 ) );
+		$this->go_to( get_permalink( $post_id ) );
+
+		try {
+			$this->expectException( RuntimeException::class );
+			$this->expectExceptionMessage( 'no style provider set' );
+			Post_Voice_Assets::enqueue_frontend_assets();
+		} finally {
+			$property->setValue( null, $original );
+		}
 	}
 
 	/**
@@ -281,6 +319,8 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 	}
 
 	public function tear_down(): void {
+		Post_Voice_Assets::set_dictionary_provider( array( 'Post_Voice_Dictionary_Store', 'get_global' ) );
+		Post_Voice_Assets::set_style_provider( array( 'Post_Voice_Style_Store', 'inline_css' ) );
 		$this->tear_down_asset_files();
 		parent::tear_down();
 	}

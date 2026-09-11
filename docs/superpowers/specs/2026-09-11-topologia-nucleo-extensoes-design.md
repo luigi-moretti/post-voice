@@ -1,9 +1,9 @@
 # Topologia núcleo+extensões — mecanismo de extensão para ADR-0005
 
 **Data:** 2026-09-11
-**Status:** Rascunho — em revisão com o usuário
+**Status:** Implementado — branch `docs/topologia-nucleo-extensoes-design`
 **Origem da reabertura:** dívida técnica acumulada, sem requisito de produto novo
-puxando (ver "Gatilho", abaixo). Não há branch ainda.
+puxando (ver "Gatilho", abaixo).
 
 ## Contexto
 

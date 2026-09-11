@@ -81,6 +81,12 @@ pede.
 Detalhe completo, por mecanismo:
 `docs/research/2026-08-27-custo-inversao-arestas-cross-feature.md`.
 
+**Resolvido em parte, 2026-09-11.** As arestas 1, 2 e 6 foram resolvidas de
+verdade (DI explícita e relocação para `shared/`); as arestas 7-9 foram
+consolidadas numa só, sem o bundle webpack separado que esta seção previa
+como necessário — ver ADR-0016 para o mecanismo. As arestas 1, 2, 7, 8 e 9
+originais não existem mais como tal; `desvios:` reflete o estado atual.
+
 ## Como verificar
 
 `feature-deps`, em PHP e em TypeScript. Em PHP: um `Post_Voice_*` cuja

@@ -1,4 +1,4 @@
-import type { DictionaryEntry } from '../features/pronunciation/editor/dictionary-entry';
+import type { DictionaryEntryShape as DictionaryEntry } from '../features/narration/editor/dictionary-extension';
 
 declare global {
 	interface Window {
