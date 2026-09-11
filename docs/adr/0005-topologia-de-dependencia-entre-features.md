@@ -7,15 +7,11 @@ origem: superpowers/specs/2026-08-25-adr-e-governanca-de-arquitetura-design.md#e
 enforced_by: [ feature-deps ]
 revisar_quando: uma quarta feature entrar, ou uma extensão passar narration em número de classes, ou a lista de desvios abaixo chegar a zero
 desvios:
-  - features/narration/php/class-assets.php → Post_Voice_Dictionary_Store
-  - features/narration/php/class-assets.php → Post_Voice_Style_Store
   - features/player-style/php/class-style-section.php → Post_Voice_Frontend_Render
-  - features/pronunciation/php/class-dictionary-section.php → Post_Voice_Rest_Api
-  - features/pronunciation/php/class-dictionary-store.php → Post_Voice_Rest_Api
-  - features/pronunciation/php/class-dictionary-store.php → Post_Voice_Post_Meta
-  - features/narration/editor/index.tsx → pronunciation/editor/dictionary-panel
-  - features/narration/editor/index.tsx → pronunciation/editor/dictionary-entry
-  - features/narration/editor/index.tsx → pronunciation/editor/apply-dictionary
+  - features/pronunciation/php/class-dictionary-section.php → Post_Voice_Model
+  - features/pronunciation/php/class-dictionary-store.php → Post_Voice_Model
+  - features/narration/editor/index.tsx → pronunciation/editor/register-narration-extension
+  - features/pronunciation/editor/register-narration-extension.ts → narration/editor/dictionary-extension
   - features/pronunciation/editor/dictionary-panel.tsx → narration/editor/model-source
   - features/pronunciation/editor/dictionary-entry.ts → narration/editor/model-source
 ---
