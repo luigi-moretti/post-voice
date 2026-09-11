@@ -30,12 +30,14 @@ fornecedor. Publicação no WordPress.org fica para uma spec futura separada
 | README | Completo, com GIF + screenshot | Ver seção "Estrutura do README" abaixo — estrutura fechada, sem ponto em aberto |
 | Código de conduta | Contributor Covenant padrão | Contato: `luigi@moretti.dev` |
 | Política de segurança | `SECURITY.md` com canal privado | Contato: `luigi@moretti.dev` — plugin roda em site de terceiros, precisa de disclosure responsável antes de virar issue pública |
-| Templates de issue/PR | bug report + feature request + question + PR checklist | PR template espelha a lista "Before opening a pull request" do `CLAUDE.md` |
+| Templates de issue/PR | bug report + feature request + question + PR checklist | PR template segue "Before opening a pull request" do `CLAUDE.md`, incluindo `npm run doctor`; a etapa de invocar `superpowers:requesting-code-review` vira nota (skill do Claude Code, não roda fora dele) |
 | Seletor de issue | Bloqueia blank issue, link pra `SECURITY.md` | `config.yml` — força usar um dos 3 templates, tira vulnerabilidade do fluxo público |
 | Suporte/dúvida | Template `question.md`, sem GitHub Discussions | Cobre o caso sem abrir feature nova do repo (Discussions exige habilitar, moderar categorias — overhead não justificado ainda) |
 | Disclosure de IA no PR | Campo obrigatório no template | Projeto quer aceitar contribuição de IA explicitamente — revisor precisa saber a origem; humano sempre assina como responsável pelo conteúdo |
 | Hot-reload PHP | Só documentar o fluxo manual existente | `npm run start` (JS, watch) + `npm run refresh:php` (PHP, manual) — sem construir watcher novo; fora de escopo |
 | Ordem de execução | Docs primeiro (privado) → flip público → branch protection imediata | Ver "Ordem de execução" abaixo |
+| Branch protection: contexts | `lint`, `unit`, `i18n`, `audit` — sem `e2e` | `e2e` pula via path-filter em PR só de docs; required check que nunca reporta trava merge pra sempre |
+| Branch protection: aprovações | 1 aprovação humana, `enforce_admins: false` | Contribuidor externo precisa de review; dono/admin mergeia PR próprio sem travar em auto-aprovação |
 | Captura de GIF/screenshot | Dentro do escopo, como tarefa de implementação | Usa skill `run` + `claude-in-chrome`; não é decisão de arquitetura, é execução |
 
 ## Achados da investigação (2026-09-11)
@@ -71,10 +73,10 @@ fornecedor. Publicação no WordPress.org fica para uma spec futura separada
 | `README.md` | criar | Ver "Estrutura do README" |
 | `.github/assets/hero-demo.gif` | criar | Gravação: editor de blocos → painel "Narração" → escolhe idioma → gera → progresso → preview toca. ~10–15s, loop. |
 | `.github/assets/frontend-player.png` | criar | Screenshot estático do player flutuante no front-end, em um post real. |
-| `CONTRIBUTING.md` | criar | Fluxo fork+PR (linkando a explicação já dada nesta conversa em linguagem própria do doc), setup local (`npx wp-env start`), os dois comandos de hot-reload (`npm run start`, `npm run refresh:php`) com a explicação do gotcha do CLAUDE.md, checklist completo de gates copiado de "Before opening a pull request" do CLAUDE.md, convenção de commit (Conventional Commits — já em uso, ver `git log`) |
-| `AGENTS.md` | criar | Curto: aponta para `CLAUDE.md` como fonte de verdade das regras do projeto, nota que `.claude/rules/` tem convenções por path, sem duplicar conteúdo |
-| `CODE_OF_CONDUCT.md` | criar | Contributor Covenant v2.1 (texto padrão do GitHub), contato `luigi@moretti.dev` |
-| `SECURITY.md` | criar | Versões suportadas (só a mais recente, plugin pré-1.0), canal de report privado por email `luigi@moretti.dev` com pedido de não abrir issue pública antes de resposta, prazo alvo de resposta |
+| `CONTRIBUTING.md` | criar | Conteúdo exato: ver "Template — CONTRIBUTING.md" |
+| `AGENTS.md` | criar | Conteúdo exato: ver "Template — AGENTS.md" |
+| `CODE_OF_CONDUCT.md` | criar | Contributor Covenant v2.1 (texto padrão do GitHub, importado verbatim), contato `luigi@moretti.dev` preenchido no campo de contato do template |
+| `SECURITY.md` | criar | Conteúdo exato: ver "Template — SECURITY.md" |
 | `.github/ISSUE_TEMPLATE/bug_report.md` | criar | Conteúdo exato: ver "Template — bug report" |
 | `.github/ISSUE_TEMPLATE/feature_request.md` | criar | Conteúdo exato: ver "Template — feature request" |
 | `.github/ISSUE_TEMPLATE/question.md` | criar | Conteúdo exato: ver "Template — question" |
@@ -82,6 +84,145 @@ fornecedor. Publicação no WordPress.org fica para uma spec futura separada
 | `.github/PULL_REQUEST_TEMPLATE.md` | criar | Conteúdo exato: ver "Template — pull request" |
 | `.distignore` | editar | Adiciona `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` à lista de exclusão do zip de distribuição |
 | `post-voice.zip` (raiz) | remover | Artefato solto, não rastreado, não serve pra nada |
+
+## Template — CONTRIBUTING.md
+
+```markdown
+# Contribuindo com o Post Voice
+
+Obrigado pelo interesse. Este documento cobre o fluxo de contribuição —
+para detalhes de cada gate (limiares de cobertura, timings, como rodar
+uma suíte isolada), veja `TESTING.md`. Para as regras de arquitetura,
+`CLAUDE.md` e `docs/adr/`.
+
+## Fluxo: fork + pull request
+
+Ninguém além do mantenedor tem push direto em `master`. O fluxo é:
+
+1. Faça um fork deste repositório.
+2. Clone o seu fork, crie uma branch a partir de `master`.
+3. Implemente, com commits no padrão [Conventional Commits](https://www.conventionalcommits.org/)
+   (`feat:`, `fix:`, `docs:`, `chore:`, etc — veja `git log` para exemplos reais).
+4. Rode o checklist completo abaixo antes de abrir o PR.
+5. Push no seu fork, abra um Pull Request contra `master` deste repositório.
+   O template de PR carrega automaticamente.
+6. O CI roda sozinho no PR. Revisão humana acontece depois dos checks verdes.
+
+## Setup local
+
+\`\`\`bash
+git clone <seu-fork>
+cd post-voice
+npm ci                                   # nunca npm install — lockfile é a superfície de auditoria
+composer install
+npx playwright install --with-deps chromium chromium-headless-shell
+npx wp-env start                         # WordPress em localhost:8888
+\`\`\`
+
+Versões exigidas e o que cada comando cobre: `TESTING.md`.
+
+## Loop de desenvolvimento
+
+- **JS/editor**: `npm run start` (webpack em modo watch) recompila
+  `build/` a cada save. wp-env já monta o repo direto no container — o
+  build novo aparece depois de um refresh manual no navegador.
+- **PHP**: **não tem watch.** Editar um `.php` e salvar não é suficiente —
+  Docker Desktop cacheia por inode e o opcache mantém a compilação antiga.
+  Depois de editar PHP, rode sempre:
+  \`\`\`bash
+  npm run refresh:php
+  \`\`\`
+  antes de testar a mudança no navegador. Esquecer esse passo é o jeito
+  mais comum de perder tempo achando que uma mudança "não funcionou".
+
+## Checklist antes de abrir o PR
+
+Mandatório, nesta ordem — mais barato primeiro, falha rápido. `wp-env`
+precisa estar rodando (`npx wp-env start`):
+
+\`\`\`bash
+npm run lint:js && npm run lint:arch
+npx tsc --noEmit
+composer run lint && composer run stan
+npm run test:unit -- --coverage
+npm run test:php && npm run test:php:coverage
+npm run i18n:check
+npm run audit:npm:production && npm run audit:npm && npm run audit:composer
+npm run build && npm run test:e2e    # baixa o modelo na primeira vez
+npm run doctor
+\`\`\`
+
+O `.github/PULL_REQUEST_TEMPLATE.md` repete essa lista como checklist do
+PR — marque cada item depois de rodar, não antes. Se algo falhar, corrija
+antes de abrir o PR: um PR vermelho custa mais tempo de review do que
+rodar isso localmente primeiro.
+
+## Contribuição assistida por IA
+
+Bem-vinda, com uma condição: você é responsável pelo conteúdo do PR
+independente de quem/o que escreveu, e o template de PR pede pra declarar
+a ferramenta usada. Revise a saída da IA como revisaria a sua própria —
+ela passa pelos mesmos gates e pela mesma revisão humana.
+
+## Dúvidas
+
+Abra uma issue com o template "Question" antes de perguntar dentro de um
+PR já aberto — mantém a thread do PR focada no código.
+```
+
+## Template — AGENTS.md
+
+```markdown
+# AGENTS.md
+
+Este projeto documenta suas regras de desenvolvimento em `CLAUDE.md` —
+válido para qualquer ferramenta de IA (Claude Code, Codex, Cursor, Copilot
+Workspace, etc), não só para a que dá nome ao arquivo. Leia `CLAUDE.md`
+antes de propor ou aplicar qualquer mudança.
+
+Convenções específicas por diretório, quando existem, ficam em
+`.claude/rules/` e carregam automaticamente ao abrir um arquivo que elas
+cobrem — vale ler as que tocam a área em que você está mexendo.
+
+Os gates obrigatórios antes de abrir um PR estão na seção "Before opening
+a pull request" do `CLAUDE.md`; `.github/PULL_REQUEST_TEMPLATE.md` os
+repete como checklist.
+```
+
+## Template — SECURITY.md
+
+```markdown
+# Política de segurança
+
+## Versões suportadas
+
+O projeto está pré-1.0 (`0.5.x`). Só a versão mais recente publicada em
+[Releases](https://github.com/luigi-moretti/post-voice/releases) recebe
+correção de segurança — sem suporte a versões antigas nesta fase.
+
+## Reportar uma vulnerabilidade
+
+**Não abra uma issue pública.** Envie um email para `luigi@moretti.dev` com:
+
+- Descrição da vulnerabilidade e impacto potencial
+- Passos para reproduzir
+- Versão do plugin, do WordPress e do PHP em que foi encontrada
+
+Confirmação de recebimento em até 5 dias úteis. O prazo para correção ou
+plano de mitigação varia com a gravidade, mas você recebe uma estimativa
+dentro desse mesmo prazo inicial. Depois de uma correção publicada, a
+vulnerabilidade é divulgada publicamente com crédito a quem reportou,
+salvo pedido em contrário.
+
+## Superfície relevante
+
+TTS roda inteiramente no navegador do autor — nenhum texto de post sai do
+navegador para gerar áudio (ver `docs/adr/0002-tts-roda-no-navegador.md`).
+Isso limita a superfície de servidor aos endpoints REST que recebem o
+áudio já gerado (`post-voice/v1`), sua validação, e o armazenamento como
+attachment. Vulnerabilidades de XSS/CSRF/validação nesses pontos são o
+que mais importa reportar.
+```
 
 ## Template — bug report
 
@@ -183,10 +324,13 @@ contact_links:
 
 ## Template — pull request
 
-`.github/PULL_REQUEST_TEMPLATE.md`. Checklist reflete exatamente os gates
-de `CLAUDE.md` "Before opening a pull request", na mesma ordem — contribuidor
-externo roda os mesmos comandos que rodam localmente antes de qualquer PR
-interno:
+`.github/PULL_REQUEST_TEMPLATE.md`. Checklist reflete os gates executáveis
+de `CLAUDE.md` "Before opening a pull request", na mesma ordem, mais
+`npm run doctor` (mandatório no CLAUDE.md, qualquer um roda). A etapa
+seguinte do CLAUDE.md — invocar `superpowers:requesting-code-review` — não
+vira checkbox: é uma skill do Claude Code, contribuidor sem essa
+ferramenta não tem como rodar sozinho. Fica como nota; a revisão humana do
+mantenedor cobre o mesmo papel para quem não usa Claude Code:
 
 ```markdown
 ## O que muda
@@ -210,10 +354,15 @@ Rode em ordem — cada gate mais caro que o anterior, fail-fast:
 - [ ] `npm run i18n:check`
 - [ ] `npm run audit:npm:production && npm run audit:npm && npm run audit:composer`
 - [ ] `npm run build && npm run test:e2e` (baixa o modelo na primeira vez)
+- [ ] `npm run doctor`
 
 Tudo verde localmente antes de abrir o PR — um PR vermelho custa mais tempo
 de review do que rodar isso antes. Detalhes de cada gate e limiares:
 `TESTING.md`.
+
+Se você usa Claude Code: rode `superpowers:requesting-code-review` antes
+de abrir o PR (CLAUDE.md pede isso). Sem Claude Code, não tem problema —
+a revisão do mantenedor cobre esse papel.
 
 ## Documentos relevantes
 
@@ -275,11 +424,34 @@ protection:
    ou GitHub UI — ação irreversível de fato, confirmar com o usuário no
    momento da execução mesmo já combinado aqui).
 5. **Imediatamente em seguida**, mesma sessão/comando, sem pausa: ligar
-   branch protection em `master` via `gh api` —
-   PR obrigatório antes de merge, checks do CI (`lint`, `test`, etc.)
-   obrigatórios e verdes, sem push direto (nem do próprio dono, salvo
-   override explícito de admin). Fecha a janela entre "público" e
-   "protegido" a segundos, não a um passo manual futuro.
+   branch protection em `master`. Comando exato:
+
+   ```bash
+   gh api repos/luigi-moretti/post-voice/branches/master/protection \
+     --method PUT \
+     --input - <<'JSON'
+   {
+     "required_status_checks": {
+       "strict": true,
+       "contexts": ["lint", "unit", "i18n", "audit"]
+     },
+     "enforce_admins": false,
+     "required_pull_request_reviews": {
+       "required_approving_review_count": 1
+     },
+     "restrictions": null
+   }
+   JSON
+   ```
+
+   `contexts` fica só com os 4 jobs que sempre rodam (`lint`, `unit`,
+   `i18n`, `audit`) — `e2e` fica de fora de propósito: ele pula sozinho
+   via path-filter (`changes` job) quando o diff não toca
+   `features/narration|pronunciation|player-style/`, `shared/`, etc, e um
+   required check que nunca reporta trava o merge pra sempre num PR só de
+   docs. `enforce_admins: false` deixa o dono/admin mergear PR próprio sem
+   travar em auto-aprovação — padrão pra mantenedor solo. Contribuidor
+   externo ainda precisa de 1 aprovação humana antes do merge.
 
 ## Validação — "pronto quando"
 
