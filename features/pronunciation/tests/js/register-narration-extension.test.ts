@@ -13,11 +13,11 @@ jest.mock( '@wordpress/components', () => ( {
 	TextControl: () => null,
 } ) );
 
-import { getDictionaryExtension } from '../../narration/editor/dictionary-extension';
-import { DictionaryPanel } from './dictionary-panel';
-import { mergeDictionaries } from './dictionary-entry';
-import { applyDictionary } from './apply-dictionary';
-import './register-narration-extension';
+import { getDictionaryExtension } from '../../../narration/editor/dictionary-extension';
+import { DictionaryPanel } from '../../editor/dictionary-panel';
+import { mergeDictionaries } from '../../editor/dictionary-entry';
+import { applyDictionary } from '../../editor/apply-dictionary';
+import '../../editor/register-narration-extension';
 
 describe( 'register-narration-extension', () => {
 	it( 'registra o Panel e as funções reais de pronunciation na porta de narration', () => {

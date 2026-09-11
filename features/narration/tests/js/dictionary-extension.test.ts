@@ -1,7 +1,7 @@
 import {
 	registerDictionaryExtension,
 	getDictionaryExtension,
-} from './dictionary-extension';
+} from '../../editor/dictionary-extension';
 
 describe( 'dictionary-extension', () => {
 	// A ordem destes dois testes importa: o módulo guarda um único registro
