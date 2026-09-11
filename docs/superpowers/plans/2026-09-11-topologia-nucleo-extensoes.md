@@ -1015,19 +1015,36 @@ EOF
 
 **Files:**
 - Modify: `docs/adr/0005-topologia-de-dependencia-entre-features.md`
+- Modify: `scripts/lint-arch/tests/rule-feature-deps.test.js`
+- Modify: `scripts/lint-arch/tests/rules-php-shape.test.js`
 
 **Interfaces:**
 - Consumes: a saída de `npm run lint:arch` deste ponto do branch (rodada
   depois das Tasks 1-4) — é dali que as `key`s exatas vêm, não deste plano.
 
+**Nota adicionada durante a execução (Task 4):** além do front-matter da
+ADR-0005, dois testes Jest em `scripts/lint-arch/tests/` afirmam fatos
+literais sobre o estado *atual* do repo (não fixtures isoladas) — quantas
+arestas cross-feature existem, e quantas classes PHP o repo tem. As Tasks
+1-4 mudaram os dois números de verdade; sem atualizar esses dois arquivos,
+`npm run test:unit` fica vermelho mesmo com todo o resto correto. Isto não
+estava no plano original — ver `Task 4: Ruling` no ledger da execução.
+
 - [ ] **Step 1: Rodar `lint:arch` e ler as chaves de dívida quitada**
 
 Run: `npm run lint:arch`
-Expected: sai 0, e a seção de avisos lista como "dívida quitada" as chaves
-das arestas 1, 2 e 6 (resolvidas) e das arestas 4, 5 (a `key` antiga, que
-apontava pra `Post_Voice_Rest_Api`) — porque o código já não as viola, mas a
-lista em `desvios:` ainda cita a forma antiga. As arestas 7, 8, 9 também
-aparecem quitadas nas suas chaves antigas, substituídas por uma nova.
+Expected: sai **1** neste ponto, não 0 — correção feita durante a execução
+(ver ledger da Task 4): o adaptador `register-narration-extension.ts`
+(produção, criado na Task 4) importa `registerDictionaryExtension` de
+`narration/editor/dictionary-extension`, uma aresta nova real que nenhum
+`desvios:` lista ainda — `feature-deps` reprova até este Step 3 adicioná-la.
+A seção de avisos lista como "dívida quitada" as chaves das arestas 1, 2 e 6
+(resolvidas) e das arestas 4, 5 (a `key` antiga, que apontava pra
+`Post_Voice_Rest_Api`) — porque o código já não as viola, mas a lista em
+`desvios:` ainda cita a forma antiga. As arestas 7, 8, 9 também aparecem
+quitadas nas suas chaves antigas, substituídas por uma nova. A saída também
+lista, como `problems` (não `warnings`), a aresta nova do adaptador — copie
+a `key` dali para o Step 3 junto com as outras.
 
 - [ ] **Step 2: Rodar `npm run doctor` para conferir a lista de dívida congelada atual**
 
@@ -1038,7 +1055,7 @@ digitar as `key`s de memória).
 
 - [ ] **Step 3: Editar o front-matter de `docs/adr/0005-topologia-de-dependencia-entre-features.md`**
 
-Trocar o bloco `desvios:` (11 entradas) por seis, usando as `key`s
+Trocar o bloco `desvios:` (11 entradas) por sete, usando as `key`s
 copiadas literalmente da saída da Step 1/2 — o formato esperado, a confirmar
 contra a saída real:
 
@@ -1048,31 +1065,120 @@ desvios:
   - features/pronunciation/php/class-dictionary-section.php → Post_Voice_Model
   - features/pronunciation/php/class-dictionary-store.php → Post_Voice_Model
   - features/narration/editor/index.tsx → pronunciation/editor/register-narration-extension
+  - features/pronunciation/editor/register-narration-extension.ts → narration/editor/dictionary-extension
   - features/pronunciation/editor/dictionary-panel.tsx → narration/editor/model-source
   - features/pronunciation/editor/dictionary-entry.ts → narration/editor/model-source
 ```
+
+A quinta entrada acima (`register-narration-extension.ts →
+dictionary-extension`) é a aresta 12 descrita na correção da Task 4 no
+ledger — satélite→núcleo (o adaptador de pronunciation importando a porta
+que narration publica), mesma categoria de custo já aceito que as arestas
+3/10/11 (sem indireção nova, sem filtro). Não existia entre as onze
+originais porque `dictionary-extension.ts` não existia antes da Task 4.
 
 `status` continua `aceita-com-desvio` (a lista não chegou a zero). Não tocar
 `Contexto`, `Decisão`, `Consequências` nem `Alternativas rejeitadas` — são
 campos imutáveis (ADR-0001).
 
-- [ ] **Step 4: Rodar `lint:arch` de novo e confirmar limpo**
+- [ ] **Step 4: Atualizar o meta-teste de arestas em `scripts/lint-arch/tests/rule-feature-deps.test.js`**
+
+No bloco `describe( 'o repo de hoje', ...)` no fim do arquivo, trocar:
+
+```js
+describe( 'o repo de hoje', () => {
+	it( 'acha exatamente as onze arestas', () => {
+		expect( regra.check( createContext() ) ).toHaveLength( 11 );
+	} );
+
+	it( 'as onze chaves batem, uma a uma, com desvios: da ADR-0005', () => {
+		const achadas = regra
+			.check( createContext() )
+			.map( ( f ) => f.key )
+			.sort();
+		const listadas = loadAdrs( 'docs/adr' )
+			.find( ( a ) => a.id === '0005' )
+			.desvios.sort();
+		expect( achadas ).toEqual( listadas );
+	} );
+} );
+```
+
+por:
+
+```js
+describe( 'o repo de hoje', () => {
+	it( 'acha exatamente as sete arestas', () => {
+		expect( regra.check( createContext() ) ).toHaveLength( 7 );
+	} );
+
+	it( 'as sete chaves batem, uma a uma, com desvios: da ADR-0005', () => {
+		const achadas = regra
+			.check( createContext() )
+			.map( ( f ) => f.key )
+			.sort();
+		const listadas = loadAdrs( 'docs/adr' )
+			.find( ( a ) => a.id === '0005' )
+			.desvios.sort();
+		expect( achadas ).toEqual( listadas );
+	} );
+} );
+```
+
+O segundo teste compara contra o `desvios:` que a Step 3 acabou de escrever
+— se as duas listas não baterem depois desta troca, a `desvios:` da ADR ou
+esta lista tem uma `key` errada; não prossiga sem entender qual das duas.
+
+- [ ] **Step 5: Atualizar o meta-teste de classes em `scripts/lint-arch/tests/rules-php-shape.test.js`**
+
+Trocar:
+
+```js
+	it( 'mapeia as 11 classes do repo', () => {
+		expect( naming.phpClassOwners( createContext() ).size ).toBe( 11 );
+	} );
+```
+
+por:
+
+```js
+	it( 'mapeia as 13 classes do repo', () => {
+		expect( naming.phpClassOwners( createContext() ).size ).toBe( 13 );
+	} );
+```
+
+(As duas classes novas das Tasks 2 e 3 — `Post_Voice_Model` e
+`Post_Voice_Capability_Guard` — somam 11 + 2 = 13.)
+
+- [ ] **Step 6: Rodar `npm run test:unit -- scripts/lint-arch/tests` e confirmar os dois arquivos verdes**
+
+Run: `npm run test:unit -- scripts/lint-arch/tests`
+Expected: PASS — os 13 test suites de `scripts/lint-arch/tests/`, incluindo
+os dois editados nos Steps 4-5.
+
+- [ ] **Step 7: Rodar `lint:arch` de novo e confirmar limpo**
 
 Run: `npm run lint:arch`
 Expected: sai 0, sem aviso de dívida quitada pendente e sem violação nova.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add docs/adr/0005-topologia-de-dependencia-entre-features.md
+git add docs/adr/0005-topologia-de-dependencia-entre-features.md scripts/lint-arch/tests/rule-feature-deps.test.js scripts/lint-arch/tests/rules-php-shape.test.js
 git commit -m "$(cat <<'EOF'
-docs(adr): atualiza desvios: da ADR-0005 (11 → 6 arestas)
+docs(adr): atualiza desvios: da ADR-0005 (11 → 7 arestas)
 
 Reflete o código depois das Tasks 1-4: arestas 1, 2 e 6 resolvidas de
 vez (saem da lista); 4 e 5 com a key renomeada (Post_Voice_Rest_Api →
-Post_Voice_Model); 7, 8 e 9 consolidadas numa key só. status
-permanece aceita-com-desvio — a lista não chegou a zero. Nenhum campo
+Post_Voice_Model); 7, 8 e 9 consolidadas numa key só; mais uma aresta
+nova (o adaptador de pronunciation importando a porta que narration
+publica — satélite→núcleo, mesma categoria de custo já aceito que
+3/10/11, descoberta durante a Task 4). status permanece
+aceita-com-desvio — a lista não chegou a zero. Nenhum campo
 imutável da ADR foi tocado.
+
+Os dois meta-testes de scripts/lint-arch/tests/ que afirmam contagem
+real do repo (arestas e classes PHP) atualizados junto — 11→7 e 11→13.
 
 Spec: docs/superpowers/specs/2026-09-11-topologia-nucleo-extensoes-design.md
 Claude-Session: https://claude.ai/code/session_01Q8Wrpnxmq3yLPVLWMsoNya
@@ -1245,7 +1351,7 @@ prosseguir. Nenhum gate se afrouxa pra passar.
 - [ ] **Step 3: Se tudo passar, `npm run doctor`**
 
 Run: `npm run doctor`
-Expected: "dívida congelada" mostra as 6 entradas remanescentes da ADR-0005
+Expected: "dívida congelada" mostra as 7 entradas remanescentes da ADR-0005
 (nenhuma a mais, nenhuma a menos); "ADRs" mostra 13 `aceita` + 2
 `aceita-com-desvio` (0004, 0005) + 1 nada mais (0011 continua
 `aceita-com-desvio` também — 3 no total, como antes; só a 0005 mudou de

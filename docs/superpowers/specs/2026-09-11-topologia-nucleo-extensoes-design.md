@@ -74,9 +74,20 @@ o "antes" que o resto do documento transforma:
 | 10 | `pronunciation/editor/dictionary-panel.tsx` | `narration/editor/model-source` | satélite→núcleo | inalterada |
 | 11 | `pronunciation/editor/dictionary-entry.ts` | `narration/editor/model-source` | satélite→núcleo | inalterada |
 
-Saldo: **11 → 6** entradas em `desvios:` na ADR-0005 (3 resolvidas de verdade:
+**Correção feita durante a execução do plano (Task 4):** o adaptador
+`register-narration-extension.ts` (produção, em `pronunciation`) precisa
+importar `registerDictionaryExtension` de `narration/editor/dictionary-extension`
+para se registrar — satélite→núcleo, a direção correta, mas ainda uma aresta
+nova pela regra mecânica de `feature-deps`, que a tabela acima não contava.
+Chame-a de **aresta 12**: `pronunciation/editor/register-narration-extension.ts
+→ narration/editor/dictionary-extension`, satélite→núcleo, mesma categoria de
+3/10/11 (custo já aceito, sem indireção nova). O saldo abaixo já reflete essa
+correção.
+
+Saldo: **11 → 7** entradas em `desvios:` na ADR-0005 (3 resolvidas de verdade:
 1, 2, 6; três consolidadas em uma: 7-8-9 → 1; duas renomeadas mas presentes:
-4, 5; três sem mudança: 3, 10, 11).
+4, 5; três sem mudança: 3, 10, 11; mais a aresta 12, nova e aceita pela mesma
+razão de 3/10/11).
 
 ## Arquitetura
 
@@ -167,7 +178,7 @@ graph LR
     DictStore2 -- "6' satélite→shared" --> Guard
     PostMeta2 -- "usa" --> Guard
     IndexTsx2 -- "7-9' um import só" --> Port
-    Adapter -- "importa a porta" --> Port
+    Adapter -- "12 importa a porta" --> Port
     Adapter --> DictPanel2
     Adapter --> DictEntry2
     Adapter --> ApplyDict2
@@ -422,7 +433,7 @@ desvios:
 
 | ADR | Mudança | Como |
 |---|---|---|
-| 0005 | `desvios:` editado (11 → 6 entradas, ver tabela acima) | Campo vivo — qualquer PR muda, sem ADR nova. `status` permanece `aceita-com-desvio` |
+| 0005 | `desvios:` editado (11 → 7 entradas, ver tabela acima) | Campo vivo — qualquer PR muda, sem ADR nova. `status` permanece `aceita-com-desvio` |
 | 0004 | Nenhuma mudança de texto; ganha um consumidor a mais em `shared/` (`class-capability-guard.php`, dois consumidores reais desde o dia 1) | Nenhuma — a regra `shared-two-consumers` já cobre isso |
 | **0016 (nova)** | Registra o mecanismo — DI explícita via callable no bootstrap é como o núcleo publica uma porta pra uma extensão em PHP; import único consolidado é o equivalente em TS; filtro `apply_filters`/`@wordpress/hooks` fica reservado pro dia em que existir um requisito real de compatibilidade externa | Nova ADR — a ADR-0005 não pode ser reescrita pra dizer "inverter agora" quando o texto atual diz o oposto (ADR-0001: Contexto/Decisão/Consequências são imutáveis) |
 
@@ -471,7 +482,7 @@ Não entra:
   não fecha:** não existe teste Jest para `dictionary-panel.tsx` nem para o
   wiring de registro — só e2e cobre isso hoje, e continua assim depois.
 - `npm run lint:arch`: critério de aceite principal — roda limpo com o
-  `desvios:` novo (6 entradas) e falha se qualquer uma das entradas
+  `desvios:` novo (7 entradas) e falha se qualquer uma das entradas
   resolvidas (1, 2, 6) ainda aparecer no código.
 - `npm run doctor`: confirma dívida quitada nas 3 entradas resolvidas.
 
@@ -494,7 +505,7 @@ Não entra:
 ## Critérios de aceite
 
 1. `npm run lint:arch` passa, com `docs/adr/0005-*.md`'s `desvios:` contendo
-   exatamente as 6 entradas da tabela "Estado atual medido".
+   exatamente as 7 entradas da tabela "Estado atual medido".
 2. Nenhum arquivo sob `features/**/*.php` ou `features/**/*.{ts,tsx}`
    contém, textualmente, `Post_Voice_Dictionary_Store`, `Post_Voice_Style_Store`
    fora da própria feature `pronunciation`/`player-style`, nem
