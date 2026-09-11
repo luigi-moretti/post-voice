@@ -48,6 +48,11 @@ playwright.config.ts
 .releaserc.json
 CLAUDE.md
 TESTING.md
+README.md
+CONTRIBUTING.md
+AGENTS.md
+CODE_OF_CONDUCT.md
+SECURITY.md
 .distignore
 .gitignore
 *.log

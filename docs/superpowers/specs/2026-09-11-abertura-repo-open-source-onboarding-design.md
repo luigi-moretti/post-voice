@@ -1,0 +1,482 @@
+# Post Voice — Abertura do repositório como open-source + onboarding de contribuidor
+
+**Data:** 2026-09-11
+**Status:** Aprovado para plano de implementação
+
+## Contexto
+
+`post-voice` é hoje um repositório privado no GitHub (`luigi-moretti/post-voice`).
+Governança técnica já é madura — `docs/adr/` com 16 ADRs, CI cobrindo lint,
+arquitetura, testes PHP/JS, e2e, auditoria de dependências, releases
+automatizados via tag (`v0.1.0`…`v0.5.1`, cada um com zip publicado por
+`.github/workflows/release-assets.yml`). O que falta é a camada social/de
+entrada: nada explica a um dev (humano ou IA) de fora como contribuir, e o
+repo não tem os artefatos que o GitHub e o ecossistema open-source esperam
+(README, CONTRIBUTING, licença de conduta, etc).
+
+Objetivo desta spec: tornar o repositório público, com onboarding claro para
+contribuidores externos — humanos e ferramentas de IA agnósticas de
+fornecedor. Publicação no WordPress.org fica para uma spec futura separada
+(prioridade explícita do usuário: abrir o repo primeiro).
+
+## Decisões já fechadas (não reabrir sem motivo novo)
+
+| Decisão | Escolha | Por quê |
+|---|---|---|
+| Escopo desta spec | Abertura do repo + onboarding | WP.org é subsistema independente, spec própria depois |
+| Modelo de contribuição | Fork + PR revisado, sem CLA/DCO | Padrão universal em open-source, zero fricção extra; GPL do repo já cobre a licença de qualquer contribuição por convenção |
+| Licença | Mantém GPL-2.0-or-later | Já é a exigida pelo WP.org (fase futura) e já validada contra código Apache-2.0 vendored em `CREDITS.md` |
+| Onboarding de IA | Agnóstico de ferramenta | `AGENTS.md` novo, aponta para as mesmas regras do `CLAUDE.md` sem duplicar conteúdo — não exclui quem usa outra ferramenta |
+| README | Completo, com GIF + screenshot | Ver seção "Estrutura do README" abaixo — estrutura fechada, sem ponto em aberto |
+| Código de conduta | Contributor Covenant padrão | Contato: `luigi@moretti.dev` |
+| Política de segurança | `SECURITY.md` com canal privado | Contato: `luigi@moretti.dev` — plugin roda em site de terceiros, precisa de disclosure responsável antes de virar issue pública |
+| Templates de issue/PR | bug report + feature request + question + PR checklist | PR template segue "Before opening a pull request" do `CLAUDE.md`, incluindo `npm run doctor`; a etapa de invocar `superpowers:requesting-code-review` vira nota (skill do Claude Code, não roda fora dele) |
+| Seletor de issue | Bloqueia blank issue, link pra `SECURITY.md` | `config.yml` — força usar um dos 3 templates, tira vulnerabilidade do fluxo público |
+| Suporte/dúvida | Template `question.md`, sem GitHub Discussions | Cobre o caso sem abrir feature nova do repo (Discussions exige habilitar, moderar categorias — overhead não justificado ainda) |
+| Disclosure de IA no PR | Campo obrigatório no template | Projeto quer aceitar contribuição de IA explicitamente — revisor precisa saber a origem; humano sempre assina como responsável pelo conteúdo |
+| Hot-reload PHP | Só documentar o fluxo manual existente | `npm run start` (JS, watch) + `npm run refresh:php` (PHP, manual) — sem construir watcher novo; fora de escopo |
+| Ordem de execução | Docs primeiro (privado) → flip público → branch protection imediata | Ver "Ordem de execução" abaixo |
+| Branch protection: contexts | `lint`, `unit`, `i18n`, `audit` — sem `e2e` | `e2e` pula via path-filter em PR só de docs; required check que nunca reporta trava merge pra sempre |
+| Branch protection: aprovações | 1 aprovação humana, `enforce_admins: false` | Contribuidor externo precisa de review; dono/admin mergeia PR próprio sem travar em auto-aprovação |
+| Captura de GIF/screenshot | Dentro do escopo, como tarefa de implementação | Usa skill `run` + `claude-in-chrome`; não é decisão de arquitetura, é execução |
+
+## Achados da investigação (2026-09-11)
+
+- **Scan de segredos no histórico completo**: `gitleaks detect --log-opts="--all"`
+  via Docker, 320 commits escaneados, **zero leak**. Repo pode abrir com
+  segurança quanto a esse risco.
+- **`post-voice.zip` solto na raiz**: artefato de build manual, não bate o
+  padrão `post-voice-*.zip` do `.gitignore` (falta o hífen). Remover — não é
+  risco de segredo, é lixo de working tree.
+- **Branch protection em `master` não existe** (memória do usuário estava
+  errada). Confirmado via `gh api repos/luigi-moretti/post-voice/branches/master/protection`
+  → 403 "Upgrade to GitHub Pro or make this repository public to enable this
+  feature". GitHub Free bloqueia proteção de branch em repo privado — só
+  fica disponível **depois** do flip para público. Isso define a ordem de
+  execução abaixo.
+- **Releases já existem e já publicam zip**: `v0.1.0`…`v0.5.1` no GitHub
+  Releases, cada um com `post-voice-X.Y.Z.zip` anexado por
+  `release-assets.yml`. A seção "Usar em um site" do README pode apontar
+  para `releases/latest` de verdade, não é promessa vazia.
+- **`.distignore` já exclui `.github/` e `docs/`** do zip de distribuição do
+  plugin (filosofia declarada no próprio arquivo: só o que o WordPress
+  precisa pra rodar). Isso decide onde as mídias do README vivem (ver
+  abaixo) e expõe um gap: `README.md`, `CONTRIBUTING.md`, `AGENTS.md`,
+  `CODE_OF_CONDUCT.md`, `SECURITY.md` **não** estão na lista — hoje seriam
+  empacotados no zip do plugin. Corrigir adicionando as 5 ao `.distignore`
+  (consistente com a filosofia já documentada ali, não é decisão nova).
+
+## Inventário de arquivos
+
+| Arquivo | Ação | Conteúdo |
+|---|---|---|
+| `README.md` | criar | Ver "Estrutura do README" |
+| `.github/assets/hero-demo.gif` | criar | Gravação: editor de blocos → painel "Narração" → escolhe idioma → gera → progresso → preview toca. ~10–15s, loop. |
+| `.github/assets/frontend-player.png` | criar | Screenshot estático do player flutuante no front-end, em um post real. |
+| `CONTRIBUTING.md` | criar | Conteúdo exato: ver "Template — CONTRIBUTING.md" |
+| `AGENTS.md` | criar | Conteúdo exato: ver "Template — AGENTS.md" |
+| `CODE_OF_CONDUCT.md` | criar | Contributor Covenant v2.1 (texto padrão do GitHub, importado verbatim), contato `luigi@moretti.dev` preenchido no campo de contato do template |
+| `SECURITY.md` | criar | Conteúdo exato: ver "Template — SECURITY.md" |
+| `.github/ISSUE_TEMPLATE/bug_report.md` | criar | Conteúdo exato: ver "Template — bug report" |
+| `.github/ISSUE_TEMPLATE/feature_request.md` | criar | Conteúdo exato: ver "Template — feature request" |
+| `.github/ISSUE_TEMPLATE/question.md` | criar | Conteúdo exato: ver "Template — question" |
+| `.github/ISSUE_TEMPLATE/config.yml` | criar | Conteúdo exato: ver "Config do seletor de issue" |
+| `.github/PULL_REQUEST_TEMPLATE.md` | criar | Conteúdo exato: ver "Template — pull request" |
+| `.distignore` | editar | Adiciona `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` à lista de exclusão do zip de distribuição |
+| `post-voice.zip` (raiz) | remover | Artefato solto, não rastreado, não serve pra nada |
+
+## Template — CONTRIBUTING.md
+
+```markdown
+# Contribuindo com o Post Voice
+
+Obrigado pelo interesse. Este documento cobre o fluxo de contribuição —
+para detalhes de cada gate (limiares de cobertura, timings, como rodar
+uma suíte isolada), veja `TESTING.md`. Para as regras de arquitetura,
+`CLAUDE.md` e `docs/adr/`.
+
+## Fluxo: fork + pull request
+
+Ninguém além do mantenedor tem push direto em `master`. O fluxo é:
+
+1. Faça um fork deste repositório.
+2. Clone o seu fork, crie uma branch a partir de `master`.
+3. Implemente, com commits no padrão [Conventional Commits](https://www.conventionalcommits.org/)
+   (`feat:`, `fix:`, `docs:`, `chore:`, etc — veja `git log` para exemplos reais).
+4. Rode o checklist completo abaixo antes de abrir o PR.
+5. Push no seu fork, abra um Pull Request contra `master` deste repositório.
+   O template de PR carrega automaticamente.
+6. O CI roda sozinho no PR. Revisão humana acontece depois dos checks verdes.
+
+## Setup local
+
+\`\`\`bash
+git clone <seu-fork>
+cd post-voice
+npm ci                                   # nunca npm install — lockfile é a superfície de auditoria
+composer install
+npx playwright install --with-deps chromium chromium-headless-shell
+npx wp-env start                         # WordPress em localhost:8888
+\`\`\`
+
+Versões exigidas e o que cada comando cobre: `TESTING.md`.
+
+## Loop de desenvolvimento
+
+- **JS/editor**: `npm run start` (webpack em modo watch) recompila
+  `build/` a cada save. wp-env já monta o repo direto no container — o
+  build novo aparece depois de um refresh manual no navegador.
+- **PHP**: **não tem watch.** Editar um `.php` e salvar não é suficiente —
+  Docker Desktop cacheia por inode e o opcache mantém a compilação antiga.
+  Depois de editar PHP, rode sempre:
+  \`\`\`bash
+  npm run refresh:php
+  \`\`\`
+  antes de testar a mudança no navegador. Esquecer esse passo é o jeito
+  mais comum de perder tempo achando que uma mudança "não funcionou".
+
+## Checklist antes de abrir o PR
+
+Mandatório, nesta ordem — mais barato primeiro, falha rápido. `wp-env`
+precisa estar rodando (`npx wp-env start`):
+
+\`\`\`bash
+npm run lint:js && npm run lint:arch
+npx tsc --noEmit
+composer run lint && composer run stan
+npm run test:unit -- --coverage
+npm run test:php && npm run test:php:coverage
+npm run i18n:check
+npm run audit:npm:production && npm run audit:npm && npm run audit:composer
+npm run build && npm run test:e2e    # baixa o modelo na primeira vez
+npm run doctor
+\`\`\`
+
+O `.github/PULL_REQUEST_TEMPLATE.md` repete essa lista como checklist do
+PR — marque cada item depois de rodar, não antes. Se algo falhar, corrija
+antes de abrir o PR: um PR vermelho custa mais tempo de review do que
+rodar isso localmente primeiro.
+
+## Contribuição assistida por IA
+
+Bem-vinda, com uma condição: você é responsável pelo conteúdo do PR
+independente de quem/o que escreveu, e o template de PR pede pra declarar
+a ferramenta usada. Revise a saída da IA como revisaria a sua própria —
+ela passa pelos mesmos gates e pela mesma revisão humana.
+
+## Dúvidas
+
+Abra uma issue com o template "Question" antes de perguntar dentro de um
+PR já aberto — mantém a thread do PR focada no código.
+```
+
+## Template — AGENTS.md
+
+```markdown
+# AGENTS.md
+
+Este projeto documenta suas regras de desenvolvimento em `CLAUDE.md` —
+válido para qualquer ferramenta de IA (Claude Code, Codex, Cursor, Copilot
+Workspace, etc), não só para a que dá nome ao arquivo. Leia `CLAUDE.md`
+antes de propor ou aplicar qualquer mudança.
+
+Convenções específicas por diretório, quando existem, ficam em
+`.claude/rules/` e carregam automaticamente ao abrir um arquivo que elas
+cobrem — vale ler as que tocam a área em que você está mexendo.
+
+Os gates obrigatórios antes de abrir um PR estão na seção "Before opening
+a pull request" do `CLAUDE.md`; `.github/PULL_REQUEST_TEMPLATE.md` os
+repete como checklist.
+```
+
+## Template — SECURITY.md
+
+```markdown
+# Política de segurança
+
+## Versões suportadas
+
+O projeto está pré-1.0 (`0.5.x`). Só a versão mais recente publicada em
+[Releases](https://github.com/luigi-moretti/post-voice/releases) recebe
+correção de segurança — sem suporte a versões antigas nesta fase.
+
+## Reportar uma vulnerabilidade
+
+**Não abra uma issue pública.** Envie um email para `luigi@moretti.dev` com:
+
+- Descrição da vulnerabilidade e impacto potencial
+- Passos para reproduzir
+- Versão do plugin, do WordPress e do PHP em que foi encontrada
+
+Confirmação de recebimento em até 5 dias úteis. O prazo para correção ou
+plano de mitigação varia com a gravidade, mas você recebe uma estimativa
+dentro desse mesmo prazo inicial. Depois de uma correção publicada, a
+vulnerabilidade é divulgada publicamente com crédito a quem reportou,
+salvo pedido em contrário.
+
+## Superfície relevante
+
+TTS roda inteiramente no navegador do autor — nenhum texto de post sai do
+navegador para gerar áudio (ver `docs/adr/0002-tts-roda-no-navegador.md`).
+Isso limita a superfície de servidor aos endpoints REST que recebem o
+áudio já gerado (`post-voice/v1`), sua validação, e o armazenamento como
+attachment. Vulnerabilidades de XSS/CSRF/validação nesses pontos são o
+que mais importa reportar.
+```
+
+## Template — bug report
+
+`.github/ISSUE_TEMPLATE/bug_report.md`, com front-matter do seletor de "New issue":
+
+```markdown
+---
+name: Bug report
+about: Reportar um comportamento incorreto do plugin
+title: "[Bug] "
+labels: bug
+---
+
+**Descrição**
+O que está errado, em 1-2 frases.
+
+**Passos para reproduzir**
+1.
+2.
+3.
+
+**Esperado**
+O que deveria acontecer.
+
+**Observado**
+O que acontece de fato — inclua mensagem de erro exata, se houver.
+
+**Ambiente**
+- Versão do Post Voice:
+- Versão do WordPress:
+- Versão do PHP:
+- Navegador e versão (relevante — TTS roda no navegador):
+- Tema/outros plugins que possam interferir:
+
+**Screenshots / console / logs**
+Se aplicável. Para erros do worker de TTS, abra o console do navegador
+(não só o log do servidor — nada de TTS roda no servidor).
+```
+
+## Template — feature request
+
+`.github/ISSUE_TEMPLATE/feature_request.md`:
+
+```markdown
+---
+name: Feature request
+about: Propor uma funcionalidade ou melhoria
+title: "[Feature] "
+labels: enhancement
+---
+
+**Problema**
+Que necessidade real motiva isso? (não a solução ainda — o problema.)
+
+**Proposta**
+Como você imagina que isso funcionaria.
+
+**Alternativas consideradas**
+Outras formas de resolver o mesmo problema, e por que a proposta acima é
+melhor (se já pensou nisso).
+
+**Contexto adicional**
+Links, exemplos de outros plugins, mockups — o que ajudar.
+```
+
+## Template — question
+
+`.github/ISSUE_TEMPLATE/question.md`:
+
+```markdown
+---
+name: Question
+about: Dúvida de uso ou técnica que não é bug nem proposta de feature
+title: "[Question] "
+labels: question
+---
+
+**Pergunta**
+O que você quer saber.
+
+**Contexto**
+O que já tentou e onde já procurou (README, CONTRIBUTING.md, `docs/adr/`)
+antes de perguntar — evita resposta que já está documentada.
+```
+
+## Config do seletor de issue
+
+`.github/ISSUE_TEMPLATE/config.yml` — desabilita issue em branco (força
+usar um dos 3 templates) e tira vulnerabilidade de segurança do fluxo de
+issue pública:
+
+```yaml
+blank_issues_enabled: false
+contact_links:
+  - name: Reportar vulnerabilidade de segurança
+    url: https://github.com/luigi-moretti/post-voice/blob/master/SECURITY.md
+    about: Não abra isso como issue pública — siga o processo de disclosure privado.
+```
+
+## Template — pull request
+
+`.github/PULL_REQUEST_TEMPLATE.md`. Checklist reflete os gates executáveis
+de `CLAUDE.md` "Before opening a pull request", na mesma ordem, mais
+`npm run doctor` (mandatório no CLAUDE.md, qualquer um roda). A etapa
+seguinte do CLAUDE.md — invocar `superpowers:requesting-code-review` — não
+vira checkbox: é uma skill do Claude Code, contribuidor sem essa
+ferramenta não tem como rodar sozinho. Fica como nota; a revisão humana do
+mantenedor cobre o mesmo papel para quem não usa Claude Code:
+
+```markdown
+## O que muda
+
+<!-- Descreva a mudança e por quê. Se resolve uma issue, referencie: Closes #N -->
+
+## Origem do conteúdo
+
+- [ ] Este PR foi gerado ou assistido por IA (ex: Claude Code, Copilot, Cursor) — se marcado, qual ferramenta: ____
+- [ ] Revisei o diff linha a linha e assino como responsável pelo conteúdo, independente da origem.
+
+## Checklist (obrigatório, `wp-env` rodando: `npx wp-env start`)
+
+Rode em ordem — cada gate mais caro que o anterior, fail-fast:
+
+- [ ] `npm run lint:js && npm run lint:arch`
+- [ ] `npx tsc --noEmit`
+- [ ] `composer run lint && composer run stan`
+- [ ] `npm run test:unit -- --coverage`
+- [ ] `npm run test:php && npm run test:php:coverage`
+- [ ] `npm run i18n:check`
+- [ ] `npm run audit:npm:production && npm run audit:npm && npm run audit:composer`
+- [ ] `npm run build && npm run test:e2e` (baixa o modelo na primeira vez)
+- [ ] `npm run doctor`
+
+Tudo verde localmente antes de abrir o PR — um PR vermelho custa mais tempo
+de review do que rodar isso antes. Detalhes de cada gate e limiares:
+`TESTING.md`.
+
+Se você usa Claude Code: rode `superpowers:requesting-code-review` antes
+de abrir o PR (CLAUDE.md pede isso). Sem Claude Code, não tem problema —
+a revisão do mantenedor cobre esse papel.
+
+## Documentos relevantes
+
+<!-- Esta mudança tocou alguma decisão de arquitetura (docs/adr/), o spec
+     do MVP, ou o plano de implementação? Se sim, foram atualizados junto? -->
+
+## Notas para quem revisa
+
+<!-- Algo que facilite a revisão: trade-off feito, alternativa descartada,
+     área que merece atenção extra. -->
+```
+
+## Estrutura do README (fechada, sem ponto em aberto)
+
+Ordem exata das seções, com o que cada uma cobre:
+
+1. **Título + tagline + badges** — `# Post Voice`; badge de status do CI
+   (`ci.yml`); badge de licença GPL-2.0-or-later. Tagline de uma linha:
+   narração gerada no navegador do autor, sem TTS no servidor, sem custo por
+   requisição.
+2. **GIF hero** (`.github/assets/hero-demo.gif`), logo abaixo da tagline —
+   único vídeo do README, mostra o fluxo completo de geração.
+3. **O que é** — um parágrafo: TTS 100% client-side (Pocket TTS via ONNX
+   num Web Worker), PHP só grava o áudio pronto como attachment e post meta.
+4. **Recursos** — lista das 4 capacidades reais (mapeadas de `features/`):
+   painel de Narração no editor de blocos; player flutuante no front-end;
+   dicionário de pronúncia (overrides de palavras); customização do estilo
+   do player (admin).
+5. **Screenshot** (`.github/assets/frontend-player.png`) — logo após
+   Recursos, mostra o player flutuante em uso.
+6. **Requisitos** — WP 6.6+, PHP 8.2+, HTTPS obrigatório (Web Crypto e
+   AudioWorklet exigem contexto seguro), navegador moderno.
+7. **Usar em um site** — ainda não está no WordPress.org; baixar o zip da
+   [última release](https://github.com/luigi-moretti/post-voice/releases/latest),
+   `Plugins → Add New → Upload Plugin`, ativar.
+8. **Contribuir** — quickstart: clone, `npm ci`, `composer install`,
+   `npx wp-env start`, `npm run build`; aponta para `CONTRIBUTING.md` para
+   o fluxo completo e a lista de gates.
+9. **Docs** — links para `docs/adr/README.md`, a spec MVP
+   (`docs/superpowers/specs/2026-08-08-wp-narration-plugin-mvp-design.md`),
+   `TESTING.md`.
+10. **Licença** — GPL-2.0-or-later, link para `LICENSE`; nota que código
+    vendored está documentado em `CREDITS.md`.
+
+## Ordem de execução
+
+Aprovada como "Approach C" com ajuste pela investigação de branch
+protection:
+
+1. Criar/editar todos os arquivos do inventário acima, ainda com o repo
+   **privado**. Commit numa branch, PR normal (fluxo interno de sempre —
+   ninguém de fora ainda tem acesso).
+2. Gravar GIF hero e tirar o screenshot (via skill `run` +
+   `claude-in-chrome`, app rodando em `wp-env`), salvar em
+   `.github/assets/`.
+3. Merge do PR em `master`. Rodar gates normais do CLAUDE.md antes (é
+   trabalho docs-only, mas os gates continuam mandatórios).
+4. Flip do repositório para público (`gh repo edit --visibility public`
+   ou GitHub UI — ação irreversível de fato, confirmar com o usuário no
+   momento da execução mesmo já combinado aqui).
+5. **Imediatamente em seguida**, mesma sessão/comando, sem pausa: ligar
+   branch protection em `master`. Comando exato:
+
+   ```bash
+   gh api repos/luigi-moretti/post-voice/branches/master/protection \
+     --method PUT \
+     --input - <<'JSON'
+   {
+     "required_status_checks": {
+       "strict": true,
+       "contexts": ["lint", "unit", "i18n", "audit"]
+     },
+     "enforce_admins": false,
+     "required_pull_request_reviews": {
+       "required_approving_review_count": 1
+     },
+     "restrictions": null
+   }
+   JSON
+   ```
+
+   `contexts` fica só com os 4 jobs que sempre rodam (`lint`, `unit`,
+   `i18n`, `audit`) — `e2e` fica de fora de propósito: ele pula sozinho
+   via path-filter (`changes` job) quando o diff não toca
+   `features/narration|pronunciation|player-style/`, `shared/`, etc, e um
+   required check que nunca reporta trava o merge pra sempre num PR só de
+   docs. `enforce_admins: false` deixa o dono/admin mergear PR próprio sem
+   travar em auto-aprovação — padrão pra mantenedor solo. Contribuidor
+   externo ainda precisa de 1 aprovação humana antes do merge.
+
+## Validação — "pronto quando"
+
+- `npm run doctor` continua verde.
+- `npm run lint:js && npm run lint:arch` passam (arquivos novos são
+  docs/templates, não deveriam tocar essas regras, mas roda por
+  precaução).
+- `gh api repos/luigi-moretti/post-voice/branches/master/protection`
+  retorna 200 depois do passo 5, com `required_pull_request_reviews` e
+  `required_status_checks` configurados.
+- Repo aparece público (`gh repo view --json isPrivate` → `false`).
+- README renderiza corretamente na preview do GitHub (links relativos
+  batem, GIF e screenshot carregam).
+- Abrir um PR de teste dispara automaticamente o `PULL_REQUEST_TEMPLATE.md`
+  e os templates de issue aparecem ao clicar "New issue".
+- `scripts/build-plugin-zip.sh` (rodado localmente, sem publicar release)
+  confirma que o zip de distribuição não inclui `README.md`,
+  `CONTRIBUTING.md`, `AGENTS.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`.
+
+## Fora de escopo (specs futuras)
+
+- **Publicação no WordPress.org**: finalizar `readme.txt` (hoje tem
+  placeholder `Contributors: (your wordpress.org username...)`), processo
+  de review do WP.org, assets de listing (banner, ícone), SVN. Spec
+  própria, priorizada depois desta.
+- **Watcher automático de PHP** (auto-`refresh:php` em save): melhoria de
+  DX, não bloqueia onboarding — fica documentado como fluxo manual por
+  enquanto.
