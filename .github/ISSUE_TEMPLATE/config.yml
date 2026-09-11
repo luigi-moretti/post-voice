@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Reportar vulnerabilidade de segurança
+    url: https://github.com/luigi-moretti/post-voice/blob/master/SECURITY.md
+    about: Não abra isso como issue pública — siga o processo de disclosure privado.
