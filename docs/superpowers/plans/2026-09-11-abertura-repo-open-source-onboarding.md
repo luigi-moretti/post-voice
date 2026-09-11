@@ -908,7 +908,7 @@ Esperado: todos os checks passando.
 - [ ] **Step 2: Merge (merge commit, não squash — mesmo padrão dos PRs anteriores do repo)**
 
 ```bash
-gh pr merge --merge --delete-branch=false
+gh pr merge --merge
 ```
 
 - [ ] **Step 3: Verifica**
@@ -938,7 +938,7 @@ não prossiga sem um "sim" explícito nesta conversa.**
 - [ ] **Step 1: Confirma com o usuário, depois torna o repositório público**
 
 ```bash
-gh repo edit luigi-moretti/post-voice --visibility public --accept-visibility-change-consequences
+gh repo edit luigi-moretti/post-voice --visibility public
 ```
 
 - [ ] **Step 2: Verifica**
@@ -1031,6 +1031,17 @@ tem conteúdo literal completo, copiado da spec já revisada.
 **Consistência:** caminhos (`.github/assets/hero-demo.gif`,
 `.github/assets/frontend-player.png`) idênticos entre Task 8 (README que
 os referencia) e Task 9 (que os cria). Contexts de branch protection
-(`lint`, `unit`, `i18n`, `audit`) idênticos entre spec e Task 13. Nomes
-de arquivo do `.distignore` (Task 1) batem com os 5 docs criados nas
-Tasks 4-8.
+(`lint`, `unit`, `i18n`, `audit`) idênticos entre spec e Task 13 —
+confirmados como job IDs reais de `ci.yml` (sem `name:` override, sem
+matrix, então o nome do check bate literalmente). Nomes de arquivo do
+`.distignore` (Task 1) batem com os 5 docs criados nas Tasks 4-8.
+
+**Divergências achadas numa segunda revisão (pós-escrita) e corrigidas:**
+Task 12 usava `gh repo edit --visibility public --accept-visibility-change-consequences`
+— flag inventada, não existe no `gh` 2.45.0 instalado (`gh repo edit --help`
+não lista); comando quebraria na execução real. Corrigido para
+`gh repo edit --visibility public`. Task 11 usava
+`gh pr merge --merge --delete-branch=false` — `--delete-branch` é
+booleana sem valor conforme `gh pr merge --help`, sem confirmação de que
+aceita `=false`; como o default já é não deletar, a flag era redundante
+e arriscada — removida.
