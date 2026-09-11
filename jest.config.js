@@ -29,6 +29,7 @@ module.exports = {
 		'features/narration/editor/environment.ts',
 		'features/narration/editor/extract-segments.ts',
 		'features/narration/editor/rtf-calibration.ts',
+		'features/narration/editor/generation-time-hint.ts',
 		'features/narration/editor/segment-hash.ts',
 		'features/narration/editor/storage-check.ts',
 		'features/narration/editor/mp3-encoder.ts',

@@ -50,8 +50,9 @@ resolution, segment hashing, dictionary application, RTF/ETA math, the storage
 pre-check, the MP3 encoder, the voice catalogue, the WebAssembly detect, the
 player state machine, time formatting, and — as of issue #5's
 punctuation-sanitization fix — the text sanitized ahead of the tokenizer
-(`tokenizer-sanitize.ts`). The list lives in `jest.config.js` under
-`collectCoverageFrom`.
+(`tokenizer-sanitize.ts`), and the minutes/seconds split behind the
+generation-time hints (`generation-time-hint.ts`). The list lives in
+`jest.config.js` under `collectCoverageFrom`.
 
 Glue — the worker wrapper, the React panel — is deliberately outside it. Mocking
 ONNX Runtime and a Worker only produces a test that always passes; the risks

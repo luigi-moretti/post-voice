@@ -44,6 +44,10 @@ import {
 } from './storage-check';
 import { isWasmSupported } from './environment';
 import { encodeMp3 } from './mp3-encoder';
+import {
+	formatRemainingHint,
+	formatEstimatedTimeMessage,
+} from './generation-time-hint';
 import { deleteNarration, saveNarration } from './narration-api';
 import { MiniPlayer } from './mini-player';
 import { VOICES, DEFAULT_VOICE, isVoice } from './voice-catalog';
@@ -1209,9 +1213,7 @@ function NarrationPanel() {
 							</div>
 							{ remainingSeconds !== null && (
 								<p className="post-voice-panel__hint">
-									{ sprintf(
-										/* translators: %d: seconds remaining until narration is ready. */
-										__( '~%ds remaining', 'post-voice' ),
+									{ formatRemainingHint(
 										Math.ceil( remainingSeconds )
 									) }
 								</p>
@@ -1225,12 +1227,7 @@ function NarrationPanel() {
 					{ state === 'confirming-long-text' && (
 						<div className="post-voice-panel__card">
 							<p>
-								{ sprintf(
-									/* translators: %d: estimated generation time in seconds. */
-									__(
-										'This text is long — estimated time: %d seconds.',
-										'post-voice'
-									),
+								{ formatEstimatedTimeMessage(
 									Math.round( etaSeconds ?? 0 )
 								) }
 							</p>

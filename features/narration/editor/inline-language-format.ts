@@ -5,7 +5,7 @@ import {
 import { ToolbarDropdownMenu, ToolbarGroup } from '@wordpress/components';
 import { useSelect } from '@wordpress/data';
 import { createElement } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import {
 	applyFormat,
 	registerFormatType,
@@ -16,7 +16,7 @@ import {
 	INLINE_LANGUAGE_ATTRIBUTE,
 	isEligibleBlockName,
 } from './extract-segments';
-import { LANGUAGE_LABELS } from './language-labels';
+import { LANGUAGE_LABELS, languageLabel } from './language-labels';
 import { SUPPORTED_LANGUAGES } from './model-source';
 
 const FORMAT_NAME = 'post-voice/language';
@@ -43,6 +43,17 @@ function Edit( { value, onChange, activeAttributes }: FormatProps ) {
 	);
 
 	const current = activeAttributes.language ?? '';
+	const currentLabel = current ? languageLabel( current ) : '';
+	// Only a language with a known, human label is painted as visible text on
+	// the narrow inline toolbar button — an unsupported/legacy code (see the
+	// "This post marks a language this version does not support" notice in
+	// `index.tsx`) would otherwise render raw bundle-identifier text there.
+	// The tooltip/accessible `label` below still uses `currentLabel`, so the
+	// raw code stays discoverable via keyboard/screen-reader focus.
+	const visibleLabel =
+		current && current in LANGUAGE_LABELS
+			? LANGUAGE_LABELS[ current ]
+			: undefined;
 
 	if ( ! selectedBlockName || ! isEligibleBlockName( selectedBlockName ) ) {
 		return null;
@@ -75,7 +86,17 @@ function Edit( { value, onChange, activeAttributes }: FormatProps ) {
 			null,
 			createElement( ToolbarDropdownMenu, {
 				icon: 'translation',
-				label: __( 'Narrate in another language', 'post-voice' ),
+				label: currentLabel
+					? sprintf(
+							/* translators: %s: currently selected narration language, e.g. "English". */
+							__(
+								'Narrate in another language (currently %s)',
+								'post-voice'
+							),
+							currentLabel
+					  )
+					: __( 'Narrate in another language', 'post-voice' ),
+				text: visibleLabel,
 				controls,
 			} )
 		)
