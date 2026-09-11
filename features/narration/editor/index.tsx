@@ -47,10 +47,13 @@ import { encodeMp3 } from './mp3-encoder';
 import { deleteNarration, saveNarration } from './narration-api';
 import { MiniPlayer } from './mini-player';
 import { VOICES, DEFAULT_VOICE, isVoice } from './voice-catalog';
-import { DictionaryPanel } from '../../pronunciation/editor/dictionary-panel';
-import type { DictionaryEntry } from '../../pronunciation/editor/dictionary-entry';
-import { mergeDictionaries } from '../../pronunciation/editor/dictionary-entry';
-import { applyDictionary } from '../../pronunciation/editor/apply-dictionary';
+import {
+	getDictionaryExtension,
+	type DictionaryEntryShape as DictionaryEntry,
+} from './dictionary-extension';
+// Efeito colateral: registra o Panel/mergeDictionaries/applyDictionary de
+// pronunciation na porta acima, antes de qualquer render deste componente.
+import '../../pronunciation/editor/register-narration-extension';
 import { registerBlockNarrationControls } from './block-narration-attributes';
 import { registerInlineLanguageFormat } from './inline-language-format';
 
@@ -308,14 +311,14 @@ function NarrationPanel() {
 	 */
 	const buildSegments = useCallback(
 		( raw: Segment[] = extractSegments( blocks ) ) => {
-			const dictionary = mergeDictionaries(
+			const dictionary = getDictionaryExtension().mergeDictionaries(
 				window.postVoiceData?.dictionary ?? [],
 				postDictionary
 			);
 			const resolved = mergeAdjacent( resolveSegments( raw, language ) );
 			return resolved.map( ( segment ) => ( {
 				...segment,
-				text: applyDictionary(
+				text: getDictionaryExtension().applyDictionary(
 					segment.text,
 					segment.language,
 					dictionary
@@ -1118,6 +1121,11 @@ function NarrationPanel() {
 	const remainingSeconds =
 		etaSeconds !== null ? Math.max( 0, etaSeconds - elapsedSeconds ) : null;
 
+	// Resolvido uma vez por render, só pro JSX abaixo — os dois usos dentro
+	// de buildSegments (Step 10) chamam getDictionaryExtension() direto,
+	// porque JSX não aceita uma chamada de função como nome de tag.
+	const { Panel: DictionaryExtensionPanel } = getDictionaryExtension();
+
 	return (
 		<>
 			<PluginSidebarMoreMenuItem target="post-voice-panel">
@@ -1406,7 +1414,7 @@ function NarrationPanel() {
 							</p>
 						) }
 
-					<DictionaryPanel
+					<DictionaryExtensionPanel
 						entries={ postDictionary }
 						defaultLanguage={ language }
 						onChange={ setPostDictionary }

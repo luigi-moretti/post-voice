@@ -45,6 +45,8 @@ module.exports = {
 		'features/pronunciation/editor/dictionary-entry.ts',
 		'features/pronunciation/editor/apply-dictionary.ts',
 		'features/pronunciation/editor/row-ids.ts',
+		'features/narration/editor/dictionary-extension.ts',
+		'features/pronunciation/editor/register-narration-extension.ts',
 		'features/player-style/admin/contrast.ts',
 		'features/player-style/admin/hex-field.ts',
 		'scripts/lint-arch/**/*.js',
