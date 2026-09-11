@@ -1,4 +1,11 @@
 module.exports = {
+	// Sem isto, ESLint sobe o diretório acima deste worktree (que vive dentro
+	// do checkout principal, em `.worktrees/`) e encontra o `.eslintrc.js` de
+	// lá também — cada um resolvendo seu próprio `@typescript-eslint` a partir
+	// de um `node_modules` diferente, o que ESLint reporta como "couldn't
+	// determine the plugin uniquely" e derruba tanto `lint:js` quanto o hook
+	// de pre-commit. `root: true` para a busca aqui.
+	root: true,
 	extends: [ 'plugin:@wordpress/eslint-plugin/recommended' ],
 	parserOptions: {
 		project: './tsconfig.json',
