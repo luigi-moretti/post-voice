@@ -30,7 +30,10 @@ fornecedor. Publicação no WordPress.org fica para uma spec futura separada
 | README | Completo, com GIF + screenshot | Ver seção "Estrutura do README" abaixo — estrutura fechada, sem ponto em aberto |
 | Código de conduta | Contributor Covenant padrão | Contato: `luigi@moretti.dev` |
 | Política de segurança | `SECURITY.md` com canal privado | Contato: `luigi@moretti.dev` — plugin roda em site de terceiros, precisa de disclosure responsável antes de virar issue pública |
-| Templates de issue/PR | bug report + feature request + PR checklist | PR template espelha a lista "Before opening a pull request" do `CLAUDE.md` |
+| Templates de issue/PR | bug report + feature request + question + PR checklist | PR template espelha a lista "Before opening a pull request" do `CLAUDE.md` |
+| Seletor de issue | Bloqueia blank issue, link pra `SECURITY.md` | `config.yml` — força usar um dos 3 templates, tira vulnerabilidade do fluxo público |
+| Suporte/dúvida | Template `question.md`, sem GitHub Discussions | Cobre o caso sem abrir feature nova do repo (Discussions exige habilitar, moderar categorias — overhead não justificado ainda) |
+| Disclosure de IA no PR | Campo obrigatório no template | Projeto quer aceitar contribuição de IA explicitamente — revisor precisa saber a origem; humano sempre assina como responsável pelo conteúdo |
 | Hot-reload PHP | Só documentar o fluxo manual existente | `npm run start` (JS, watch) + `npm run refresh:php` (PHP, manual) — sem construir watcher novo; fora de escopo |
 | Ordem de execução | Docs primeiro (privado) → flip público → branch protection imediata | Ver "Ordem de execução" abaixo |
 | Captura de GIF/screenshot | Dentro do escopo, como tarefa de implementação | Usa skill `run` + `claude-in-chrome`; não é decisão de arquitetura, é execução |
@@ -74,6 +77,8 @@ fornecedor. Publicação no WordPress.org fica para uma spec futura separada
 | `SECURITY.md` | criar | Versões suportadas (só a mais recente, plugin pré-1.0), canal de report privado por email `luigi@moretti.dev` com pedido de não abrir issue pública antes de resposta, prazo alvo de resposta |
 | `.github/ISSUE_TEMPLATE/bug_report.md` | criar | Conteúdo exato: ver "Template — bug report" |
 | `.github/ISSUE_TEMPLATE/feature_request.md` | criar | Conteúdo exato: ver "Template — feature request" |
+| `.github/ISSUE_TEMPLATE/question.md` | criar | Conteúdo exato: ver "Template — question" |
+| `.github/ISSUE_TEMPLATE/config.yml` | criar | Conteúdo exato: ver "Config do seletor de issue" |
 | `.github/PULL_REQUEST_TEMPLATE.md` | criar | Conteúdo exato: ver "Template — pull request" |
 | `.distignore` | editar | Adiciona `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` à lista de exclusão do zip de distribuição |
 | `post-voice.zip` (raiz) | remover | Artefato solto, não rastreado, não serve pra nada |
@@ -142,6 +147,40 @@ melhor (se já pensou nisso).
 Links, exemplos de outros plugins, mockups — o que ajudar.
 ```
 
+## Template — question
+
+`.github/ISSUE_TEMPLATE/question.md`:
+
+```markdown
+---
+name: Question
+about: Dúvida de uso ou técnica que não é bug nem proposta de feature
+title: "[Question] "
+labels: question
+---
+
+**Pergunta**
+O que você quer saber.
+
+**Contexto**
+O que já tentou e onde já procurou (README, CONTRIBUTING.md, `docs/adr/`)
+antes de perguntar — evita resposta que já está documentada.
+```
+
+## Config do seletor de issue
+
+`.github/ISSUE_TEMPLATE/config.yml` — desabilita issue em branco (força
+usar um dos 3 templates) e tira vulnerabilidade de segurança do fluxo de
+issue pública:
+
+```yaml
+blank_issues_enabled: false
+contact_links:
+  - name: Reportar vulnerabilidade de segurança
+    url: https://github.com/luigi-moretti/post-voice/blob/master/SECURITY.md
+    about: Não abra isso como issue pública — siga o processo de disclosure privado.
+```
+
 ## Template — pull request
 
 `.github/PULL_REQUEST_TEMPLATE.md`. Checklist reflete exatamente os gates
@@ -153,6 +192,11 @@ interno:
 ## O que muda
 
 <!-- Descreva a mudança e por quê. Se resolve uma issue, referencie: Closes #N -->
+
+## Origem do conteúdo
+
+- [ ] Este PR foi gerado ou assistido por IA (ex: Claude Code, Copilot, Cursor) — se marcado, qual ferramenta: ____
+- [ ] Revisei o diff linha a linha e assino como responsável pelo conteúdo, independente da origem.
 
 ## Checklist (obrigatório, `wp-env` rodando: `npx wp-env start`)
 
