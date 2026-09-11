@@ -111,7 +111,7 @@ class Post_Voice_Dictionary_Store {
 					),
 				),
 				'sanitize_callback' => array( self::class, 'sanitize' ),
-				'auth_callback'     => array( 'Post_Voice_Post_Meta', 'auth_callback' ),
+				'auth_callback'     => array( 'Post_Voice_Capability_Guard', 'auth_callback' ),
 				'default'           => array(),
 			)
 		);

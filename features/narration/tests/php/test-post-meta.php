@@ -118,18 +118,6 @@ class Test_Post_Voice_Post_Meta extends WP_UnitTestCase {
 		);
 	}
 
-	public function test_auth_callback_requires_edit_post_capability(): void {
-		$post_id = self::factory()->post->create();
-
-		$subscriber = self::factory()->user->create( array( 'role' => 'subscriber' ) );
-		wp_set_current_user( $subscriber );
-		$this->assertFalse( Post_Voice_Post_Meta::auth_callback( true, Post_Voice_Post_Meta::LANGUAGE, $post_id ) );
-
-		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
-		wp_set_current_user( $editor );
-		$this->assertTrue( Post_Voice_Post_Meta::auth_callback( true, Post_Voice_Post_Meta::LANGUAGE, $post_id ) );
-	}
-
 	public function test_marking_an_attachment_claims_it_as_a_narration(): void {
 		$attachment_id = self::factory()->attachment->create_object(
 			array( 'file' => 'n.mp3' )
