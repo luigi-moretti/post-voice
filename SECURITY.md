@@ -2,7 +2,7 @@
 
 ## Versões suportadas
 
-O projeto está pré-1.0 (`0.5.x`). Só a versão mais recente publicada em
+O projeto está pré-1.0. Só a versão mais recente publicada em
 [Releases](https://github.com/luigi-moretti/post-voice/releases) recebe
 correção de segurança — sem suporte a versões antigas nesta fase.
 

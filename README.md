@@ -29,7 +29,11 @@ como attachment e registra os metadados do post.
 - WordPress 6.6+
 - PHP 8.2+
 - HTTPS — Web Crypto API e AudioWorklet só funcionam em contexto seguro
-- Navegador moderno (Chrome, Firefox, Safari, Edge recentes)
+- Chrome recente (testado); outros navegadores modernos devem funcionar
+  mas rodam em modo single-thread mais lento, sem garantia formal ainda
+- A primeira geração de narração baixa cerca de 190MB de modelo de voz
+  para o armazenamento do navegador. Fica em cache depois disso, então
+  gerações seguintes não baixam de novo.
 
 ## Usar em um site
 
@@ -62,4 +66,6 @@ de commit): [`CONTRIBUTING.md`](CONTRIBUTING.md).
 ## Licença
 
 GPL-2.0-or-later — ver [`LICENSE`](LICENSE). Código de terceiros vendored
-está documentado em [`CREDITS.md`](CREDITS.md).
+está documentado em [`CREDITS.md`](CREDITS.md). Regras de conduta da
+comunidade: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). Para reportar uma
+vulnerabilidade de segurança: [`SECURITY.md`](SECURITY.md).

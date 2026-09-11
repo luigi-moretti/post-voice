@@ -3,7 +3,9 @@
 Obrigado pelo interesse. Este documento cobre o fluxo de contribuição —
 para detalhes de cada gate (limiares de cobertura, timings, como rodar
 uma suíte isolada), veja `TESTING.md`. Para as regras de arquitetura,
-`CLAUDE.md` e `docs/adr/`.
+`CLAUDE.md` e `docs/adr/`. Regras de conduta da comunidade:
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). Para reportar uma
+vulnerabilidade de segurança (não como issue pública): [`SECURITY.md`](SECURITY.md).
 
 ## Fluxo: fork + pull request
 
@@ -16,7 +18,10 @@ Ninguém além do mantenedor tem push direto em `master`. O fluxo é:
 4. Rode o checklist completo abaixo antes de abrir o PR.
 5. Push no seu fork, abra um Pull Request contra `master` deste repositório.
    O template de PR carrega automaticamente.
-6. O CI roda sozinho no PR. Revisão humana acontece depois dos checks verdes.
+6. O CI roda sozinho no PR — na primeira contribuição de um novo
+   colaborador, o GitHub pode pedir aprovação do mantenedor antes do CI
+   rodar; não é erro, é esperado. Revisão humana acontece depois dos
+   checks verdes.
 
 ## Setup local
 
@@ -61,6 +66,14 @@ npm run audit:npm:production && npm run audit:npm && npm run audit:composer
 npm run build && npm run test:e2e    # baixa o modelo na primeira vez
 npm run doctor
 ```
+
+O passo `npm run build && npm run test:e2e` é o mais caro (~10min, baixa
+~190MB na primeira vez). O CI só roda e2e quando o diff toca
+`features/narration|pronunciation|player-style/`, `shared/`, `e2e/` ou
+outros arquivos sensíveis (ver o job `changes` em
+`.github/workflows/ci.yml`) — um PR só de docs, por exemplo, não precisa
+disso no CI. Ainda assim, rode localmente se o seu PR toca algum desses
+caminhos.
 
 O `.github/PULL_REQUEST_TEMPLATE.md` repete essa lista como checklist do
 PR — marque cada item depois de rodar, não antes. Se algo falhar, corrija

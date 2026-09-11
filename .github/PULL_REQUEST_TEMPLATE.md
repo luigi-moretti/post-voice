@@ -18,7 +18,10 @@ Rode em ordem — cada gate mais caro que o anterior, fail-fast:
 - [ ] `npm run test:php && npm run test:php:coverage`
 - [ ] `npm run i18n:check`
 - [ ] `npm run audit:npm:production && npm run audit:npm && npm run audit:composer`
-- [ ] `npm run build && npm run test:e2e` (baixa o modelo na primeira vez)
+- [ ] `npm run build && npm run test:e2e` (baixa o modelo na primeira vez;
+      o CI pula e2e para PRs que não tocam `features/narration|pronunciation|player-style/`,
+      `shared/`, `e2e/` etc — veja o job `changes` em `.github/workflows/ci.yml`.
+      Se seu PR toca esses caminhos, rode local mesmo assim)
 - [ ] `npm run doctor`
 
 Tudo verde localmente antes de abrir o PR — um PR vermelho custa mais tempo

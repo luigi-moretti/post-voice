@@ -4,7 +4,7 @@ vendor/
 
 # Build output
 build/
-post-voice-*.zip
+post-voice*.zip
 
 # Test artifacts
 coverage/
