@@ -35,24 +35,13 @@ class Post_Voice_Post_Meta {
 	public const SOURCE_HASH       = '_narration_source_hash';
 
 	/**
-	 * Gate meta writes on the post's own edit capability.
-	 *
-	 * @param bool   $allowed  Whether the user can act on the meta (unused; recomputed here).
-	 * @param string $meta_key Meta key being authorised (unused; all five share one rule).
-	 * @param int    $post_id  Post the meta belongs to.
-	 */
-	public static function auth_callback( $allowed, $meta_key, $post_id ): bool {
-		return current_user_can( 'edit_post', $post_id );
-	}
-
-	/**
 	 * Register the five meta keys on the `post` post type.
 	 */
 	public static function register(): void {
 		$args = array(
 			'single'        => true,
 			'show_in_rest'  => true,
-			'auth_callback' => array( self::class, 'auth_callback' ),
+			'auth_callback' => array( 'Post_Voice_Capability_Guard', 'auth_callback' ),
 		);
 
 		register_post_meta( 'post', self::ATTACHMENT_ID, array_merge( $args, array( 'type' => 'integer' ) ) );
@@ -111,12 +100,12 @@ class Post_Voice_Post_Meta {
 		foreach ( $value as $language ) {
 			$language = (string) $language;
 			if (
-				in_array( $language, Post_Voice_Rest_Api::ALLOWED_LANGUAGES, true )
+				in_array( $language, Post_Voice_Model::ALLOWED_LANGUAGES, true )
 				&& ! in_array( $language, $clean, true )
 			) {
 				$clean[] = $language;
 			}
-			if ( count( $clean ) >= count( Post_Voice_Rest_Api::ALLOWED_LANGUAGES ) ) {
+			if ( count( $clean ) >= count( Post_Voice_Model::ALLOWED_LANGUAGES ) ) {
 				break;
 			}
 		}

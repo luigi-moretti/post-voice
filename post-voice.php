@@ -28,6 +28,8 @@ define( 'POST_VOICE_URL', plugin_dir_url( __FILE__ ) );
 // file that does not exist yet is a fatal error the moment PHPUnit's bootstrap
 // loads this plugin, so this list only ever names files already committed.
 
+require_once POST_VOICE_PATH . 'shared/php/class-capability-guard.php';
+require_once POST_VOICE_PATH . 'features/narration/php/class-model.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-post-meta.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-rest-api.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-attachment-cleanup.php';
@@ -49,6 +51,13 @@ add_action(
 );
 
 Post_Voice_Attachment_Cleanup::register();
+// Único lugar do plugin que conhece as duas pontas: o núcleo (Assets) e as
+// extensões que provêm seus dados. features/narration/php/class-assets.php
+// não referencia mais Post_Voice_Dictionary_Store nem Post_Voice_Style_Store
+// — ver docs/superpowers/specs/2026-09-11-topologia-nucleo-extensoes-design.md,
+// "Mecanismo 1".
+Post_Voice_Assets::set_dictionary_provider( array( 'Post_Voice_Dictionary_Store', 'get_global' ) );
+Post_Voice_Assets::set_style_provider( array( 'Post_Voice_Style_Store', 'inline_css' ) );
 Post_Voice_Assets::register();
 Post_Voice_Editor_Headers::register();
 Post_Voice_Frontend_Render::register();

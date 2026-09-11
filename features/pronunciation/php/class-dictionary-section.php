@@ -83,7 +83,7 @@ class Post_Voice_Dictionary_Section {
 	 */
 	public static function render(): void {
 		$entries   = Post_Voice_Dictionary_Store::get_global();
-		$languages = Post_Voice_Rest_Api::ALLOWED_LANGUAGES;
+		$languages = Post_Voice_Model::ALLOWED_LANGUAGES;
 		$option    = Post_Voice_Dictionary_Store::OPTION;
 		?>
 		<p>

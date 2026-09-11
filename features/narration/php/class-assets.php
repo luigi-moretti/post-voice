@@ -21,6 +21,78 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Post_Voice_Assets {
 
 	/**
+	 * Injetado por post-voice.php no boot. Assinatura exigida:
+	 * `(): array<{term,replacement,language}>`.
+	 *
+	 * Callable, não `interface` — o projeto não declara `interface` em lugar
+	 * nenhum (ADR-0006 só nomeia `class`), e isto generaliza o idioma que
+	 * `auth_callback` já usa como callable-string. Ver
+	 * docs/superpowers/specs/2026-09-11-topologia-nucleo-extensoes-design.md,
+	 * "Mecanismo 1".
+	 *
+	 * @var callable|null
+	 */
+	private static $dictionary_provider;
+
+	/**
+	 * Injetado por post-voice.php no boot. Assinatura exigida: `(): string`.
+	 *
+	 * @var callable|null
+	 */
+	private static $style_provider;
+
+	/**
+	 * Fonte do dicionário global localizado no editor. Sem valor padrão: se
+	 * `post-voice.php` esquecer de chamar isto, `dictionary_provider()` lança
+	 * `RuntimeException` nomeando a correção no primeiro enqueue — falha alta
+	 * e imediata, a mesma classe de falha que remover `pronunciation/` sem
+	 * atualizar este arquivo já produz hoje. Não há guarda "se nulo, array
+	 * vazio": isso reintroduziria a falha silenciosa que este mecanismo troca
+	 * por DI explícita em vez de filtro do WordPress.
+	 *
+	 * @param callable $provider Retorna as entradas a localizar.
+	 */
+	public static function set_dictionary_provider( callable $provider ): void {
+		self::$dictionary_provider = $provider;
+	}
+
+	/**
+	 * Fonte do CSS inline do player no frontend. Mesma escolha de falha alta
+	 * do provider acima.
+	 *
+	 * @param callable $provider Retorna o CSS inline, ou `''`.
+	 */
+	public static function set_style_provider( callable $provider ): void {
+		self::$style_provider = $provider;
+	}
+
+	/**
+	 * Named accessor mirroring the TS port's `getDictionaryExtension()` —
+	 * same "throw with a pointer to the fix" shape in both languages, so
+	 * ADR-0016's "same mechanism, two languages" framing is literally true.
+	 *
+	 * @throws RuntimeException When `set_dictionary_provider()` was never called.
+	 */
+	private static function dictionary_provider(): callable {
+		if ( null === self::$dictionary_provider ) {
+			throw new RuntimeException( 'post-voice: no dictionary provider set — is set_dictionary_provider() called in post-voice.php?' );
+		}
+		return self::$dictionary_provider;
+	}
+
+	/**
+	 * Named accessor mirroring the TS port's `getDictionaryExtension()`.
+	 *
+	 * @throws RuntimeException When `set_style_provider()` was never called.
+	 */
+	private static function style_provider(): callable {
+		if ( null === self::$style_provider ) {
+			throw new RuntimeException( 'post-voice: no style provider set — is set_style_provider() called in post-voice.php?' );
+		}
+		return self::$style_provider;
+	}
+
+	/**
 	 * Hook both enqueue points.
 	 */
 	public static function register(): void {
@@ -61,7 +133,7 @@ class Post_Voice_Assets {
 			'post-voice-editor',
 			'postVoiceData',
 			array(
-				'dictionary'       => Post_Voice_Dictionary_Store::get_global(),
+				'dictionary'       => call_user_func( self::dictionary_provider() ),
 				'siteLanguage'     => get_locale(),
 				'canManageOptions' => current_user_can( 'manage_options' ),
 				'workerUrl'        => self::narration_worker_url(),
@@ -116,7 +188,7 @@ class Post_Voice_Assets {
 		// Only what differs from the shipped defaults, and nothing at all when
 		// the site never customised the player — the stylesheet already carries
 		// today's values as `var()` fallbacks, so silence here is correct.
-		$inline = Post_Voice_Style_Store::inline_css();
+		$inline = call_user_func( self::style_provider() );
 		if ( '' !== $inline ) {
 			wp_add_inline_style( 'post-voice-player', $inline );
 		}

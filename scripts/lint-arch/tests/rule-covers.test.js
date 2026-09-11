@@ -1051,10 +1051,10 @@ describe( 'covers-annotation', () => {
 		);
 	} );
 
-	it( 'o repo de hoje tem 11 classes de teste, todas cobertas', () => {
+	it( 'o repo de hoje tem 13 classes de teste, todas cobertas', () => {
 		const ctx = createContext();
 		expect( regra.check( ctx ) ).toEqual( [] );
-		expect( regra.classesDeTeste( ctx ) ).toHaveLength( 11 );
+		expect( regra.classesDeTeste( ctx ) ).toHaveLength( 13 );
 	} );
 
 	it( 'os dois traits e o bootstrap do repo de hoje não entram na lista', () => {

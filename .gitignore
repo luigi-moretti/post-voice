@@ -22,6 +22,9 @@ pocket-tts-onnx-mirror-src/
 # Agent scratch (SDD ledger, briefs, review packages)
 .superpowers/
 
+# Isolated worktrees for plan execution (superpowers:using-git-worktrees)
+.worktrees/
+
 # Local env
 .wp-env.override.json
 *.log

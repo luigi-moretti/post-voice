@@ -48,13 +48,13 @@ class Post_Voice_Dictionary_Store {
 			}
 
 			// Deliberately reaching into the narration feature's constant rather than
-			// copying the list: the endpoint's ALLOWED_LANGUAGES is the server's
+			// copying the list: Post_Voice_Model's ALLOWED_LANGUAGES — the server's
 			// single source for what a language may be, and a second copy here would
 			// eventually disagree with it. The spec's boundary ("pronunciation
 			// exposes a pure function, narration imports it") is about the editor
 			// pipeline; on the PHP side there is one list, and this is it.
 			$language = isset( $entry['language'] ) ? (string) $entry['language'] : '';
-			if ( ! in_array( $language, Post_Voice_Rest_Api::ALLOWED_LANGUAGES, true ) ) {
+			if ( ! in_array( $language, Post_Voice_Model::ALLOWED_LANGUAGES, true ) ) {
 				continue;
 			}
 
@@ -111,7 +111,7 @@ class Post_Voice_Dictionary_Store {
 					),
 				),
 				'sanitize_callback' => array( self::class, 'sanitize' ),
-				'auth_callback'     => array( 'Post_Voice_Post_Meta', 'auth_callback' ),
+				'auth_callback'     => array( 'Post_Voice_Capability_Guard', 'auth_callback' ),
 				'default'           => array(),
 			)
 		);

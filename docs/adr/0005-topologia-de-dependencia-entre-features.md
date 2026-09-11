@@ -7,15 +7,11 @@ origem: superpowers/specs/2026-08-25-adr-e-governanca-de-arquitetura-design.md#e
 enforced_by: [ feature-deps ]
 revisar_quando: uma quarta feature entrar, ou uma extensão passar narration em número de classes, ou a lista de desvios abaixo chegar a zero
 desvios:
-  - features/narration/php/class-assets.php → Post_Voice_Dictionary_Store
-  - features/narration/php/class-assets.php → Post_Voice_Style_Store
   - features/player-style/php/class-style-section.php → Post_Voice_Frontend_Render
-  - features/pronunciation/php/class-dictionary-section.php → Post_Voice_Rest_Api
-  - features/pronunciation/php/class-dictionary-store.php → Post_Voice_Rest_Api
-  - features/pronunciation/php/class-dictionary-store.php → Post_Voice_Post_Meta
-  - features/narration/editor/index.tsx → pronunciation/editor/dictionary-panel
-  - features/narration/editor/index.tsx → pronunciation/editor/dictionary-entry
-  - features/narration/editor/index.tsx → pronunciation/editor/apply-dictionary
+  - features/pronunciation/php/class-dictionary-section.php → Post_Voice_Model
+  - features/pronunciation/php/class-dictionary-store.php → Post_Voice_Model
+  - features/narration/editor/index.tsx → pronunciation/editor/register-narration-extension
+  - features/pronunciation/editor/register-narration-extension.ts → narration/editor/dictionary-extension
   - features/pronunciation/editor/dictionary-panel.tsx → narration/editor/model-source
   - features/pronunciation/editor/dictionary-entry.ts → narration/editor/model-source
 ---
@@ -84,6 +80,12 @@ pede.
 
 Detalhe completo, por mecanismo:
 `docs/research/2026-08-27-custo-inversao-arestas-cross-feature.md`.
+
+**Resolvido em parte, 2026-09-11.** As arestas 1, 2 e 6 foram resolvidas de
+verdade (DI explícita e relocação para `shared/`); as arestas 7-9 foram
+consolidadas numa só, sem o bundle webpack separado que esta seção previa
+como necessário — ver ADR-0016 para o mecanismo. As arestas 1, 2, 7, 8 e 9
+originais não existem mais como tal; `desvios:` reflete o estado atual.
 
 ## Como verificar
 

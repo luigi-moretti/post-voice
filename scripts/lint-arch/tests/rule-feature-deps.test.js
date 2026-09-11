@@ -247,11 +247,11 @@ describe( 'buracos que a review mediu', () => {
 } );
 
 describe( 'o repo de hoje', () => {
-	it( 'acha exatamente as onze arestas', () => {
-		expect( regra.check( createContext() ) ).toHaveLength( 11 );
+	it( 'acha exatamente as sete arestas', () => {
+		expect( regra.check( createContext() ) ).toHaveLength( 7 );
 	} );
 
-	it( 'as onze chaves batem, uma a uma, com desvios: da ADR-0005', () => {
+	it( 'as sete chaves batem, uma a uma, com desvios: da ADR-0005', () => {
 		const achadas = regra
 			.check( createContext() )
 			.map( ( f ) => f.key )
