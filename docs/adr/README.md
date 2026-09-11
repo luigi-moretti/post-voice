@@ -28,3 +28,4 @@ O que está decidido, por quê, e o que impede de ser desfeito por acidente.
 | [0013](0013-covers-por-classe-e-gates-de-cobertura.md) | `@covers` por classe, e gates de cobertura que não descem | aceita | `covers-annotation` |
 | [0014](0014-pins-de-contrato.md) | Pins de contrato mudam só por decisão própria | aceita | `contract-pins` |
 | [0015](0015-npm-ci-nunca-npm-install.md) | `npm ci` em CI e scripts; `npm install` nunca | aceita | `no-npm-install` |
+| [0016](0016-di-explicita-para-extensao-nucleo-satelite.md) | Injeção explícita no bootstrap, não filtro do WordPress, para arestas núcleo→satélite | aceita | `review-manual` |
