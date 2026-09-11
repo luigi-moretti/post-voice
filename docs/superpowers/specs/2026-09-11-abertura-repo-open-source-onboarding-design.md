@@ -72,11 +72,115 @@ fornecedor. Publicação no WordPress.org fica para uma spec futura separada
 | `AGENTS.md` | criar | Curto: aponta para `CLAUDE.md` como fonte de verdade das regras do projeto, nota que `.claude/rules/` tem convenções por path, sem duplicar conteúdo |
 | `CODE_OF_CONDUCT.md` | criar | Contributor Covenant v2.1 (texto padrão do GitHub), contato `luigi@moretti.dev` |
 | `SECURITY.md` | criar | Versões suportadas (só a mais recente, plugin pré-1.0), canal de report privado por email `luigi@moretti.dev` com pedido de não abrir issue pública antes de resposta, prazo alvo de resposta |
-| `.github/ISSUE_TEMPLATE/bug_report.md` | criar | Campos: versão do plugin, versão WP/PHP, navegador, passos, esperado vs. observado |
-| `.github/ISSUE_TEMPLATE/feature_request.md` | criar | Campos: problema que motiva, proposta, alternativas consideradas |
-| `.github/PULL_REQUEST_TEMPLATE.md` | criar | Checklist = mesma lista do CLAUDE.md "Before opening a pull request", em ordem, como caixas de marcar |
+| `.github/ISSUE_TEMPLATE/bug_report.md` | criar | Conteúdo exato: ver "Template — bug report" |
+| `.github/ISSUE_TEMPLATE/feature_request.md` | criar | Conteúdo exato: ver "Template — feature request" |
+| `.github/PULL_REQUEST_TEMPLATE.md` | criar | Conteúdo exato: ver "Template — pull request" |
 | `.distignore` | editar | Adiciona `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` à lista de exclusão do zip de distribuição |
 | `post-voice.zip` (raiz) | remover | Artefato solto, não rastreado, não serve pra nada |
+
+## Template — bug report
+
+`.github/ISSUE_TEMPLATE/bug_report.md`, com front-matter do seletor de "New issue":
+
+```markdown
+---
+name: Bug report
+about: Reportar um comportamento incorreto do plugin
+title: "[Bug] "
+labels: bug
+---
+
+**Descrição**
+O que está errado, em 1-2 frases.
+
+**Passos para reproduzir**
+1.
+2.
+3.
+
+**Esperado**
+O que deveria acontecer.
+
+**Observado**
+O que acontece de fato — inclua mensagem de erro exata, se houver.
+
+**Ambiente**
+- Versão do Post Voice:
+- Versão do WordPress:
+- Versão do PHP:
+- Navegador e versão (relevante — TTS roda no navegador):
+- Tema/outros plugins que possam interferir:
+
+**Screenshots / console / logs**
+Se aplicável. Para erros do worker de TTS, abra o console do navegador
+(não só o log do servidor — nada de TTS roda no servidor).
+```
+
+## Template — feature request
+
+`.github/ISSUE_TEMPLATE/feature_request.md`:
+
+```markdown
+---
+name: Feature request
+about: Propor uma funcionalidade ou melhoria
+title: "[Feature] "
+labels: enhancement
+---
+
+**Problema**
+Que necessidade real motiva isso? (não a solução ainda — o problema.)
+
+**Proposta**
+Como você imagina que isso funcionaria.
+
+**Alternativas consideradas**
+Outras formas de resolver o mesmo problema, e por que a proposta acima é
+melhor (se já pensou nisso).
+
+**Contexto adicional**
+Links, exemplos de outros plugins, mockups — o que ajudar.
+```
+
+## Template — pull request
+
+`.github/PULL_REQUEST_TEMPLATE.md`. Checklist reflete exatamente os gates
+de `CLAUDE.md` "Before opening a pull request", na mesma ordem — contribuidor
+externo roda os mesmos comandos que rodam localmente antes de qualquer PR
+interno:
+
+```markdown
+## O que muda
+
+<!-- Descreva a mudança e por quê. Se resolve uma issue, referencie: Closes #N -->
+
+## Checklist (obrigatório, `wp-env` rodando: `npx wp-env start`)
+
+Rode em ordem — cada gate mais caro que o anterior, fail-fast:
+
+- [ ] `npm run lint:js && npm run lint:arch`
+- [ ] `npx tsc --noEmit`
+- [ ] `composer run lint && composer run stan`
+- [ ] `npm run test:unit -- --coverage`
+- [ ] `npm run test:php && npm run test:php:coverage`
+- [ ] `npm run i18n:check`
+- [ ] `npm run audit:npm:production && npm run audit:npm && npm run audit:composer`
+- [ ] `npm run build && npm run test:e2e` (baixa o modelo na primeira vez)
+
+Tudo verde localmente antes de abrir o PR — um PR vermelho custa mais tempo
+de review do que rodar isso antes. Detalhes de cada gate e limiares:
+`TESTING.md`.
+
+## Documentos relevantes
+
+<!-- Esta mudança tocou alguma decisão de arquitetura (docs/adr/), o spec
+     do MVP, ou o plano de implementação? Se sim, foram atualizados junto? -->
+
+## Notas para quem revisa
+
+<!-- Algo que facilite a revisão: trade-off feito, alternativa descartada,
+     área que merece atenção extra. -->
+```
 
 ## Estrutura do README (fechada, sem ponto em aberto)
 
