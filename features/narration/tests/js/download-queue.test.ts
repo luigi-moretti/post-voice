@@ -15,6 +15,17 @@ function fakeReader( chunkSizes: number[] ) {
 	};
 }
 
+interface FakeResponse {
+	ok: boolean;
+	status: number;
+	url: string;
+	bodyUsed: boolean;
+	headers: { get: ( name: string ) => string | null };
+	body: { getReader: () => ReturnType< typeof fakeReader > };
+	json: () => Promise< unknown >;
+	clone: () => FakeResponse;
+}
+
 function fakeResponse( {
 	url,
 	status = 200,
@@ -27,21 +38,42 @@ function fakeResponse( {
 	contentLength: number;
 	chunkSizes?: number[];
 	jsonBody?: unknown;
-} ) {
-	return {
+} ): FakeResponse {
+	// `bodyUsed` starts false and flips true the moment this response's body
+	// is actually read (`getReader()`, mirroring a stream read, or `json()`,
+	// mirroring `Response.json()` draining the body) — never on `clone()`,
+	// which builds a brand-new, independent `FakeResponse` with its own fresh
+	// state instead of aliasing this one. That lets `fakeCache.put()` below
+	// tell "cached a pre-read clone" apart from "cached the drained original".
+	const response: FakeResponse = {
 		ok: status >= 200 && status < 300,
 		status,
 		url,
+		bodyUsed: false,
 		headers: {
 			get: ( name: string ) =>
 				name === 'content-length' ? String( contentLength ) : null,
 		},
-		body: { getReader: () => fakeReader( chunkSizes ) },
-		json: async () => jsonBody,
-		clone() {
-			return this;
+		body: {
+			getReader: () => {
+				response.bodyUsed = true;
+				return fakeReader( chunkSizes );
+			},
 		},
+		json: async () => {
+			response.bodyUsed = true;
+			return jsonBody;
+		},
+		clone: () =>
+			fakeResponse( {
+				url,
+				status,
+				contentLength,
+				chunkSizes,
+				jsonBody,
+			} ),
 	};
+	return response;
 }
 
 function fakeCache() {
@@ -49,7 +81,11 @@ function fakeCache() {
 	return {
 		store,
 		match: jest.fn( async ( url: string ) => store.get( url ) ),
-		put: jest.fn( async ( url: string, response: unknown ) => {
+		put: jest.fn( async ( url: string, response: FakeResponse ) => {
+			// Proves callers cache a pre-read clone, not the drained
+			// original: a response whose body was already read arrives here
+			// with `bodyUsed === true` and fails this assertion.
+			expect( response.bodyUsed ).toBe( false );
 			store.set( url, response );
 		} ),
 		delete: jest.fn( async ( request: { url: string } ) => {
@@ -213,7 +249,7 @@ describe( 'downloadBundle', () => {
 				signal: controller.signal,
 				onProgress: () => undefined,
 			} )
-		).rejects.toBeTruthy();
+		).rejects.not.toBeInstanceOf( DownloadError );
 		expect( cache.store.size ).toBe( 0 );
 	} );
 } );
