@@ -289,7 +289,7 @@ class Post_Voice_Models_Section {
 			<tbody>
 				<?php foreach ( Post_Voice_Model::ALLOWED_LANGUAGES as $language ) : ?>
 				<tr data-language="<?php echo esc_attr( $language ); ?>">
-					<td>Kyutai Pocket TTS</td>
+					<td><?php esc_html_e( 'Kyutai Pocket TTS', 'post-voice' ); ?></td>
 					<td><?php echo esc_html( self::language_label( $language ) ); ?></td>
 					<td><?php self::render_voices(); ?></td>
 					<td class="post-voice-model-status" role="status"><?php esc_html_e( 'Checking…', 'post-voice' ); ?></td>
@@ -365,9 +365,12 @@ class Post_Voice_Models_Section {
 
 ```ts
 // Filled in by Task 8 of the model-management-screen implementation plan.
-// Placeholder kept trivial so `models-admin` is a valid webpack entry from
-// the first commit that references it.
-export {};
+// Imports the stylesheet already, same as `player-style/admin/index.ts`
+// does from its first commit — `class-models-section.php`'s `enqueue()`
+// references `build/style-models-admin.css` unconditionally, so the build
+// must emit that file starting with this very commit, not only once Task 8
+// lands, or the settings screen 404s that stylesheet in between.
+import './style.scss';
 ```
 
 `features/narration/admin/style.scss`:
