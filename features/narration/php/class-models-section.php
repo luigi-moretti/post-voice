@@ -103,7 +103,7 @@ class Post_Voice_Models_Section {
 			<tbody>
 				<?php foreach ( Post_Voice_Model::ALLOWED_LANGUAGES as $language ) : ?>
 				<tr data-language="<?php echo esc_attr( $language ); ?>">
-					<td>Kyutai Pocket TTS</td>
+					<td><?php esc_html_e( 'Kyutai Pocket TTS', 'post-voice' ); ?></td>
 					<td><?php echo esc_html( self::language_label( $language ) ); ?></td>
 					<td><?php self::render_voices(); ?></td>
 					<td class="post-voice-model-status" role="status"><?php esc_html_e( 'Checking…', 'post-voice' ); ?></td>
