@@ -98,6 +98,7 @@ client-side sobre Cache API), sem migração de dado, sem alteração de contrat
 
 ```
 Not downloaded --[Download]--> Queued --[vez chega]--> Downloading (X%)
+Queued --[Cancel]--> Not downloaded
 Downloading --[sucesso]--> Downloaded
 Downloading --[Cancel]--> (limpa parcial) --> Not downloaded
 Downloading --[falha]--> (limpa parcial) --> Error(motivo)

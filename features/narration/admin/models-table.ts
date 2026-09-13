@@ -82,10 +82,18 @@ export function applyState( language: string, state: ModelState ): void {
 							( state.receivedBytes / state.totalBytes ) * 100
 					  )
 					: 0;
-			status.textContent = sprintf(
+			const percentText = sprintf(
 				/* translators: %d: percent complete. */
 				__( 'Downloading… %d%%', 'post-voice' ),
 				percent
+			);
+			const progress = document.createElement( 'progress' );
+			progress.className = 'post-voice-model-progress';
+			progress.value = state.receivedBytes;
+			progress.max = state.totalBytes || LANGUAGE_BUNDLE_BYTES;
+			status.replaceChildren(
+				document.createTextNode( percentText ),
+				progress
 			);
 			size.textContent = sprintf(
 				/* translators: 1: bytes received so far, 2: total expected. */

@@ -53,11 +53,20 @@ async function init(): Promise< void > {
 	} );
 
 	for ( const language of languages ) {
-		const complete = await isBundleComplete( language );
-		if ( complete ) {
-			const bytes = await realBundleBytes( language );
-			applyState( language, { status: 'downloaded', bytes } );
-		} else {
+		try {
+			const complete = await isBundleComplete( language );
+			if ( complete ) {
+				const bytes = await realBundleBytes( language );
+				applyState( language, { status: 'downloaded', bytes } );
+			} else {
+				applyState( language, { status: 'not-downloaded' } );
+			}
+		} catch {
+			// One language's cache entry failing to parse (e.g. corrupted
+			// `bundle.json` left over from a crashed session) must not stop
+			// every row after it from being stuck on "Checking…" forever —
+			// fall back to the same safe default `bundle-status.ts` and
+			// `bundle-size.ts` use when completeness can't be determined.
 			applyState( language, { status: 'not-downloaded' } );
 		}
 	}

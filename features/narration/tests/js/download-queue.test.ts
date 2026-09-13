@@ -247,6 +247,31 @@ describe( 'downloadBundle', () => {
 		expect( cache.store.size ).toBe( 0 );
 	} );
 
+	it( 'reclassifies a QuotaExceededError thrown mid-download (e.g. from cache.put()) as a storage DownloadError', async () => {
+		// The first `cache.put()` call caches `bundle.json` — let that one
+		// succeed normally. Every subsequent call (one of the parallel
+		// per-file writes) throws the DOMException storage exhaustion raises
+		// mid-download, proving downloadBundle() reclassifies it as a
+		// 'storage' DownloadError rather than falling through to the generic
+		// 'network'/'unknown' branch.
+		let putCalls = 0;
+		cache.put.mockImplementation( async ( url: string, response ) => {
+			putCalls += 1;
+			if ( putCalls === 1 ) {
+				cache.store.set( url, response );
+				return;
+			}
+			throw new DOMException( 'Quota exceeded', 'QuotaExceededError' );
+		} );
+
+		await expect(
+			downloadBundle( LANGUAGE, {
+				signal: new AbortController().signal,
+				onProgress: () => undefined,
+			} )
+		).rejects.toMatchObject( { reason: 'storage' } );
+	} );
+
 	it( 'cleans up and re-throws when the signal is aborted mid-download', async () => {
 		const controller = new AbortController();
 		fetchMock.mockImplementation( async ( url: string ) => {
@@ -273,12 +298,13 @@ describe( 'downloadBundle', () => {
 
 describe( 'createDownloadQueue', () => {
 	let cache: ReturnType< typeof fakeCache >;
+	let fetchMock: jest.Mock;
 
 	beforeEach( () => {
 		cache = fakeCache();
 		// @ts-expect-error — minimal CacheStorage stand-in.
 		global.caches = { open: async () => cache };
-		global.fetch = jest.fn( async ( url: string ) => {
+		fetchMock = jest.fn( async ( url: string ) => {
 			if ( url === urlFor( 'bundle.json' ) ) {
 				return fakeResponse( {
 					url,
@@ -287,7 +313,8 @@ describe( 'createDownloadQueue', () => {
 				} );
 			}
 			return fakeResponse( { url, contentLength: 10 } );
-		} ) as unknown as typeof fetch;
+		} );
+		global.fetch = fetchMock as unknown as typeof fetch;
 		Object.defineProperty( global.navigator, 'storage', {
 			value: {
 				estimate: async () => ( {
@@ -385,6 +412,49 @@ describe( 'createDownloadQueue', () => {
 		expect( portugueseIndex ).toBeGreaterThanOrEqual( 0 );
 		expect( germanIndex ).toBeGreaterThan( portugueseIndex );
 		expect( frenchIndex ).toBeGreaterThan( germanIndex );
+	} );
+
+	it( 'requestDownload no-ops when called again for a language already queued', () => {
+		const queue = createDownloadQueue();
+		const states = collectStates( queue );
+
+		queue.requestDownload( 'portuguese' ); // becomes active immediately.
+		queue.requestDownload( 'german' ); // queued.
+		queue.requestDownload( 'german' ); // already queued — must no-op.
+
+		const queuedEvents = states.filter(
+			( [ language, state ] ) =>
+				language === 'german' && state.status === 'queued'
+		);
+		// A second 'queued' event here would mean the guard let the language
+		// be pushed onto `pending` twice.
+		expect( queuedEvents ).toHaveLength( 1 );
+	} );
+
+	it( 'requestDownload no-ops when called again for a language already downloading', async () => {
+		const queue = createDownloadQueue();
+		const states = collectStates( queue );
+
+		queue.requestDownload( LANGUAGE ); // becomes active immediately.
+		queue.requestDownload( LANGUAGE ); // already active — must no-op.
+
+		const downloadingEvents = states.filter(
+			( [ language, state ] ) =>
+				language === LANGUAGE && state.status === 'downloading'
+		);
+		// requestDownload() emits its first 'downloading' event
+		// synchronously — a second call that failed to no-op would emit a
+		// second one right here, before any fetch even resolves.
+		expect( downloadingEvents ).toHaveLength( 1 );
+
+		for ( let i = 0; i < 10; i++ ) {
+			await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		}
+
+		// One download's worth of fetches only (bundle.json + every other
+		// file) — a second requestDownload() re-queueing the same language
+		// would double this count.
+		expect( fetchMock ).toHaveBeenCalledTimes( 8 );
 	} );
 
 	it( 'cancelling a queued (not yet started) download returns it straight to not-downloaded, and it never runs later', async () => {

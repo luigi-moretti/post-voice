@@ -1,4 +1,5 @@
 import { applyState, wireActions } from '../../admin/models-table';
+import { LANGUAGE_BUNDLE_BYTES } from '../../editor/storage-check';
 
 function renderTable(): void {
 	document.body.innerHTML = `
@@ -57,7 +58,7 @@ describe( 'applyState', () => {
 		expect( button?.dataset.action ).toBe( 'cancel' );
 	} );
 
-	it( 'downloading: shows a percentage and a Cancel button', () => {
+	it( 'downloading: shows a percentage, a progress bar and a Cancel button', () => {
 		applyState( 'portuguese', {
 			status: 'downloading',
 			receivedBytes: 50,
@@ -68,10 +69,31 @@ describe( 'applyState', () => {
 		expect(
 			row.querySelector( '.post-voice-model-status' )?.textContent
 		).toContain( '25' );
+		const progress = row.querySelector< HTMLProgressElement >(
+			'.post-voice-model-progress'
+		);
+		expect( progress ).not.toBeNull();
+		expect( progress?.value ).toBe( 50 );
+		expect( progress?.max ).toBe( 200 );
 		const button = row.querySelector< HTMLButtonElement >(
 			'.post-voice-model-action'
 		);
 		expect( button?.dataset.action ).toBe( 'cancel' );
+	} );
+
+	it( 'downloading: falls back the progress bar max to the estimated bundle size before totalBytes is known', () => {
+		applyState( 'portuguese', {
+			status: 'downloading',
+			receivedBytes: 0,
+			totalBytes: 0,
+		} );
+
+		const row = document.querySelector( 'tr[data-language="portuguese"]' )!;
+		const progress = row.querySelector< HTMLProgressElement >(
+			'.post-voice-model-progress'
+		);
+		expect( progress?.value ).toBe( 0 );
+		expect( progress?.max ).toBe( LANGUAGE_BUNDLE_BYTES );
 	} );
 
 	it( 'downloaded: shows the measured size and a Remove button', () => {
