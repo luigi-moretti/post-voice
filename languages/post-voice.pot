@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: Post Voice 0.4.0\n"
+"Project-Id-Version: Post Voice 0.5.2\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/post-voice\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-10T18:53:00+00:00\n"
+"POT-Creation-Date: 2026-09-13T21:14:54+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -54,58 +54,132 @@ msgstr ""
 msgid "Close player"
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:80
+#: features/narration/php/class-models-section.php:48
+msgid "Models"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:91
+msgid "Each language is a separate ~199 MB download, stored in this browser only."
+msgstr ""
+
+#: features/narration/php/class-models-section.php:95
+msgid "Model"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:96
+#: features/pronunciation/php/class-dictionary-section.php:102
+#: features/pronunciation/php/class-dictionary-section.php:123
+#: build/dictionary-admin.js:19
+#: build/narration-editor.js:19
+msgid "Language"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:97
+#: build/narration-editor.js:19
+msgid "Voice"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:98
+msgid "Status"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:99
+msgid "Size"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:100
+#: features/pronunciation/php/class-dictionary-section.php:103
+msgid "Actions"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:106
+msgid "Kyutai Pocket TTS"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:109
+msgid "Checking…"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:131
+msgid "English"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:133
+msgid "German"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:135
+msgid "Italian"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:137
+msgid "Portuguese"
+msgstr ""
+
+#: features/narration/php/class-models-section.php:139
+msgid "Spanish"
+msgstr ""
+
+#. translators: %d: number of voices.
+#: features/narration/php/class-models-section.php:159
+#, php-format
+msgid "%d voice"
+msgid_plural "%d voices"
+msgstr[0] ""
+msgstr[1] ""
+
+#: features/narration/php/class-rest-api.php:78
 msgid "Your role does not have permission to add media. Ask an administrator."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:96
-#: features/narration/php/class-rest-api.php:130
+#: features/narration/php/class-rest-api.php:94
+#: features/narration/php/class-rest-api.php:128
 msgid "Narration is only available for posts."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:104
+#: features/narration/php/class-rest-api.php:102
 msgid "Save the post before generating narration."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:138
+#: features/narration/php/class-rest-api.php:136
 msgid "Your role does not have permission to edit this post."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:147
+#: features/narration/php/class-rest-api.php:145
 msgid "Your role does not have permission to delete this audio. Ask an administrator."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:175
+#: features/narration/php/class-rest-api.php:173
 msgid "This post has no narration to remove."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:220
+#: features/narration/php/class-rest-api.php:218
 msgid "No audio file was received."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:229
-#: features/narration/php/class-rest-api.php:258
+#: features/narration/php/class-rest-api.php:227
+#: features/narration/php/class-rest-api.php:256
 msgid "Unsupported narration language."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:247
+#: features/narration/php/class-rest-api.php:245
 msgid "Too many languages."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:270
+#: features/narration/php/class-rest-api.php:268
 msgid "The primary language must be one of the languages used."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:279
+#: features/narration/php/class-rest-api.php:277
 msgid "Unsupported narration voice."
 msgstr ""
 
-#: features/narration/php/class-rest-api.php:288
+#: features/narration/php/class-rest-api.php:286
 msgid "Malformed source hash."
 msgstr ""
 
 #. translators: %s: title of the post being narrated.
-#: features/narration/php/class-rest-api.php:353
+#: features/narration/php/class-rest-api.php:351
 #, php-format
 msgid "Narration — %s"
 msgstr ""
@@ -180,19 +254,9 @@ msgstr ""
 msgid "Read as"
 msgstr ""
 
-#: features/pronunciation/php/class-dictionary-section.php:102
-#: features/pronunciation/php/class-dictionary-section.php:123
-#: build/dictionary-admin.js:19
-#: build/narration-editor.js:19
-msgid "Language"
-msgstr ""
-
-#: features/pronunciation/php/class-dictionary-section.php:103
-msgid "Actions"
-msgstr ""
-
 #: features/pronunciation/php/class-dictionary-section.php:133
 #: build/dictionary-admin.js:19
+#: build/models-admin.js:19
 #: build/narration-editor.js:19
 msgid "Remove"
 msgstr ""
@@ -206,6 +270,65 @@ msgstr ""
 #: shared/php/class-settings-page.php:72
 #: build/narration-editor.js:19
 msgid "Narration"
+msgstr ""
+
+#: build/models-admin.js:19
+msgid "Not enough free storage"
+msgstr ""
+
+#: build/models-admin.js:19
+msgid "Network error"
+msgstr ""
+
+#: build/models-admin.js:19
+msgid "Download failed"
+msgstr ""
+
+#: build/models-admin.js:19
+msgid "Not downloaded"
+msgstr ""
+
+#. translators: %s: approximate download size, e.g. "199 MB".
+#: build/models-admin.js:19
+#, js-format
+msgid "~%s"
+msgstr ""
+
+#: build/models-admin.js:19
+msgid "Download"
+msgstr ""
+
+#: build/models-admin.js:19
+msgid "Queued"
+msgstr ""
+
+#: build/models-admin.js:19
+#: build/narration-editor.js:19
+msgid "Cancel"
+msgstr ""
+
+#. translators: %d: percent complete.
+#: build/models-admin.js:19
+#, js-format
+msgid "Downloading… %d%%"
+msgstr ""
+
+#. translators: 1: bytes received so far, 2: total expected.
+#: build/models-admin.js:19
+#, js-format
+msgid "%1$s of ~%2$s"
+msgstr ""
+
+#: build/models-admin.js:19
+msgid "Downloaded"
+msgstr ""
+
+#: build/models-admin.js:19
+msgid "Retry"
+msgstr ""
+
+#: build/models-admin.js:19
+msgid "Remove this downloaded model? It will need to be downloaded again the next time you narrate in this language."
 msgstr ""
 
 #: build/narration-editor.js:19
@@ -391,10 +514,6 @@ msgid "Narration generation progress"
 msgstr ""
 
 #: build/narration-editor.js:19
-msgid "Cancel"
-msgstr ""
-
-#: build/narration-editor.js:19
 msgid "Generate anyway"
 msgstr ""
 
@@ -440,10 +559,6 @@ msgstr ""
 
 #: build/narration-editor.js:19
 msgid "No audio generated yet."
-msgstr ""
-
-#: build/narration-editor.js:19
-msgid "Voice"
 msgstr ""
 
 #. translators: %s: voice name, e.g. "alba".

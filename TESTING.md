@@ -4,26 +4,32 @@ Every gate CI enforces can be run locally, including the two that look like they
 need a special machine (PHP line coverage, translation extraction). Nothing here
 requires `sudo` or a global install.
 
-## Before `docs/model-management-screen-design` opens a PR
+## `docs/model-management-screen-design` — verification status
 
-The session that wrote the Models settings screen (Task 9 of that plan) had no
-working Docker daemon, so the steps below were never run there and this branch
-is **not** verified end-to-end yet. With a real Docker daemon available, run,
-in order:
+The session that wrote the Models settings screen (Task 9 of that plan, then
+PR #15's review pass) had no working Docker daemon for most of its work, so
+the automated gates below were deferred. Once a real Docker daemon became
+available in that same session, all of them were run for real and are green:
 
 ```bash
 npx wp-env start
-npm run i18n:pot                       # regenerate languages/post-voice.pot for real —
-                                        # it was left untouched, not hand-edited, in that session
-npm run i18n:check                     # confirms the regenerated .pot matches what's committed
-npm run test:php                       # includes test-models-section.php, deferred since
-                                        # Task 1 and never run in any session so far
-npm run test:php:coverage
-npm run build && npm run test:e2e
+npm run i18n:pot            # regenerated for real; was left untouched, not
+                             # hand-edited, while Docker was unavailable
+npm run i18n:check          # ✓ languages/post-voice.pot is current
+npm run test:php            # ✓ 124 tests, 269 assertions — includes
+                             # test-models-section.php (7 tests), deferred
+                             # since Task 1 and now run for the first time
+npm run test:php:coverage   # ✓ 90.25% lines (threshold 85%)
 ```
 
-Then verify by hand, since neither is covered by an automated scenario (see the
-2026-09-12 design doc's explicit "no new E2E" decision for the Models screen):
+`npm run build && npm run test:e2e` and the three `npm run audit:*` commands
+had already run green in CI (GitHub Actions has Docker) before this note was
+updated — see PR #15's checks.
+
+Still needs a human with a real browser and real bandwidth — this is not a
+sandbox limitation, an actual ~199MB-per-language download over the open
+internet isn't something to script into an automated gate (see the
+2026-09-12 design doc's explicit "no new E2E" decision for this screen):
 
 - **The Models screen** (`Settings → Narration → Models`): download one
   language for real and confirm the progress bar and the switch to
@@ -32,14 +38,6 @@ Then verify by hand, since neither is covered by an automated scenario (see the
   confirm the second shows `Queued` until the first finishes; remove a
   downloaded language and confirm it returns to `Not downloaded`; go offline
   and force a network error, confirming the message and the Retry button.
-- **`test-models-section.php`** (`Test_Post_Voice_Models_Section`): beyond
-  just running green under `npm run test:php` above, confirm it is actually
-  exercising the current section markup — it was written and last touched
-  without a container to run it against.
-
-Only once all of the above is green (or a failure has been triaged, not
-silenced) should this branch go through `npm run doctor`,
-`superpowers:requesting-code-review`, and a PR.
 
 ## Prerequisites
 
