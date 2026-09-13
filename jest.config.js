@@ -39,6 +39,7 @@ module.exports = {
 		'features/narration/editor/segment.ts',
 		'features/narration/editor/voice-catalog.ts',
 		'features/narration/editor/bundle-cache-status.ts',
+		'features/narration/admin/model-manifest.ts',
 		'features/narration/editor/group-segments.ts',
 		'features/narration/editor/engine/tokenizer-sanitize.ts',
 		'features/narration/frontend/player-state.ts',
