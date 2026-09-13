@@ -4,7 +4,7 @@ import {
 	bundleJsonUrl,
 	resolveBundleFiles,
 } from './model-manifest';
-import { deleteBundleFiles } from './bundle-size';
+import { deleteBundleFiles, realBundleBytes } from './bundle-size';
 
 const CACHE_NAME = 'post-voice-models-v1';
 
@@ -175,4 +175,120 @@ export async function downloadBundle(
 				: String( error );
 		throw new DownloadError( 'network', message );
 	}
+}
+
+export type ModelState =
+	| { status: 'not-downloaded' }
+	| { status: 'queued' }
+	| { status: 'downloading'; receivedBytes: number; totalBytes: number }
+	| { status: 'downloaded'; bytes: number }
+	| { status: 'error'; reason: DownloadErrorReason };
+
+export type ModelStateListener = (
+	language: string,
+	state: ModelState
+) => void;
+
+export interface DownloadQueue {
+	subscribe: ( listener: ModelStateListener ) => () => void;
+	requestDownload: ( language: string ) => void;
+	cancelDownload: ( language: string ) => void;
+	removeBundle: ( language: string ) => Promise< void >;
+}
+
+/**
+ * A fresh, self-contained download queue: one active download at a time,
+ * everyone else waits in FIFO order. A factory rather than module-level
+ * state, so this screen's own lifetime (one page load) owns exactly one
+ * queue, with nothing to reset between tests.
+ */
+export function createDownloadQueue(): DownloadQueue {
+	const listeners: ModelStateListener[] = [];
+	const pending: string[] = [];
+	let active: { language: string; controller: AbortController } | null = null;
+
+	function emit( language: string, state: ModelState ): void {
+		for ( const listener of listeners ) {
+			listener( language, state );
+		}
+	}
+
+	function subscribe( listener: ModelStateListener ): () => void {
+		listeners.push( listener );
+		return () => {
+			const index = listeners.indexOf( listener );
+			if ( index !== -1 ) {
+				listeners.splice( index, 1 );
+			}
+		};
+	}
+
+	function requestDownload( language: string ): void {
+		if ( active?.language === language || pending.includes( language ) ) {
+			return;
+		}
+		if ( active ) {
+			pending.push( language );
+			emit( language, { status: 'queued' } );
+			return;
+		}
+		void runDownload( language );
+	}
+
+	function cancelDownload( language: string ): void {
+		const queuedIndex = pending.indexOf( language );
+		if ( queuedIndex !== -1 ) {
+			pending.splice( queuedIndex, 1 );
+			emit( language, { status: 'not-downloaded' } );
+			return;
+		}
+		if ( active?.language === language ) {
+			active.controller.abort();
+		}
+	}
+
+	async function removeBundle( language: string ): Promise< void > {
+		await deleteBundleFiles( language );
+		emit( language, { status: 'not-downloaded' } );
+	}
+
+	async function runDownload( language: string ): Promise< void > {
+		const controller = new AbortController();
+		active = { language, controller };
+		emit( language, {
+			status: 'downloading',
+			receivedBytes: 0,
+			totalBytes: 0,
+		} );
+
+		try {
+			await downloadBundle( language, {
+				signal: controller.signal,
+				onProgress: ( progress ) =>
+					emit( language, {
+						status: 'downloading',
+						receivedBytes: progress.receivedBytes,
+						totalBytes: progress.totalBytes,
+					} ),
+			} );
+			const bytes = await realBundleBytes( language );
+			emit( language, { status: 'downloaded', bytes } );
+		} catch ( error ) {
+			if ( controller.signal.aborted ) {
+				emit( language, { status: 'not-downloaded' } );
+			} else {
+				const reason =
+					error instanceof DownloadError ? error.reason : 'unknown';
+				emit( language, { status: 'error', reason } );
+			}
+		} finally {
+			active = null;
+			const next = pending.shift();
+			if ( next ) {
+				void runDownload( next );
+			}
+		}
+	}
+
+	return { subscribe, requestDownload, cancelDownload, removeBundle };
 }
