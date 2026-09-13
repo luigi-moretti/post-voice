@@ -1,7 +1,66 @@
-// Filled in by Task 8 of the model-management-screen implementation plan.
-// Imports the stylesheet already, same as `player-style/admin/index.ts`
-// does from its first commit — `class-models-section.php`'s `enqueue()`
-// references `build/style-models-admin.css` unconditionally, so the build
-// must emit that file starting with this very commit, not only once Task 8
-// lands, or the settings screen 404s that stylesheet in between.
+import { __ } from '@wordpress/i18n';
 import './style.scss';
+import { isBundleComplete } from './bundle-status';
+import { realBundleBytes } from './bundle-size';
+import { applyState, wireActions } from './models-table';
+import { createDownloadQueue } from './download-queue';
+
+const TABLE_ID = 'post-voice-models';
+
+async function init(): Promise< void > {
+	const table = document.getElementById( TABLE_ID );
+	if ( ! table ) {
+		return;
+	}
+	const rows = table.querySelectorAll< HTMLTableRowElement >(
+		'tbody tr[data-language]'
+	);
+	const languages = Array.from( rows )
+		.map( ( tr ) => tr.dataset.language ?? '' )
+		.filter( ( language ) => language !== '' );
+
+	const queue = createDownloadQueue();
+	queue.subscribe( ( language, state ) => applyState( language, state ) );
+
+	wireActions( ( action, language ) => {
+		switch ( action ) {
+			case 'download':
+			case 'retry':
+				queue.requestDownload( language );
+				break;
+			case 'cancel':
+				queue.cancelDownload( language );
+				break;
+			case 'remove':
+				// A native confirm(), not a custom dialog: this is a settings-screen
+				// destructive action with no existing inline-confirmation component
+				// to reuse here (unlike the editor panel's remove-narration card).
+				if (
+					// eslint-disable-next-line no-alert
+					window.confirm(
+						__(
+							'Remove this downloaded model? It will need to be downloaded again the next time you narrate in this language.',
+							'post-voice'
+						)
+					)
+				) {
+					void queue.removeBundle( language );
+				}
+				break;
+			default:
+				break;
+		}
+	} );
+
+	for ( const language of languages ) {
+		const complete = await isBundleComplete( language );
+		if ( complete ) {
+			const bytes = await realBundleBytes( language );
+			applyState( language, { status: 'downloaded', bytes } );
+		} else {
+			applyState( language, { status: 'not-downloaded' } );
+		}
+	}
+}
+
+document.addEventListener( 'DOMContentLoaded', () => void init() );
