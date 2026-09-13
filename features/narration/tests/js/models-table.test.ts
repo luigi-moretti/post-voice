@@ -129,7 +129,9 @@ describe( 'applyState', () => {
 		);
 
 		// Should have exactly one button after first applyState
-		let buttons = actions?.querySelectorAll( '.post-voice-model-action' );
+		let buttons = actions?.querySelectorAll< HTMLElement >(
+			'.post-voice-model-action'
+		);
 		expect( buttons ).toHaveLength( 1 );
 		expect( buttons?.[ 0 ].dataset.action ).toBe( 'download' );
 
@@ -141,7 +143,9 @@ describe( 'applyState', () => {
 		} );
 
 		// Should have exactly one button (the old one replaced, not added to)
-		buttons = actions?.querySelectorAll( '.post-voice-model-action' );
+		buttons = actions?.querySelectorAll< HTMLElement >(
+			'.post-voice-model-action'
+		);
 		expect( buttons ).toHaveLength( 1 );
 		expect( buttons?.[ 0 ].dataset.action ).toBe( 'cancel' );
 	} );
