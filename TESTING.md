@@ -15,6 +15,7 @@ in order:
 npx wp-env start
 npm run i18n:pot                       # regenerate languages/post-voice.pot for real —
                                         # it was left untouched, not hand-edited, in that session
+npm run i18n:check                     # confirms the regenerated .pot matches what's committed
 npm run test:php                       # includes test-models-section.php, deferred since
                                         # Task 1 and never run in any session so far
 npm run test:php:coverage
