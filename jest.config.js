@@ -41,6 +41,7 @@ module.exports = {
 		'features/narration/editor/bundle-cache-status.ts',
 		'features/narration/admin/model-manifest.ts',
 		'features/narration/admin/bundle-status.ts',
+		'features/narration/admin/bundle-size.ts',
 		'features/narration/editor/group-segments.ts',
 		'features/narration/editor/engine/tokenizer-sanitize.ts',
 		'features/narration/frontend/player-state.ts',
