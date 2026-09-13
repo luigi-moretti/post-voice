@@ -29,6 +29,7 @@ interface FakeResponse {
 	headers: { get: ( name: string ) => string | null };
 	body: { getReader: () => ReturnType< typeof fakeReader > };
 	json: () => Promise< unknown >;
+	blob: () => Promise< { size: number } >;
 	clone: () => FakeResponse;
 }
 
@@ -70,6 +71,10 @@ function fakeResponse( {
 			response.bodyUsed = true;
 			return jsonBody;
 		},
+		// Mirrors `Response.blob()` closely enough for `realBundleBytes`
+		// (`bundle-size.ts`), which only reads `.size` off the result — not
+		// the actual bytes.
+		blob: async () => ( { size: contentLength } ),
 		clone: () =>
 			fakeResponse( {
 				url,
@@ -86,7 +91,13 @@ function fakeCache() {
 	const store = new Map< string, unknown >();
 	return {
 		store,
-		match: jest.fn( async ( url: string ) => store.get( url ) ),
+		// Mirrors real `Cache.match()`, which accepts either a URL string or
+		// a `Request`-like object — `realBundleBytes`/`deleteBundleFiles` in
+		// `bundle-size.ts` call this with the `{ url }` objects `keys()`
+		// returns below, not bare strings.
+		match: jest.fn( async ( request: string | { url: string } ) =>
+			store.get( typeof request === 'string' ? request : request.url )
+		),
 		put: jest.fn( async ( url: string, response: FakeResponse ) => {
 			// Proves callers cache a pre-read clone, not the drained
 			// original: a response whose body was already read arrives here
@@ -475,5 +486,66 @@ describe( 'createDownloadQueue', () => {
 			LANGUAGE,
 			{ status: 'not-downloaded' },
 		] );
+	} );
+
+	it( 'cancelling a language that is neither active nor queued is a safe no-op', async () => {
+		// `active.controller.abort()` has no *synchronous* observable
+		// effect — a version of cancelDownload that aborts whatever is
+		// active regardless of the language argument would still leave the
+		// very next emitted state looking exactly like the untouched case.
+		// So this fetch mock actually honours the abort signal (like a real
+		// fetch would), the same way test 4's does above, letting a wrong
+		// abort actually surface as a rejected fetch once the microtask
+		// queue drains.
+		let capturedSignal: AbortSignal | undefined;
+		global.fetch = jest.fn(
+			async ( url: string, init?: { signal?: AbortSignal } ) => {
+				capturedSignal = init?.signal;
+				if ( url === urlFor( 'bundle.json' ) ) {
+					await new Promise( ( resolve ) =>
+						setTimeout( resolve, 0 )
+					);
+					if ( capturedSignal?.aborted ) {
+						throw new DOMException( 'Aborted', 'AbortError' );
+					}
+					return fakeResponse( {
+						url,
+						contentLength: 10,
+						jsonBody: MANIFEST,
+					} );
+				}
+				return fakeResponse( { url, contentLength: 10 } );
+			}
+		) as unknown as typeof fetch;
+
+		const queue = createDownloadQueue();
+		const states = collectStates( queue );
+
+		queue.requestDownload( LANGUAGE );
+		queue.cancelDownload( 'spanish' );
+
+		for ( let i = 0; i < 10; i++ ) {
+			await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		}
+
+		expect(
+			states.some( ( [ language ] ) => language === 'spanish' )
+		).toBe( false );
+		const last = states[ states.length - 1 ];
+		expect( last[ 0 ] ).toBe( LANGUAGE );
+		expect( last[ 1 ].status ).toBe( 'downloaded' );
+	} );
+
+	it( 'unsubscribe stops delivering further state events to that listener', async () => {
+		const queue = createDownloadQueue();
+		const listener = jest.fn();
+		const unsubscribe = queue.subscribe( listener );
+
+		unsubscribe();
+		queue.requestDownload( LANGUAGE );
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+
+		expect( listener ).not.toHaveBeenCalled();
 	} );
 } );
