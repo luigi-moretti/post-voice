@@ -28,20 +28,27 @@ class Test_Post_Voice_Models_Section extends WP_UnitTestCase {
 
 	protected function tearDown(): void {
 		global $wp_settings_sections;
-		unset( $wp_settings_sections[ Post_Voice_Settings_Page::MENU_SLUG ] );
+		unset( $wp_settings_sections[ Post_Voice_Settings_Page::STANDALONE_SLUG ] );
 		$this->tear_down_asset_files();
 		parent::tearDown();
 	}
 
-	public function test_section_is_registered_on_the_settings_screen(): void {
+	public function test_section_is_registered_on_the_standalone_slug(): void {
 		global $wp_settings_sections;
 		set_current_screen( 'dashboard' );
 		Post_Voice_Models_Section::register();
 		self::fire_admin_init();
 
+		// Standalone, not MENU_SLUG: this table has no option to save, so it
+		// renders below the shared Save Changes button rather than beside
+		// sections that button actually applies to.
 		$this->assertArrayHasKey(
 			'post_voice_models_section',
-			$wp_settings_sections[ Post_Voice_Settings_Page::MENU_SLUG ]
+			$wp_settings_sections[ Post_Voice_Settings_Page::STANDALONE_SLUG ]
+		);
+		$this->assertArrayNotHasKey(
+			'post_voice_models_section',
+			$wp_settings_sections[ Post_Voice_Settings_Page::MENU_SLUG ] ?? array()
 		);
 	}
 

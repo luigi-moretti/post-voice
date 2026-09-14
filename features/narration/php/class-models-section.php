@@ -41,13 +41,19 @@ class Post_Voice_Models_Section {
 
 	/**
 	 * Register the section only — no option, nothing to sanitise.
+	 *
+	 * Registered under `STANDALONE_SLUG`, not `MENU_SLUG`: this table has no
+	 * option to save — downloads and removals write straight to the
+	 * browser's Cache API as they happen — so it renders below the shared
+	 * Save Changes button rather than beside sections that button actually
+	 * applies to. See `Post_Voice_Settings_Page`'s docblock.
 	 */
 	public static function register_section(): void {
 		add_settings_section(
 			self::SECTION,
 			__( 'Models', 'post-voice' ),
 			array( self::class, 'render' ),
-			Post_Voice_Settings_Page::MENU_SLUG
+			Post_Voice_Settings_Page::STANDALONE_SLUG
 		);
 	}
 
