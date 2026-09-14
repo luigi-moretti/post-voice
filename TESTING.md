@@ -4,6 +4,41 @@ Every gate CI enforces can be run locally, including the two that look like they
 need a special machine (PHP line coverage, translation extraction). Nothing here
 requires `sudo` or a global install.
 
+## `docs/model-management-screen-design` — verification status
+
+The session that wrote the Models settings screen (Task 9 of that plan, then
+PR #15's review pass) had no working Docker daemon for most of its work, so
+the automated gates below were deferred. Once a real Docker daemon became
+available in that same session, all of them were run for real and are green:
+
+```bash
+npx wp-env start
+npm run i18n:pot            # regenerated for real; was left untouched, not
+                             # hand-edited, while Docker was unavailable
+npm run i18n:check          # ✓ languages/post-voice.pot is current
+npm run test:php            # ✓ 124 tests, 269 assertions — includes
+                             # test-models-section.php (7 tests), deferred
+                             # since Task 1 and now run for the first time
+npm run test:php:coverage   # ✓ 90.25% lines (threshold 85%)
+```
+
+`npm run build && npm run test:e2e` and the three `npm run audit:*` commands
+had already run green in CI (GitHub Actions has Docker) before this note was
+updated — see PR #15's checks.
+
+Still needs a human with a real browser and real bandwidth — this is not a
+sandbox limitation, an actual ~199MB-per-language download over the open
+internet isn't something to script into an automated gate (see the
+2026-09-12 design doc's explicit "no new E2E" decision for this screen):
+
+- **The Models screen** (`Settings → Narration → Models`): download one
+  language for real and confirm the progress bar and the switch to
+  `Downloaded` with a measured size; cancel a download in progress and confirm
+  it returns to `Not downloaded`; click Download on two languages in a row and
+  confirm the second shows `Queued` until the first finishes; remove a
+  downloaded language and confirm it returns to `Not downloaded`; go offline
+  and force a network error, confirming the message and the Retry button.
+
 ## Prerequisites
 
 | Tool | Version | Used by |
@@ -54,6 +89,15 @@ punctuation-sanitization fix — the text sanitized ahead of the tokenizer
 generation-time hints (`generation-time-hint.ts`). The list lives in
 `jest.config.js` under `collectCoverageFrom`.
 
+The Models settings screen adds four more suites, all DOM-free: reading a
+bundle's file list out of `bundle.json` (`model-manifest.test.ts`),
+detecting a fully-downloaded bundle by checking every one of those files
+against the Cache API rather than only the first (`bundle-status.test.ts`),
+the one-at-a-time download queue's state machine — queueing, progress,
+cancel, retry, and classifying a failure as storage/network/unknown
+(`download-queue.test.ts`) — and rendering that state into a table row's
+Status/Size/Actions cells (`models-table.test.ts`).
+
 Glue — the worker wrapper, the React panel — is deliberately outside it. Mocking
 ONNX Runtime and a Worker only produces a test that always passes; the risks
 there are threading, `crossOriginIsolated` and timing, which only a real browser
@@ -76,6 +120,14 @@ Pass PHPUnit arguments through after `--`:
 ```bash
 npm run test:php -- --filter Test_Post_Voice_Rest_Api
 ```
+
+The Models settings screen's server side is covered by
+`features/narration/tests/php/test-models-section.php`
+(`Test_Post_Voice_Models_Section`, `@covers Post_Voice_Models_Section`): the
+section registers on the settings screen, renders one row per allowed
+language and all eight voices inside a `details` element, and enqueues
+`build/models-admin.js` through the same asset-file guard as the other
+admin screens.
 
 ### PHP coverage
 
@@ -269,6 +321,21 @@ Dependabot raises alerts in.
 Thresholds: production (`--omit=dev`, what reaches an author's browser) allows
 nothing critical or high. The full tree, which includes tooling that never
 leaves a developer machine, allows 1 critical, 5 high, 10 moderate.
+
+### Manual verification
+
+A handful of things are checked by hand rather than by a gate, because no
+automated scenario covers them (by design — see each item's design doc for
+why an E2E scenario wasn't added).
+
+**Models settings screen** (`Settings → Narration → Models`, manual — no E2E
+scenario, see the 2026-09-12 design doc): download one language for real and
+confirm the progress bar and the switch to `Downloaded` with a measured size;
+cancel a download in progress and confirm it returns to `Not downloaded`;
+click Download on two languages in a row and confirm the second shows
+`Queued` until the first finishes; remove a downloaded language and confirm
+it returns to `Not downloaded`; go offline and force a network error,
+confirming the message and the Retry button.
 
 ## When something behaves impossibly
 

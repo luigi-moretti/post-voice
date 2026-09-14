@@ -11,7 +11,7 @@
 		"format": "wp-scripts format",
 		"test:unit": "wp-scripts test-unit-js",
 		"test:e2e": "playwright test",
-		"i18n:pot": "npm run build:dev && wp-env run cli --env-cwd=wp-content/plugins/post-voice wp i18n make-pot . languages/post-voice.pot --include=post-voice.php,shared/php,features/narration/php,features/pronunciation/php,features/player-style/php,build/narration-editor.js,build/narration-player.js,build/dictionary-admin.js,build/player-style-admin.js",
+		"i18n:pot": "npm run build:dev && wp-env run cli --env-cwd=wp-content/plugins/post-voice wp i18n make-pot . languages/post-voice.pot --include=post-voice.php,shared/php,features/narration/php,features/pronunciation/php,features/player-style/php,build/narration-editor.js,build/narration-player.js,build/dictionary-admin.js,build/player-style-admin.js,build/models-admin.js",
 		"audit:npm": "node scripts/audit-check.mjs",
 		"audit:npm:production": "node scripts/audit-check.mjs --production",
 		"audit:composer": "node scripts/audit-check-composer.mjs",

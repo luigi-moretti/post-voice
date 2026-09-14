@@ -41,6 +41,7 @@ require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-stor
 require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-section.php';
 require_once POST_VOICE_PATH . 'features/player-style/php/class-style-store.php';
 require_once POST_VOICE_PATH . 'features/player-style/php/class-style-section.php';
+require_once POST_VOICE_PATH . 'features/narration/php/class-models-section.php';
 
 add_action(
 	'init',
@@ -64,5 +65,6 @@ Post_Voice_Frontend_Render::register();
 Post_Voice_Settings_Page::register();
 Post_Voice_Dictionary_Section::register();
 Post_Voice_Style_Section::register();
+Post_Voice_Models_Section::register();
 
 add_action( 'rest_api_init', array( 'Post_Voice_Rest_Api', 'register_routes' ) );
