@@ -555,6 +555,167 @@ describe( 'createDownloadQueue', () => {
 		] );
 	} );
 
+	it( 'cancelling WHILE a file is actually streaming (not just while bundle.json is in flight) aborts it and cleans the cache', async () => {
+		// The test above only ever cancels while `bundle.json` — a few dozen
+		// bytes — is still in flight. In practice a human can never click
+		// Cancel that early: `bundle.json` resolves in milliseconds, and by
+		// the time "Downloading…" is even visible, every real click lands
+		// during the ~190MB parallel file transfer. This reproduces that:
+		// `bundle.json` resolves immediately, then one of the real files'
+		// `reader.read()` call hangs until the request's `AbortSignal` fires
+		// — mirroring the real `fetch`/Streams API contract (a pending
+		// `read()` rejects with an `AbortError` when its controller aborts),
+		// which the hand-written `fakeReader` used elsewhere in this file
+		// does not model.
+		let signalRef: AbortSignal | undefined;
+		global.fetch = jest.fn(
+			async ( url: string, init?: { signal?: AbortSignal } ) => {
+				if ( url === urlFor( 'bundle.json' ) ) {
+					return fakeResponse( {
+						url,
+						contentLength: 40,
+						jsonBody: MANIFEST,
+					} );
+				}
+				signalRef = init?.signal;
+				const response = fakeResponse( { url, contentLength: 100 } );
+				response.body.getReader = () => ( {
+					read: jest.fn(
+						() =>
+							new Promise( ( _resolve, reject ) => {
+								// Never resolves on its own — only the abort below
+								// settles it, exactly like a real in-flight network
+								// read that the browser cancels out from under it.
+								signalRef?.addEventListener( 'abort', () => {
+									reject(
+										new DOMException(
+											'The operation was aborted.',
+											'AbortError'
+										)
+									);
+								} );
+							} )
+					),
+				} );
+				return response;
+			}
+		) as unknown as typeof fetch;
+
+		const queue = createDownloadQueue();
+		const states = collectStates( queue );
+
+		queue.requestDownload( LANGUAGE );
+		// Let the bundle.json fetch and the parallel file fetches' *headers*
+		// resolve, so we're genuinely inside the streaming phase before
+		// cancelling — matching where a real click always lands.
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		queue.cancelDownload( LANGUAGE );
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+
+		expect( states[ states.length - 1 ] ).toEqual( [
+			LANGUAGE,
+			{ status: 'not-downloaded' },
+		] );
+		expect( cache.store.size ).toBe( 0 );
+	} );
+
+	it( "cancelling doesn't let a file that finishes independently land in the cache after cleanup already ran", async () => {
+		// `Promise.all(responses.map(...))` rejects as soon as ONE file's
+		// read rejects, but it does NOT cancel the other promises in that
+		// same array — a file whose own read isn't blocked at the exact
+		// abort instant (a fast/buffered chunk arriving right around then)
+		// keeps running to its own `cache.put()` independently of the
+		// cancellation. Without an explicit `signal.aborted` check before
+		// that write, such a file can land in the cache *after* the cancel
+		// handler's `deleteBundleFiles` cleanup already ran — exactly the
+		// "Cache Storage still has orphaned bytes after Cancel" symptom.
+		// Both files here are under manual control so the ordering is
+		// deterministic: `voices.bin` rejects (simulating the abort), the
+		// cleanup runs to completion, and only *then* does `tokenizer.json`
+		// resolve its last chunk — reproducing a write landing strictly
+		// after cleanup, not merely concurrent with it.
+		let voicesReject: ( ( reason: unknown ) => void ) | undefined;
+		let resolveTokenizerChunk: ( () => void ) | undefined;
+		global.fetch = jest.fn( async ( url: string ) => {
+			if ( url === urlFor( 'bundle.json' ) ) {
+				return fakeResponse( {
+					url,
+					contentLength: 40,
+					jsonBody: MANIFEST,
+				} );
+			}
+			if ( url === urlFor( 'voices.bin' ) ) {
+				const response = fakeResponse( { url, contentLength: 100 } );
+				response.body.getReader = () => ( {
+					read: jest.fn(
+						() =>
+							new Promise( ( _resolve, reject ) => {
+								voicesReject = reject;
+							} )
+					),
+				} );
+				return response;
+			}
+			if ( url === urlFor( 'tokenizer.json' ) ) {
+				const response = fakeResponse( { url, contentLength: 10 } );
+				let delivered = false;
+				response.body.getReader = () => ( {
+					read: jest.fn(
+						() =>
+							new Promise( ( resolve ) => {
+								if ( delivered ) {
+									resolve( { done: true, value: undefined } );
+									return;
+								}
+								resolveTokenizerChunk = () => {
+									delivered = true;
+									resolve( {
+										done: false,
+										value: new Uint8Array( 10 ),
+									} );
+								};
+							} )
+					),
+				} );
+				return response;
+			}
+			return fakeResponse( { url, contentLength: 10 } );
+		} ) as unknown as typeof fetch;
+
+		const queue = createDownloadQueue();
+		const states = collectStates( queue );
+
+		queue.requestDownload( LANGUAGE );
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+
+		queue.cancelDownload( LANGUAGE );
+		voicesReject?.(
+			new DOMException( 'The operation was aborted.', 'AbortError' )
+		);
+		// Let cleanup (deleteBundleFiles + the not-downloaded emission) run
+		// all the way to completion *before* tokenizer.json's chunk ever
+		// arrives.
+		for ( let i = 0; i < 5; i++ ) {
+			await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		}
+		expect( states[ states.length - 1 ] ).toEqual( [
+			LANGUAGE,
+			{ status: 'not-downloaded' },
+		] );
+		expect( cache.store.size ).toBe( 0 );
+
+		// Only now does the straggling file's read resolve.
+		resolveTokenizerChunk?.();
+		for ( let i = 0; i < 5; i++ ) {
+			await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		}
+
+		expect( cache.store.size ).toBe( 0 );
+	} );
+
 	it( 'a failed download reports error with the classified reason', async () => {
 		global.fetch = jest.fn( async ( url: string ) =>
 			fakeResponse( { url, status: 500, contentLength: 0 } )

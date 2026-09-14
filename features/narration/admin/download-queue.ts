@@ -39,15 +39,40 @@ function contentLength( response: Response ): number {
 	return Number( response.headers.get( 'content-length' ) ?? 0 );
 }
 
+/**
+ * Read a response's body, reporting each chunk's size, and stop as soon as
+ * `signal` aborts.
+ *
+ * The `signal.aborted` check at the top of the loop is deliberately not
+ * the only line of defence here — `reader.read()` rejecting when its
+ * fetch's controller aborts is the primary mechanism, standard behaviour
+ * per the Fetch/Streams specs. But `Promise.all` in `downloadBundle()`
+ * below runs every file's read concurrently, and rejecting one does not
+ * cancel the others: a file whose own chunk simply arrives independently
+ * of the abort (already buffered, or resolving through a code path that
+ * never awaited the signal) would otherwise keep looping — and keep
+ * calling `onChunk`, visibly climbing the progress bar — for as long as
+ * its stream has data, regardless of the cancellation already in
+ * progress. Checking `signal.aborted` on every iteration stops that
+ * regardless of which of the two abort paths actually fires first.
+ *
+ * @param response Response whose body to read.
+ * @param onChunk  Called with each chunk's byte length.
+ * @param signal   Stop looping the moment this aborts.
+ */
 async function readStreamCounting(
 	response: Response,
-	onChunk: ( bytes: number ) => void
+	onChunk: ( bytes: number ) => void,
+	signal: AbortSignal
 ): Promise< void > {
 	const reader = response.body?.getReader();
 	if ( ! reader ) {
 		return;
 	}
 	for (;;) {
+		if ( signal.aborted ) {
+			return;
+		}
 		const { done, value } = await reader.read();
 		if ( done ) {
 			break;
@@ -143,11 +168,32 @@ export async function downloadBundle(
 		await cache.put( bundleJsonUrl( language ), bundleJsonForCache );
 		await Promise.all(
 			responses.map( async ( response, index ) => {
+				// Must clone before `readStreamCounting` reads `response`'s
+				// body below, not just before the `cache.put()` that actually
+				// uses `toCache` — cloning an already-drained response would
+				// reintroduce the double-consumption bug this pattern exists
+				// to avoid (see the module docblock precedent this mirrors).
+				// eslint-disable-next-line @wordpress/no-unused-vars-before-return
 				const toCache = response.clone();
-				await readStreamCounting( response, ( bytes ) => {
-					receivedBytes += bytes;
-					options.onProgress( { receivedBytes, totalBytes } );
-				} );
+				await readStreamCounting(
+					response,
+					( bytes ) => {
+						receivedBytes += bytes;
+						options.onProgress( { receivedBytes, totalBytes } );
+					},
+					options.signal
+				);
+				// `Promise.all` rejecting on a sibling file's abort doesn't
+				// stop *this* file's own chain — without this check, a file
+				// whose read resolved independently of the cancellation
+				// (see `readStreamCounting`'s docblock) would still reach
+				// this line and write into the cache, landing after (or
+				// racing) the catch block's `deleteBundleFiles` cleanup:
+				// bytes surviving a Cancel with no state anywhere pointing
+				// at them.
+				if ( options.signal.aborted ) {
+					return;
+				}
 				// Cache key is the URL we *requested* (`otherFiles[index].url`),
 				// never `response.url` — Hugging Face answers every model-file
 				// request with a 307 to a signed, expiring CDN URL, and
