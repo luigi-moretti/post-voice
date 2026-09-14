@@ -45,6 +45,7 @@ module.exports = {
 		'features/narration/admin/download-queue.ts',
 		'features/narration/admin/models-table.ts',
 		'features/narration/editor/group-segments.ts',
+		'features/narration/editor/engine/thread-mode.ts',
 		'features/narration/editor/engine/tokenizer-sanitize.ts',
 		'features/narration/frontend/player-state.ts',
 		'features/narration/format-time.ts',

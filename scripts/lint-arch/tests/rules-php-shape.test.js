@@ -477,7 +477,7 @@ describe( 'o repo de hoje', () => {
 		expect( rest.check( createContext() ) ).toEqual( [] );
 	} );
 
-	it( 'mapeia as 14 classes do repo', () => {
-		expect( naming.phpClassOwners( createContext() ).size ).toBe( 14 );
+	it( 'mapeia as 16 classes do repo', () => {
+		expect( naming.phpClassOwners( createContext() ).size ).toBe( 16 );
 	} );
 } );

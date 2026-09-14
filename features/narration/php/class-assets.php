@@ -133,10 +133,28 @@ class Post_Voice_Assets {
 			'post-voice-editor',
 			'postVoiceData',
 			array(
-				'dictionary'       => call_user_func( self::dictionary_provider() ),
-				'siteLanguage'     => get_locale(),
-				'canManageOptions' => current_user_can( 'manage_options' ),
-				'workerUrl'        => self::narration_worker_url(),
+				'dictionary'        => call_user_func( self::dictionary_provider() ),
+				'siteLanguage'      => get_locale(),
+				'canManageOptions'  => current_user_can( 'manage_options' ),
+				'workerUrl'         => self::narration_worker_url(),
+
+				/**
+				 * Whether to run the ONNX runtime single-threaded even on an
+				 * editor that is cross-origin isolated.
+				 *
+				 * A diagnostic hatch with no UI, on purpose: for an author,
+				 * "isolated but single-threaded" is strictly worse than the
+				 * site setting's "off" (same speed, and the embed breakage
+				 * stays), so offering it as a control would only invite a
+				 * choice nobody benefits from. For a developer it is the one
+				 * way to tell a threading problem apart from a headers
+				 * problem, which the site setting cannot do because turning
+				 * it off removes both at once.
+				 *
+				 * @param bool $force Whether to force single-threaded
+				 *                    generation. Default false.
+				 */
+				'forceSingleThread' => (bool) apply_filters( 'post_voice_force_single_thread', false ),
 			)
 		);
 

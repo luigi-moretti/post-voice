@@ -34,6 +34,7 @@ require_once POST_VOICE_PATH . 'features/narration/php/class-post-meta.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-rest-api.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-attachment-cleanup.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-assets.php';
+require_once POST_VOICE_PATH . 'features/narration/php/class-acceleration-store.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-editor-headers.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-frontend-render.php';
 require_once POST_VOICE_PATH . 'shared/php/class-settings-page.php';
@@ -41,6 +42,7 @@ require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-stor
 require_once POST_VOICE_PATH . 'features/pronunciation/php/class-dictionary-section.php';
 require_once POST_VOICE_PATH . 'features/player-style/php/class-style-store.php';
 require_once POST_VOICE_PATH . 'features/player-style/php/class-style-section.php';
+require_once POST_VOICE_PATH . 'features/narration/php/class-acceleration-section.php';
 require_once POST_VOICE_PATH . 'features/narration/php/class-models-section.php';
 
 add_action(
@@ -65,6 +67,7 @@ Post_Voice_Frontend_Render::register();
 Post_Voice_Settings_Page::register();
 Post_Voice_Dictionary_Section::register();
 Post_Voice_Style_Section::register();
+Post_Voice_Acceleration_Section::register();
 Post_Voice_Models_Section::register();
 
 add_action( 'rest_api_init', array( 'Post_Voice_Rest_Api', 'register_routes' ) );

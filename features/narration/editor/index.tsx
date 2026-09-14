@@ -559,7 +559,10 @@ function NarrationPanel() {
 			if ( ! engineRef.current ) {
 				const engine = new PocketTtsEngine();
 				try {
-					await engine.load( targetLanguage );
+					await engine.load(
+						targetLanguage,
+						Boolean( window.postVoiceData?.forceSingleThread )
+					);
 				} catch ( err ) {
 					// A failed construction must not leave a broken engine
 					// cached: the next "Generate" would take the `else`

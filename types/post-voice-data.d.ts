@@ -16,6 +16,13 @@ declare global {
 			 * `Post_Voice_Assets`).
 			 */
 			workerUrl: string;
+			/**
+			 * Whether the site asked, through the
+			 * `post_voice_force_single_thread` filter, that generation run
+			 * single-threaded even on an isolated editor. A diagnostic hatch
+			 * with no UI; see `Post_Voice_Assets`.
+			 */
+			forceSingleThread: boolean;
 		};
 	}
 }

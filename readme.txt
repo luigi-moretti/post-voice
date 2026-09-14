@@ -30,6 +30,17 @@ No. Speech synthesis runs entirely in your own browser. The only network request
 are for the voice model files themselves, downloaded from a pinned Hugging Face
 mirror.
 
+= An embed (CodePen, YouTube) shows up blank in the post editor. Why? =
+
+To generate narration faster, the plugin makes the post editor screen
+cross-origin isolated, and an isolated page blocks any embed from another site
+that does not opt in to isolation itself — most do not. Only the editing screen
+is affected: your published posts, and what your visitors see, never change.
+
+Go to Settings -> Narration and untick "Generate narration faster", then reload
+the editor. Narration keeps working; it just uses one processor core instead of
+all of them, so generation takes longer.
+
 = Why does generation need HTTPS? =
 
 The plugin uses the Web Crypto API and audio worklets, which browsers expose only

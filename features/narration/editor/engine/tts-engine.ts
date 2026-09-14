@@ -3,6 +3,7 @@ import { __, sprintf } from '@wordpress/i18n';
 import { computeRtf } from '../rtf-calibration';
 import { sampleTextFor } from '../voice-catalog';
 import { groupByLanguage, reassemble } from '../group-segments';
+import { shouldRetrySingleThreaded } from './thread-mode';
 import type { ResolvedSegment } from '../segment';
 
 /** Silence inserted between consecutive segments, in seconds. */
@@ -137,10 +138,18 @@ export class PocketTtsEngine {
 	// device would otherwise support.
 	public usedSingleThreadFallback = false;
 
-	async load( language: string ): Promise< void > {
+	/**
+	 * @param language          Model bundle identifier.
+	 * @param forceSingleThread Run single-threaded even on an isolated
+	 *                          document. Set from the site's
+	 *                          `post_voice_force_single_thread` filter, which
+	 *                          exists to tell a threading problem apart from
+	 *                          an isolation-headers one.
+	 */
+	async load( language: string, forceSingleThread = false ): Promise< void > {
 		this.language = language;
 		try {
-			await this.loadWorkerAndLanguage( language, false );
+			await this.loadWorkerAndLanguage( language, forceSingleThread );
 		} catch ( err ) {
 			// A multi-thread attempt can fail for a browser-specific reason
 			// unrelated to whether crossOriginIsolated is on at all — that case
@@ -155,7 +164,12 @@ export class PocketTtsEngine {
 			// docs/superpowers/specs/2026-08-21-narration-worker-cross-origin-isolation-design.md,
 			// "Achado 4" — deliberately scoped to this first load only, not a
 			// later, independent `setLanguage()` call (see that section for why).
-			if ( ! self.crossOriginIsolated ) {
+			if (
+				! shouldRetrySingleThreaded(
+					forceSingleThread,
+					Boolean( self.crossOriginIsolated )
+				)
+			) {
 				throw err;
 			}
 			this.worker?.terminate();
