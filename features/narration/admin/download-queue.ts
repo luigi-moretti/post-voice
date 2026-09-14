@@ -142,13 +142,22 @@ export async function downloadBundle(
 
 		await cache.put( bundleJsonUrl( language ), bundleJsonForCache );
 		await Promise.all(
-			responses.map( async ( response ) => {
+			responses.map( async ( response, index ) => {
 				const toCache = response.clone();
 				await readStreamCounting( response, ( bytes ) => {
 					receivedBytes += bytes;
 					options.onProgress( { receivedBytes, totalBytes } );
 				} );
-				await cache.put( response.url, toCache );
+				// Cache key is the URL we *requested* (`otherFiles[index].url`),
+				// never `response.url` — Hugging Face answers every model-file
+				// request with a 307 to a signed, expiring CDN URL, and
+				// `response.url` reflects that final, post-redirect URL. Every
+				// later lookup (`isBundleComplete`, `realBundleBytes`,
+				// `deleteBundleFiles`) keys off the stable, pinned URL this
+				// bundle was requested under, so caching under `response.url`
+				// would silently orphan the bytes: present in the Cache API,
+				// unfindable by name, never cleaned up by Remove.
+				await cache.put( otherFiles[ index ].url, toCache );
 			} )
 		);
 	} catch ( error ) {

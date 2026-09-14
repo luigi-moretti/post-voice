@@ -191,6 +191,43 @@ describe( 'downloadBundle', () => {
 		expect( last.receivedBytes ).toBe( total );
 	} );
 
+	it( 'caches each file under the requested URL, not the redirected one Hugging Face actually serves it from', async () => {
+		// Hugging Face answers every model-file request with a 307 to a
+		// signed, expiring CDN URL — `Response.url` reflects that final
+		// (post-redirect) URL, not the one `fetch()` was called with. A
+		// response cached under `response.url` is unfindable by every later
+		// lookup, which all key off the stable `bundleUrl()`/`resolveBundleFiles()`
+		// URLs — this regressed silently in production because no fake
+		// response here previously diverged the two.
+		fetchMock.mockImplementation( async ( requestedUrl: string ) => {
+			if ( requestedUrl === urlFor( 'bundle.json' ) ) {
+				return fakeResponse( {
+					url: requestedUrl,
+					contentLength: 40,
+					jsonBody: MANIFEST,
+				} );
+			}
+			const filename = requestedUrl.slice(
+				requestedUrl.lastIndexOf( '/' ) + 1
+			);
+			return fakeResponse( {
+				url: `https://cdn-lfs.huggingface.co/redirected/${ filename }?sig=abc`,
+				contentLength: 100,
+				chunkSizes: [ 100 ],
+			} );
+		} );
+
+		await downloadBundle( LANGUAGE, {
+			signal: new AbortController().signal,
+			onProgress: () => undefined,
+		} );
+
+		for ( const filename of OTHER_FILENAMES ) {
+			expect( cache.store.has( urlFor( filename ) ) ).toBe( true );
+		}
+		expect( cache.store.size ).toBe( 1 + OTHER_FILENAMES.length );
+	} );
+
 	it( "clears any residue under this language's prefix before starting", async () => {
 		cache.store.set(
 			urlFor( 'bundle.json' ),
