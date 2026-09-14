@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-14T13:34:08+00:00\n"
+"POT-Creation-Date: 2026-09-14T15:23:09+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -32,15 +32,15 @@ msgstr ""
 msgid "Generation speed"
 msgstr ""
 
-#: features/narration/php/class-acceleration-section.php:83
+#: features/narration/php/class-acceleration-section.php:88
 msgid "Generate narration faster"
 msgstr ""
 
-#: features/narration/php/class-acceleration-section.php:87
-msgid "Uses all of your processor's cores, which can make generation several times faster. While it is on, embeds from other sites (CodePen, YouTube) can appear blank in the post editor — your published posts and your visitors are never affected. Turn it off if that happens: narration keeps working, just more slowly."
+#: features/narration/php/class-acceleration-section.php:92
+msgid "Uses every core your processor has, which can make generation several times faster. While it is on, embeds from other sites (a CodePen pen, for example) can appear blank in the post editor — your published posts and your visitors are never affected. Turn it off if that happens: narration keeps working, just more slowly."
 msgstr ""
 
-#: features/narration/php/class-acceleration-section.php:94
+#: features/narration/php/class-acceleration-section.php:99
 msgid "Takes effect the next time you open a post editor."
 msgstr ""
 

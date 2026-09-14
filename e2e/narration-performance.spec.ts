@@ -87,6 +87,13 @@ async function setAcceleration(
 	await admin.visitAdminPage( 'options-general.php', 'page=post-voice' );
 	await page.locator( '#post-voice-acceleration' ).setChecked( enabled );
 	await page.getByRole( 'button', { name: 'Save Changes' } ).click();
+	// Wait for the save's own round trip before asserting anything, and
+	// before returning. `setChecked()` already left the DOM in the state
+	// asserted below, so an assertion that resolves against the
+	// pre-navigation document would pass without the save having happened —
+	// and the helper would return while the POST was still in flight, letting
+	// the caller's next navigation cancel it.
+	await page.waitForURL( /settings-updated=true/ );
 	await expect( page.locator( '#post-voice-acceleration' ) ).toBeChecked( {
 		checked: enabled,
 	} );

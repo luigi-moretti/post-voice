@@ -26,12 +26,17 @@ class Post_Voice_Acceleration_Store {
 	/**
 	 * The two values this option is ever stored as.
 	 *
-	 * Strings, not booleans, and that is load-bearing: `update_option()`
+	 * Strings, not booleans, and that is load-bearing. `update_option()`
 	 * skips the write when the new value matches the current one, and an
-	 * option that was never saved reads back as `false` — so storing boolean
-	 * `false` on a site that never opened this setting writes nothing at all,
-	 * and the next read falls back to the default "on". A site could never
-	 * turn the setting off. `'0'` is a real value, so it is really written.
+	 * option that was never saved reads back as `false`, so storing boolean
+	 * `false` writes nothing at all and the next read falls back to the
+	 * default "on" — the setting could never be turned off. Through
+	 * `options.php` alone that trap would be dodged, because
+	 * `register_setting()`'s declared default reaches `$old_value` via the
+	 * `default_option_*` filter; it bites wherever the setting is not
+	 * registered, which is every write from WP-CLI, from the front end, or
+	 * from another plugin. `'0'` is a real value, so it is really written
+	 * either way, and it keeps the declared `'type' => 'string'` honest.
 	 */
 	public const ON  = '1';
 	public const OFF = '0';
@@ -51,7 +56,11 @@ class Post_Voice_Acceleration_Store {
 	 * multi-threaded generation.
 	 */
 	public static function is_enabled(): bool {
-		return self::ON === (string) get_option( self::OPTION, self::DEFAULT_STORED );
+		// Compared without casting: a corrupt or foreign-written row holding
+		// an array would make `(string)` emit "Array to string conversion"
+		// on every editor page load. Anything that is not exactly `ON` means
+		// off, which is the safe direction — it sends no headers.
+		return self::ON === get_option( self::OPTION, self::DEFAULT_STORED );
 	}
 
 	/**

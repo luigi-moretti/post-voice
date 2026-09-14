@@ -64,7 +64,7 @@ class Test_Post_Voice_Acceleration_Section extends WP_UnitTestCase {
 
 		$html = $this->render_field();
 
-		$this->assertStringContainsString( 'checked', $html );
+		$this->assertStringContainsString( "checked='checked'", $html );
 	}
 
 	public function test_the_checkbox_is_unticked_for_a_site_that_turned_it_off(): void {
@@ -76,7 +76,24 @@ class Test_Post_Voice_Acceleration_Section extends WP_UnitTestCase {
 
 		$html = $this->render_field();
 
-		$this->assertStringNotContainsString( 'checked', $html );
+		$this->assertStringNotContainsString( "checked='checked'", $html );
+	}
+
+	public function test_the_checkbox_has_exactly_one_label(): void {
+		// Every label associated with a control is concatenated into its
+		// accessible name, so passing `label_for` here — which makes core wrap
+		// the row title in a second `<label for>` — would have a screen reader
+		// announce "Generation speed Generate narration faster, checkbox".
+		$this->register();
+
+		ob_start();
+		do_settings_sections( Post_Voice_Settings_Page::MENU_SLUG );
+		$html = (string) ob_get_clean();
+
+		$this->assertSame(
+			1,
+			substr_count( $html, '<label for="post-voice-acceleration"' )
+		);
 	}
 
 	public function test_the_checkbox_posts_under_the_option_name(): void {

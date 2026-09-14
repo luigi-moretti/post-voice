@@ -63,8 +63,13 @@ class Post_Voice_Acceleration_Section {
 			__( 'Generation speed', 'post-voice' ),
 			array( self::class, 'render_field' ),
 			Post_Voice_Settings_Page::MENU_SLUG,
-			self::SECTION,
-			array( 'label_for' => 'post-voice-acceleration' )
+			self::SECTION
+			// No `label_for`: core would wrap the row title in a second
+			// `<label for>` pointing at the same checkbox, and every label
+			// associated with a control is concatenated into its accessible
+			// name — a screen reader would read "Generation speed Generate
+			// narration faster, checkbox". The control carries its own label
+			// below, which is the one that describes what ticking it does.
 		);
 	}
 
@@ -85,7 +90,7 @@ class Post_Voice_Acceleration_Section {
 		<p class="description">
 			<?php
 			esc_html_e(
-				'Uses all of your processor\'s cores, which can make generation several times faster. While it is on, embeds from other sites (CodePen, YouTube) can appear blank in the post editor — your published posts and your visitors are never affected. Turn it off if that happens: narration keeps working, just more slowly.',
+				'Uses every core your processor has, which can make generation several times faster. While it is on, embeds from other sites (a CodePen pen, for example) can appear blank in the post editor — your published posts and your visitors are never affected. Turn it off if that happens: narration keeps working, just more slowly.',
 				'post-voice'
 			);
 			?>

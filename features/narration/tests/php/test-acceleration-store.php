@@ -88,6 +88,9 @@ class Test_Post_Voice_Acceleration_Store extends WP_UnitTestCase {
 			Post_Voice_Acceleration_Store::sanitize( null )
 		);
 
-		$this->assertNotFalse( get_option( Post_Voice_Acceleration_Store::OPTION ) );
+		$this->assertSame(
+			Post_Voice_Acceleration_Store::OFF,
+			get_option( Post_Voice_Acceleration_Store::OPTION )
+		);
 	}
 }
