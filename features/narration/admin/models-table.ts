@@ -31,6 +31,44 @@ function errorMessage( reason: DownloadErrorReason ): string {
 }
 
 /**
+ * Make sure `actions` holds exactly one button for `action`, reusing the
+ * existing one when it already matches instead of tearing it down.
+ *
+ * A real download fires `onProgress` — and so `applyState()` — far more
+ * than once; a 76MB file in ~64KB chunks is well over a thousand calls
+ * while the state stays `'downloading'` throughout. Rebuilding the button
+ * on every single one of those made it disappear and reappear at that
+ * same frequency: a real mouse click landing mid-teardown has a real
+ * chance of never reaching the delegated handler, because the element the
+ * browser dispatched `mousedown` against may already be gone by
+ * `mouseup`. Only actually replacing the button when the action itself
+ * changes closes that window.
+ *
+ * @param actions The row's `.post-voice-model-actions` cell.
+ * @param action  Action code this state calls for, or `null` for none.
+ * @param label   Button label, used only when a new button is created.
+ */
+function ensureActionButton(
+	actions: HTMLElement,
+	action: string | null,
+	label: string
+): void {
+	const existing = actions.querySelector< HTMLButtonElement >(
+		'.post-voice-model-action'
+	);
+	if ( action === null ) {
+		if ( existing ) {
+			actions.replaceChildren();
+		}
+		return;
+	}
+	if ( existing?.dataset.action === action ) {
+		return;
+	}
+	actions.replaceChildren( actionButton( action, label ) );
+}
+
+/**
  * Render one row's Status, Size and Actions cells for its current state.
  * Safe to call for a language whose row is not on the page (a no-op) —
  * `index.ts` only ever calls this for rows it found, but the guard keeps
@@ -55,27 +93,35 @@ export function applyState( language: string, state: ModelState ): void {
 	if ( ! status || ! size || ! actions ) {
 		return;
 	}
-	actions.replaceChildren();
 
 	switch ( state.status ) {
 		case 'not-downloaded':
+			ensureActionButton(
+				actions,
+				'download',
+				__( 'Download', 'post-voice' )
+			);
 			status.textContent = __( 'Not downloaded', 'post-voice' );
 			size.textContent = sprintf(
 				/* translators: %s: approximate download size, e.g. "199 MB". */
 				__( '~%s', 'post-voice' ),
 				formatBytes( LANGUAGE_BUNDLE_BYTES )
 			);
-			actions.appendChild(
-				actionButton( 'download', __( 'Download', 'post-voice' ) )
-			);
 			break;
 		case 'queued':
-			status.textContent = __( 'Queued', 'post-voice' );
-			actions.appendChild(
-				actionButton( 'cancel', __( 'Cancel', 'post-voice' ) )
+			ensureActionButton(
+				actions,
+				'cancel',
+				__( 'Cancel', 'post-voice' )
 			);
+			status.textContent = __( 'Queued', 'post-voice' );
 			break;
 		case 'downloading': {
+			ensureActionButton(
+				actions,
+				'cancel',
+				__( 'Cancel', 'post-voice' )
+			);
 			const percent =
 				state.totalBytes > 0
 					? Math.round(
@@ -87,38 +133,43 @@ export function applyState( language: string, state: ModelState ): void {
 				__( 'Downloading… %d%%', 'post-voice' ),
 				percent
 			);
-			const progress = document.createElement( 'progress' );
-			progress.className = 'post-voice-model-progress';
+			// Same reuse-don't-rebuild reasoning as `ensureActionButton()`
+			// above, and for the same reason: this runs on every
+			// `onProgress` tick.
+			let progress = status.querySelector< HTMLProgressElement >(
+				'.post-voice-model-progress'
+			);
+			let text = status.firstChild;
+			if ( ! progress || ! text || text.nodeType !== Node.TEXT_NODE ) {
+				progress = document.createElement( 'progress' );
+				progress.className = 'post-voice-model-progress';
+				text = document.createTextNode( '' );
+				status.replaceChildren( text, progress );
+			}
+			text.textContent = percentText;
 			progress.value = state.receivedBytes;
 			progress.max = state.totalBytes || LANGUAGE_BUNDLE_BYTES;
-			status.replaceChildren(
-				document.createTextNode( percentText ),
-				progress
-			);
 			size.textContent = sprintf(
 				/* translators: 1: bytes received so far, 2: total expected. */
 				__( '%1$s of ~%2$s', 'post-voice' ),
 				formatBytes( state.receivedBytes ),
 				formatBytes( state.totalBytes || LANGUAGE_BUNDLE_BYTES )
 			);
-			actions.appendChild(
-				actionButton( 'cancel', __( 'Cancel', 'post-voice' ) )
-			);
 			break;
 		}
 		case 'downloaded':
+			ensureActionButton(
+				actions,
+				'remove',
+				__( 'Remove', 'post-voice' )
+			);
 			status.textContent = __( 'Downloaded', 'post-voice' );
 			size.textContent = formatBytes( state.bytes );
-			actions.appendChild(
-				actionButton( 'remove', __( 'Remove', 'post-voice' ) )
-			);
 			break;
 		case 'error':
+			ensureActionButton( actions, 'retry', __( 'Retry', 'post-voice' ) );
 			status.textContent = errorMessage( state.reason );
 			size.textContent = '—';
-			actions.appendChild(
-				actionButton( 'retry', __( 'Retry', 'post-voice' ) )
-			);
 			break;
 	}
 }

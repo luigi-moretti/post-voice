@@ -172,6 +172,56 @@ describe( 'applyState', () => {
 		expect( buttons?.[ 0 ].dataset.action ).toBe( 'cancel' );
 	} );
 
+	it( 'keeps the SAME Cancel button element across repeated downloading updates, only updating its numbers', () => {
+		// A real download fires onProgress far more than once — a 76MB file
+		// in ~64KB chunks is well over a thousand calls. If applyState tore
+		// the action button down and rebuilt it on every single one (as it
+		// used to), a real mouse click landing mid-teardown has a very real
+		// chance of never reaching the delegated handler at all: the
+		// element the browser dispatched mousedown against may no longer
+		// be in the DOM by mouseup. This is the actual mechanism behind
+		// "Cancel does nothing on one click, but repeated clicking
+		// eventually works" reported from manual testing — jsdom's
+		// synthetic .click() can't reproduce that race directly, but
+		// asserting the button's *identity* survives repeated updates
+		// proves the fix that closes it.
+		applyState( 'portuguese', {
+			status: 'downloading',
+			receivedBytes: 0,
+			totalBytes: 200,
+		} );
+		const row = document.querySelector( 'tr[data-language="portuguese"]' )!;
+		const buttonBefore = row.querySelector< HTMLButtonElement >(
+			'.post-voice-model-action'
+		);
+		const progressBefore = row.querySelector< HTMLProgressElement >(
+			'.post-voice-model-progress'
+		);
+
+		for ( let received = 20; received <= 200; received += 20 ) {
+			applyState( 'portuguese', {
+				status: 'downloading',
+				receivedBytes: received,
+				totalBytes: 200,
+			} );
+		}
+
+		const buttonAfter = row.querySelector< HTMLButtonElement >(
+			'.post-voice-model-action'
+		);
+		const progressAfter = row.querySelector< HTMLProgressElement >(
+			'.post-voice-model-progress'
+		);
+		expect( buttonAfter ).toBe( buttonBefore );
+		expect( progressAfter ).toBe( progressBefore );
+		// The numbers still genuinely update on the reused elements — this
+		// isn't just "never touch anything again".
+		expect( progressAfter?.value ).toBe( 200 );
+		expect(
+			row.querySelector( '.post-voice-model-status' )?.textContent
+		).toContain( '100' );
+	} );
+
 	it( 'does nothing when the row is missing (defensive, no throw)', () => {
 		expect( () =>
 			applyState( 'klingon', { status: 'not-downloaded' } )
