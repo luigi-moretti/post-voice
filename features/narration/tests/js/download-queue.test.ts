@@ -397,6 +397,44 @@ describe( 'createDownloadQueue', () => {
 		expect( statuses[ statuses.length - 1 ] ).toBe( 'downloaded' );
 	} );
 
+	it( 'still reports downloaded (not error) when every file wrote successfully but the post-download size measurement itself fails', async () => {
+		// downloadBundle() resolving means every file is genuinely, fully
+		// cached — the operation truly succeeded. realBundleBytes() is only
+		// called afterwards to report a number, and if *that* throws (a
+		// transient cache.keys() failure, say), the language must not be
+		// reported as failed: the bundle is right there, complete, and a
+		// user told "Error" would have no reason to Retry a download that
+		// already worked, only to land in the exact same spot again.
+		// downloadBundle() itself also calls cache.keys() up front (via the
+		// residue-cleanup deleteBundleFiles()) — only the call *after* the
+		// real download succeeds should fail here, or this would be testing
+		// a pre-download cleanup failure instead of the intended
+		// post-download measurement one.
+		let keysCallCount = 0;
+		const realKeys = cache.keys;
+		cache.keys = jest.fn( async () => {
+			keysCallCount += 1;
+			if ( keysCallCount === 1 ) {
+				return realKeys();
+			}
+			throw new Error( 'transient cache.keys() failure' );
+		} );
+
+		const queue = createDownloadQueue();
+		const states = collectStates( queue );
+
+		queue.requestDownload( LANGUAGE );
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+		await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+
+		const last = states[ states.length - 1 ];
+		expect( last[ 1 ].status ).toBe( 'downloaded' );
+		// Every file is genuinely cached — confirms this isn't reporting
+		// 'downloaded' over a botched download, only over a failed
+		// measurement of a real one.
+		expect( cache.store.size ).toBe( 1 + OTHER_FILENAMES.length );
+	} );
+
 	it( 'queues a second requestDownload while one is active, then runs it when the first finishes', async () => {
 		const queue = createDownloadQueue();
 		const states = collectStates( queue );

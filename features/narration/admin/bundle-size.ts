@@ -28,7 +28,16 @@ export async function realBundleBytes( language: string ): Promise< number > {
 			if ( ! response ) {
 				return 0;
 			}
-			return ( await response.blob() ).size;
+			try {
+				return ( await response.blob() ).size;
+			} catch {
+				// One corrupted entry (a partial write surviving a crash,
+				// or a browser eviction that removed the body but not the
+				// key) shouldn't make the whole measurement reject — count
+				// it as 0 bytes, the same safe default the "no response"
+				// branch above already uses.
+				return 0;
+			}
 		} )
 	);
 	return sizes.reduce( ( total, size ) => total + size, 0 );

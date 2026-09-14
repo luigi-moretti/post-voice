@@ -29,7 +29,17 @@ export async function isBundleComplete( language: string ): Promise< boolean > {
 		return false;
 	}
 
-	const manifest: BundleManifest = await bundleJsonResponse.json();
+	let manifest: BundleManifest;
+	try {
+		manifest = await bundleJsonResponse.json();
+	} catch {
+		// A corrupted or truncated cache entry — surviving a crashed
+		// session, or a browser eviction that only partially removed a
+		// bundle — reads as "not downloaded" like any other incomplete
+		// state, not as a rejection every caller has to remember to guard
+		// against.
+		return false;
+	}
 	const files = resolveBundleFiles( language, manifest );
 	const matches = await Promise.all(
 		files.map( ( file ) => cache.match( file.url ) )

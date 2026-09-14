@@ -44,6 +44,33 @@ describe( 'realBundleBytes', () => {
 		expect( await realBundleBytes( 'portuguese' ) ).toBe( 0 );
 	} );
 
+	it( 'is 0 for an entry whose blob() rejects, rather than rejecting the whole call', async () => {
+		// One corrupted cache entry (surviving a crash, or a browser
+		// eviction that only partially removed a file) shouldn't make the
+		// entire size measurement blow up — same reasoning as the missing
+		// Cache API / missing entry branches already handled here.
+		const cache = {
+			keys: jest.fn( async () => [
+				{ url: `${ MODEL_BASE_URL }portuguese/bundle.json` },
+				{ url: `${ MODEL_BASE_URL }portuguese/voices.bin` },
+			] ),
+			match: jest.fn( async ( request: { url: string } ) => {
+				if ( request.url.endsWith( 'bundle.json' ) ) {
+					return {
+						blob: async () => {
+							throw new Error( 'body already used' );
+						},
+					};
+				}
+				return { blob: async () => ( { size: 900 } ) };
+			} ),
+		};
+		// @ts-expect-error — minimal CacheStorage stand-in.
+		global.caches = { open: async () => cache };
+
+		expect( await realBundleBytes( 'portuguese' ) ).toBe( 900 );
+	} );
+
 	it( 'handles cache.match returning undefined for a URL', async () => {
 		const cache = {
 			keys: jest.fn( async () => [

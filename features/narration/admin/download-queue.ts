@@ -1,4 +1,7 @@
-import { hasEnoughStorage } from '../editor/storage-check';
+import {
+	hasEnoughStorage,
+	LANGUAGE_BUNDLE_BYTES,
+} from '../editor/storage-check';
 import {
 	BundleManifest,
 	bundleJsonUrl,
@@ -326,7 +329,18 @@ export function createDownloadQueue(): DownloadQueue {
 						totalBytes: progress.totalBytes,
 					} ),
 			} );
-			const bytes = await realBundleBytes( language );
+			// downloadBundle() resolving means every file genuinely, fully
+			// wrote to the cache — the download itself succeeded. Measuring
+			// its size afterwards is a separate, best-effort step: if it
+			// throws (a transient cache.keys() failure, say), that must not
+			// relabel a real success as an error — the bundle is there,
+			// and Retry would just repeat a download that already worked.
+			let bytes: number;
+			try {
+				bytes = await realBundleBytes( language );
+			} catch {
+				bytes = LANGUAGE_BUNDLE_BYTES;
+			}
 			emit( language, { status: 'downloaded', bytes } );
 		} catch ( error ) {
 			if ( controller.signal.aborted ) {

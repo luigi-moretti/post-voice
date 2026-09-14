@@ -70,6 +70,26 @@ describe( 'isBundleComplete', () => {
 		expect( await isBundleComplete( language ) ).toBe( true );
 	} );
 
+	it( 'is false, not a rejected promise, when the cached bundle.json is unparseable', async () => {
+		// A corrupted or truncated cache entry (surviving a crashed session,
+		// or a bug elsewhere) shouldn't turn "is this downloaded?" into an
+		// unhandled rejection — same safe-default posture as every other
+		// branch here (missing Cache API, missing bundle.json, missing
+		// file). Previously this relied entirely on every *caller*
+		// remembering to wrap the call in try/catch.
+		const cache = fakeCache( {
+			[ `${ MODEL_BASE_URL }portuguese/bundle.json` ]: {
+				json: async () => {
+					throw new SyntaxError( 'Unexpected token in JSON' );
+				},
+			},
+		} );
+		// @ts-expect-error — minimal CacheStorage stand-in.
+		global.caches = { open: async () => cache };
+
+		await expect( isBundleComplete( 'portuguese' ) ).resolves.toBe( false );
+	} );
+
 	it( 'requires bos_before_voice_file too, when the manifest names one', async () => {
 		const language = 'german';
 		const manifest = {
