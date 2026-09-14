@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-13T21:14:54+00:00\n"
+"POT-Creation-Date: 2026-09-14T15:23:09+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: post-voice\n"
@@ -22,6 +22,26 @@ msgstr ""
 #. Description of the plugin
 #: post-voice.php
 msgid "Gera narração em áudio de posts 100% no navegador (client-side TTS), com voice cloning via Pocket TTS."
+msgstr ""
+
+#: features/narration/php/class-acceleration-section.php:56
+msgid "Performance"
+msgstr ""
+
+#: features/narration/php/class-acceleration-section.php:63
+msgid "Generation speed"
+msgstr ""
+
+#: features/narration/php/class-acceleration-section.php:88
+msgid "Generate narration faster"
+msgstr ""
+
+#: features/narration/php/class-acceleration-section.php:92
+msgid "Uses every core your processor has, which can make generation several times faster. While it is on, embeds from other sites (a CodePen pen, for example) can appear blank in the post editor — your published posts and your visitors are never affected. Turn it off if that happens: narration keeps working, just more slowly."
+msgstr ""
+
+#: features/narration/php/class-acceleration-section.php:99
+msgid "Takes effect the next time you open a post editor."
 msgstr ""
 
 #: features/narration/php/class-frontend-render.php:76
@@ -54,19 +74,19 @@ msgstr ""
 msgid "Close player"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:48
+#: features/narration/php/class-models-section.php:54
 msgid "Models"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:91
+#: features/narration/php/class-models-section.php:97
 msgid "Each language is a separate ~199 MB download, stored in this browser only."
 msgstr ""
 
-#: features/narration/php/class-models-section.php:95
+#: features/narration/php/class-models-section.php:101
 msgid "Model"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:96
+#: features/narration/php/class-models-section.php:102
 #: features/pronunciation/php/class-dictionary-section.php:102
 #: features/pronunciation/php/class-dictionary-section.php:123
 #: build/dictionary-admin.js:19
@@ -74,54 +94,54 @@ msgstr ""
 msgid "Language"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:97
+#: features/narration/php/class-models-section.php:103
 #: build/narration-editor.js:19
 msgid "Voice"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:98
+#: features/narration/php/class-models-section.php:104
 msgid "Status"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:99
+#: features/narration/php/class-models-section.php:105
 msgid "Size"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:100
+#: features/narration/php/class-models-section.php:106
 #: features/pronunciation/php/class-dictionary-section.php:103
 msgid "Actions"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:106
+#: features/narration/php/class-models-section.php:112
 msgid "Kyutai Pocket TTS"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:109
+#: features/narration/php/class-models-section.php:115
 msgid "Checking…"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:131
+#: features/narration/php/class-models-section.php:137
 msgid "English"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:133
+#: features/narration/php/class-models-section.php:139
 msgid "German"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:135
+#: features/narration/php/class-models-section.php:141
 msgid "Italian"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:137
+#: features/narration/php/class-models-section.php:143
 msgid "Portuguese"
 msgstr ""
 
-#: features/narration/php/class-models-section.php:139
+#: features/narration/php/class-models-section.php:145
 msgid "Spanish"
 msgstr ""
 
 #. translators: %d: number of voices.
-#: features/narration/php/class-models-section.php:159
+#: features/narration/php/class-models-section.php:165
 #, php-format
 msgid "%d voice"
 msgid_plural "%d voices"
@@ -265,9 +285,9 @@ msgstr ""
 msgid "Add entry"
 msgstr ""
 
-#: shared/php/class-settings-page.php:43
-#: shared/php/class-settings-page.php:44
-#: shared/php/class-settings-page.php:72
+#: shared/php/class-settings-page.php:54
+#: shared/php/class-settings-page.php:55
+#: shared/php/class-settings-page.php:92
 #: build/narration-editor.js:19
 msgid "Narration"
 msgstr ""
@@ -285,6 +305,10 @@ msgid "Download failed"
 msgstr ""
 
 #: build/models-admin.js:19
+msgid "Download"
+msgstr ""
+
+#: build/models-admin.js:19
 msgid "Not downloaded"
 msgstr ""
 
@@ -295,16 +319,12 @@ msgid "~%s"
 msgstr ""
 
 #: build/models-admin.js:19
-msgid "Download"
+#: build/narration-editor.js:19
+msgid "Cancel"
 msgstr ""
 
 #: build/models-admin.js:19
 msgid "Queued"
-msgstr ""
-
-#: build/models-admin.js:19
-#: build/narration-editor.js:19
-msgid "Cancel"
 msgstr ""
 
 #. translators: %d: percent complete.

@@ -73,3 +73,68 @@ test( 'a site can turn the headers off with the post_voice_send_isolation_header
 		false
 	);
 } );
+
+// The site setting behind those headers (Settings → Narration). Driven
+// through its own screen rather than by writing the option directly: the
+// whole point of the feature is that an author can reach it, and a control
+// that renders but never persists would pass a direct-write test.
+
+async function setAcceleration(
+	admin: { visitAdminPage: ( p: string, q?: string ) => Promise< void > },
+	page: import('@playwright/test').Page,
+	enabled: boolean
+): Promise< void > {
+	await admin.visitAdminPage( 'options-general.php', 'page=post-voice' );
+	await page.locator( '#post-voice-acceleration' ).setChecked( enabled );
+	await page.getByRole( 'button', { name: 'Save Changes' } ).click();
+	// Wait for the save's own round trip before asserting anything, and
+	// before returning. `setChecked()` already left the DOM in the state
+	// asserted below, so an assertion that resolves against the
+	// pre-navigation document would pass without the save having happened —
+	// and the helper would return while the POST was still in flight, letting
+	// the caller's next navigation cancel it.
+	await page.waitForURL( /settings-updated=true/ );
+	await expect( page.locator( '#post-voice-acceleration' ) ).toBeChecked( {
+		checked: enabled,
+	} );
+}
+
+test.describe( 'the site setting', () => {
+	test.afterEach( async ( { admin, page } ) => {
+		await setAcceleration( admin, page, true );
+	} );
+
+	test( 'turning acceleration off stops the isolation headers', async ( {
+		admin,
+		page,
+	} ) => {
+		// The author-facing remedy for a blank CodePen/YouTube embed in the
+		// editor: a cross-origin iframe is blocked outright unless the
+		// document is not isolated.
+		await setAcceleration( admin, page, false );
+
+		await admin.visitAdminPage( 'post-new.php' );
+
+		expect( await page.evaluate( () => window.crossOriginIsolated ) ).toBe(
+			false
+		);
+	} );
+
+	test( 'turning acceleration back on restores them', async ( {
+		admin,
+		page,
+	} ) => {
+		// Not symmetry for its own sake: "off" is stored as a value that
+		// WordPress will actually write, and getting that wrong in either
+		// direction leaves the setting stuck on whichever side it reached
+		// first.
+		await setAcceleration( admin, page, false );
+		await setAcceleration( admin, page, true );
+
+		await admin.visitAdminPage( 'post-new.php' );
+
+		expect( await page.evaluate( () => window.crossOriginIsolated ) ).toBe(
+			true
+		);
+	} );
+} );

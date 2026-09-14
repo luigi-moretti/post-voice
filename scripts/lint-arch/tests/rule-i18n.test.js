@@ -474,9 +474,9 @@ describe( 'i18n-text-domain', () => {
 		] );
 	} );
 
-	it( 'o repo de hoje tem 64 chamadas e nenhuma fora do domínio', () => {
+	it( 'o repo de hoje tem 69 chamadas e nenhuma fora do domínio', () => {
 		const ctx = createContext();
 		expect( regra.check( ctx ) ).toEqual( [] );
-		expect( regra.contarChamadas( ctx ) ).toBe( 64 );
+		expect( regra.contarChamadas( ctx ) ).toBe( 69 );
 	} );
 } );

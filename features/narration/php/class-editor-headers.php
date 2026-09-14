@@ -62,33 +62,53 @@ class Post_Voice_Editor_Headers {
 	public static function maybe_send_headers(): void {
 		global $pagenow;
 
-		$post_type = self::resolve_post_type( (string) $pagenow );
-
-		if ( ! self::is_editor_screen( (string) $pagenow, $post_type ) ) {
+		if ( ! self::should_send( (string) $pagenow, self::resolve_post_type( (string) $pagenow ) ) ) {
 			return;
+		}
+
+		header( 'Cross-Origin-Opener-Policy: same-origin' );
+		header( 'Cross-Origin-Embedder-Policy: credentialless' );
+	}
+
+	/**
+	 * Whether this request should carry the isolation headers.
+	 *
+	 * Split out of `maybe_send_headers()` so the decision can be tested: the
+	 * emission itself is `header()`, which PHPUnit cannot observe under CLI.
+	 *
+	 * @param string $pagenow   Value of the global `$pagenow`.
+	 * @param string $post_type Post type being edited.
+	 */
+	public static function should_send( string $pagenow, string $post_type ): bool {
+		if ( ! self::is_editor_screen( $pagenow, $post_type ) ) {
+			return false;
 		}
 
 		/**
 		 * Whether to send the isolation headers at all.
 		 *
 		 * `credentialless` was chosen specifically to minimize breakage (see
-		 * the design spec's risk section), but two classes of site-specific
-		 * conflict cannot be verified from this codebase: a cross-origin
-		 * embed block (YouTube, Twitter) rendering blank because its own
-		 * iframe sends no COEP, and an OAuth "connect your account" popup
-		 * (Jetpack, for example) losing `window.opener` under
-		 * `COOP: same-origin`. A site that hits either can disable the
-		 * headers here — narration falls back to single-threaded, exactly as
-		 * it did before this feature existed — rather than needing a patch.
+		 * the design spec's risk section), but it only relaxes the
+		 * `Cross-Origin-Resource-Policy` requirement for subresources — a
+		 * nested cross-origin *document* must still send COEP of its own or
+		 * it is blocked. That is confirmed, not theoretical: a CodePen embed
+		 * block renders as a blank frame in the editor with these headers on
+		 * and renders normally with them off. An OAuth "connect your account"
+		 * popup (Jetpack, for example) losing `window.opener` under
+		 * `COOP: same-origin` remains the other known conflict.
 		 *
-		 * @param bool $send Whether to send the headers. Default true.
+		 * The site setting (Settings → Narration) is what this defaults to,
+		 * so most sites never need this filter; it stays the last word for a
+		 * site that disabled the headers in code before the setting existed,
+		 * and for one that wants the decision made per request.
+		 *
+		 * @param bool $send Whether to send the headers. Defaults to the
+		 *                   site's own acceleration setting.
 		 */
-		if ( ! apply_filters( 'post_voice_send_isolation_headers', true ) ) {
-			return;
-		}
-
-		header( 'Cross-Origin-Opener-Policy: same-origin' );
-		header( 'Cross-Origin-Embedder-Policy: credentialless' );
+		return (bool) apply_filters(
+			'post_voice_send_isolation_headers',
+			Post_Voice_Acceleration_Store::is_enabled()
+		);
 	}
 
 	/**

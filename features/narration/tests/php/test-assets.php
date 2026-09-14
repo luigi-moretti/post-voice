@@ -216,6 +216,36 @@ class Test_Post_Voice_Assets extends WP_UnitTestCase {
 		$this->assertStringContainsString( '"canManageOptions":""', $data );
 	}
 
+	public function test_editor_assets_do_not_force_single_thread_by_default(): void {
+		set_current_screen( 'post' );
+		$this->with_asset_file( $this->asset_file() );
+
+		Post_Voice_Assets::enqueue_editor_assets();
+		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
+
+		$this->assertIsString( $data );
+		// `wp_localize_script` writes boolean false as the empty string.
+		$this->assertStringContainsString( '"forceSingleThread":""', $data );
+	}
+
+	public function test_editor_assets_localise_the_forced_single_thread_filter(): void {
+		// The diagnostic escape hatch: it separates "is the slowness (or the
+		// breakage) threading itself?" from "is it the isolation headers?",
+		// which the site setting alone cannot distinguish because turning
+		// that off removes both at once.
+		add_filter( 'post_voice_force_single_thread', '__return_true' );
+		set_current_screen( 'post' );
+		$this->with_asset_file( $this->asset_file() );
+
+		Post_Voice_Assets::enqueue_editor_assets();
+		$data = wp_scripts()->get_data( 'post-voice-editor', 'data' );
+
+		remove_filter( 'post_voice_force_single_thread', '__return_true' );
+
+		$this->assertIsString( $data );
+		$this->assertStringContainsString( '"forceSingleThread":"1"', $data );
+	}
+
 	public function test_dictionary_provider_can_be_swapped_and_is_restored(): void {
 		set_current_screen( 'post' );
 		$this->with_asset_file( $this->asset_file() );

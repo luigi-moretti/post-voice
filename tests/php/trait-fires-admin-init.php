@@ -22,6 +22,18 @@ declare(strict_types=1);
 trait Post_Voice_Fires_Admin_Init {
 
 	protected static function fire_admin_init(): void {
+		// Core hooks its own update checks to `admin_init`, and they reach out
+		// to api.wordpress.org. No test using this trait cares about them, but
+		// whichever test class happens to fire `admin_init` first in a run pays
+		// for the call — and fails the whole suite when the request errors
+		// instead of merely being slow (seen as
+		// "WordPress could not establish a secure connection to WordPress.org"
+		// under `test:php:coverage`, passing on the next run: a network flake,
+		// not a real failure). Dropping them keeps the suite off the network.
+		remove_action( 'admin_init', '_maybe_update_core' );
+		remove_action( 'admin_init', '_maybe_update_plugins' );
+		remove_action( 'admin_init', '_maybe_update_themes' );
+
 		$previous = null;
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Not debug code: a narrowly-scoped, restored handler that swallows one specific, unrelated core warning (see the docblock above) and delegates everything else — including PHPUnit's own warning-to-exception converter — to whatever handler was already installed.
 		$previous = set_error_handler(

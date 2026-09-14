@@ -326,3 +326,66 @@ reconfirmado verde) — ver seção própria acima, com a limitação registrada
 Pendente: apagar o mu-plugin de E2E, escrever os testes E2E de escopo
 (inclusive o caso `post_type=page`), benchmark manual de RTF, e os gates
 completos de `TESTING.md`.
+
+## 2026-09-14 — o risco de embed saiu de "não confirmado" para confirmado, e o escape hatch virou opção de site
+
+A seção "revisão final: iframe de embed e popup OAuth" registrava, como risco
+**não verificado**, que um bloco de embed cross-origin poderia renderizar em
+branco no editor sob `COEP: credentialless`. Verificado agora, e é o que
+acontece.
+
+**Reprodução** (wp-env local, Chrome real, plugin `codepen-embed-block` 1.2.1,
+post id 64 com um bloco CodePen): mesma tela, mesma sessão, só os cabeçalhos
+mudando, via a query var do harness `e2e/mu-plugins/isolation-headers-filter-harness.php`.
+
+| `crossOriginIsolated` | Resultado no editor |
+|---|---|
+| `true` | iframe do pen em branco, com o ícone de documento quebrado |
+| `false` | pen renderiza inteiro (código e preview) |
+
+**Mecanismo**: `credentialless` dispensa `Cross-Origin-Resource-Policy` apenas
+para *subrecursos* (`fetch`, `<img>`, `<script>`). Um **documento aninhado**
+continua obrigado a mandar COEP próprio, e `codepen.io` não manda. O bloco
+renderiza `<iframe src="//codepen.io/editor/anon/embed/...">` direto no editor
+(`src/utils/getPenHTML.js` do plugin), então cai exatamente nessa regra.
+
+**O bloqueio é silencioso**: nada no console além de warnings do próprio plugin
+de embed. É por isso que o remédio precisa ser descobrível por texto — daí a
+entrada no FAQ do `readme.txt`, escrita a partir do sintoma ("an embed shows up
+blank in the post editor"), e não a partir da causa.
+
+### Decisão
+
+O filtro `post_voice_send_isolation_headers` continua existindo e continua
+tendo a última palavra, mas deixa de ser a única saída: seu **default** passa a
+ser a opção de site `post_voice_acceleration` (`Post_Voice_Acceleration_Store`),
+exposta como um checkbox em Configurações → Narração
+(`Post_Voice_Acceleration_Section`).
+
+| Ponto | Decisão |
+|---|---|
+| Alcance | Site-wide (`wp_options`), não por usuário nem por navegador. Não é preferência de estilo: o cabeçalho é decidido em `admin_init`, antes de qualquer HTML sair — nenhum JS existe nesse momento, e `localStorage` não pode reescrever cabeçalho de resposta já enviada. Camada por usuário (`user_meta` sobrepondo a opção) fica possível depois, se fizer falta. |
+| Default | Ligado. Desligar por default faria toda instalação existente perder multi-thread numa atualização, sem ninguém pedir. |
+| O que "desligado" faz | O plugin não manda cabeçalho nenhum. **Não** manda `Cross-Origin-Embedder-Policy: unsafe-none` para desfazer cabeçalho posto por outro plugin ou pelo host: apagar cabeçalho que não pusemos é invasão, e quebraria quem legitimamente precise de isolamento. Consequência aceita: se o isolamento vier do host, este toggle não resolve — e nesse caso não fomos nós que quebramos. |
+| Rótulo | "Generate narration faster", com o trade-off por extenso na descrição. Não fala em thread nem em isolamento: marcar a caixa não *garante* multi-thread (depende também do navegador e do host), e a pergunta real do autor é velocidade de geração versus preview de embed funcionando. |
+| Representação no banco | `'1'`/`'0'`, nunca booleano. `update_option()` pula a escrita quando o valor novo é igual ao atual, e opção inexistente lê como `false` — gravar `false` não grava nada, e a leitura seguinte volta pro default "ligado". Ressalva verificada na revisão: **pelo `options.php` esse buraco não apareceria**, porque o `default` declarado no `register_setting()` chega ao `$old_value` pelo filtro `default_option_*`. Ele morde onde o setting não está registrado — escrita por WP-CLI, pelo front-end, ou por outro plugin. A escolha segue valendo pelos dois motivos restantes: escrita real em qualquer caminho, e coerência com o `'type' => 'string'` declarado. Coberto por teste. |
+| Leitura da opção | Classe própria (`Post_Voice_Acceleration_Store`), não constante na classe da seção: `Post_Voice_Editor_Headers` lê isso em todo `admin_init` e não pode depender de classe de tela de admin. |
+| Sem readout ao vivo na tela de configurações | Cogitado e descartado: `crossOriginIsolated` na tela de Configurações é sempre `false`, porque ela nunca recebe os cabeçalhos. Só o editor pode medir. Um indicador ali mentiria. |
+
+### Alavanca de diagnóstico, sem UI
+
+Filtro novo `post_voice_force_single_thread` (default `false`), que desce por
+`postVoiceData.forceSingleThread` até `PocketTtsEngine.load()` e força
+`ort.env.wasm.numThreads = 1` mantendo o isolamento ligado.
+
+Deliberadamente **sem controle na interface**. Para um autor, "isolado mas
+single-thread" é estritamente pior que o "desligado" da opção — mesma
+lentidão, e o embed continua quebrado —, então oferecer isso como escolha só
+convidaria a um estado que não serve a ninguém. Para quem desenvolve, é a única
+forma de separar "o problema é threading?" de "o problema é cabeçalho?", que a
+opção sozinha não distingue porque desliga os dois de uma vez.
+
+O retry automático de `load()` (Achado 4) passa a consultar
+`shouldRetrySingleThreaded()` — módulo próprio, `editor/engine/thread-mode.ts`,
+com teste Jest: com single-thread forçado, a segunda tentativa seria idêntica à
+primeira, e repeti-la custaria segundos do autor por nada.
